@@ -7,6 +7,12 @@ export interface TrackDef {
   points: [number, number][];
   /** Optional DRS zones; found automatically on the longest straights when missing. */
   drsZones?: DrsZone[];
+  /** Which side of the start/finish straight the pit lane is on (as at the real circuit). */
+  pit?: PitDef;
+}
+
+export interface PitDef {
+  side: 'left' | 'right';
 }
 
 /** Distances along the lap (m) from the start line. */
@@ -18,7 +24,7 @@ export interface DrsZone {
   end: number;
 }
 
-export type SurfaceType = 'asphalt' | 'kerb' | 'grass' | 'gravel' | 'wall';
+export type SurfaceType = 'asphalt' | 'kerb' | 'grass' | 'gravel' | 'wall' | 'pit';
 
 export interface Surface {
   type: SurfaceType;
@@ -36,4 +42,5 @@ export const SURFACES: Record<SurfaceType, Surface> = {
   grass: { type: 'grass', grip: 0.7, drag: 1.5, dragPerSpeed: 0.33 },
   gravel: { type: 'gravel', grip: 0.6, drag: 3.5, dragPerSpeed: 0.6 },
   wall: { type: 'wall', grip: 0.4, drag: 4, dragPerSpeed: 0.4 },
+  pit: { type: 'pit', grip: 1, drag: 0, dragPerSpeed: 0 },
 };

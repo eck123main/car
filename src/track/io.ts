@@ -28,6 +28,10 @@ export function parseTrackDef(data: unknown): TrackDef {
       }
     }
   }
+  if (typeof d.pit === 'object' && d.pit !== null) {
+    const side = (d.pit as Record<string, unknown>).side;
+    if (side === 'left' || side === 'right') def.pit = { side };
+  }
   return def;
 }
 
@@ -36,8 +40,9 @@ export function trackToJson(def: TrackDef): string {
   for (let i = 0; i < def.points.length; i += 6) {
     rows.push('    ' + def.points.slice(i, i + 6).map(([x, y]) => `[${round1(x)}, ${round1(y)}]`).join(', '));
   }
+  const pit = def.pit ? `,\n  "pit": ${JSON.stringify(def.pit)}` : '';
   const drs = def.drsZones ? `,\n  "drsZones": ${JSON.stringify(def.drsZones)}` : '';
-  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}\n}\n`;
+  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}\n}\n`;
 }
 
 /**

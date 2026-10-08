@@ -1,10 +1,29 @@
-import { SURFACES, type DrsZone, type Surface, type SurfaceType, type TrackDef } from './types';
+import { SURFACES, type DrsZone, type PitDef, type Surface, type SurfaceType, type TrackDef } from './types';
 
 /** Width of the kerb band just outside the track edge (m). */
 export const KERB_WIDTH = 1.2;
 /** Distance between centreline samples (m). */
 const SAMPLE_SPACING = 2;
 const GRID_CELL = 16;
+/** Pit lane layout, measured out from the track edge on the pit side (m). */
+export const PIT_WALL_OFFSET = 1;
+export const PIT_LANE_INNER = 2;
+export const PIT_LANE_WIDTH = 8;
+/** Open gap in the pit wall at the pit entry and exit (m). */
+const PIT_OPENING = 35;
+
+export interface PitLane {
+  /** +1 = right of the track, -1 = left. */
+  side: 1 | -1;
+  /** Lap distances (m) where the pit lane starts and ends. */
+  entry: number;
+  exit: number;
+  /** The pit wall runs between these lap distances; the gaps either side are the way in and out. */
+  wallStart: number;
+  wallEnd: number;
+  /** Lap distance of each pit box (one per car). */
+  boxes: number[];
+}
 
 /**
  * One centreline sample. "Right"/"left" are relative to the driving direction;
@@ -29,6 +48,13 @@ export interface TrackSample {
   wallL: number;
   surfR: SurfaceType;
   surfL: SurfaceType;
+  /** Furthest a wall may go on each side before it meets another part of the track. */
+  maxWallR: number;
+  maxWallL: number;
+  /** Pit lane alongside (on the pit side). */
+  pit: boolean;
+  /** Pit wall between the track and the pit lane. */
+  pitWall: boolean;
 }
 
 export interface TrackHit {
@@ -53,6 +79,7 @@ export class Track {
   readonly samples: TrackSample[];
   readonly length: number;
   readonly drsZones: DrsZone[];
+  readonly pit: PitLane | null;
   private readonly grid = new Map<number, number[]>();
 
   constructor(def: TrackDef) {
@@ -60,6 +87,7 @@ export class Track {
     const pts = resampleClosed(splineClosed(def.points), SAMPLE_SPACING);
     this.length = pts.length * SAMPLE_SPACING;
     this.samples = buildSamples(pts, def.width / 2);
+    this.pit = buildPitLane(this.samples, this.length, def.pit);
     this.buildGrid();
     this.fixWallOwnership();
     this.drsZones = def.drsZones ?? findDrsZones(this.samples, this.length);
@@ -143,18 +171,36 @@ export class Track {
     const right = d >= 0;
     const off = Math.abs(d);
     if (off <= sample.halfWidth) return SURFACES.asphalt;
+    if (this.onPitSide(sample, d) && off <= sample.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH) return SURFACES.pit;
     if (off <= sample.halfWidth + KERB_WIDTH && (right ? sample.kerbR : sample.kerbL)) return SURFACES.kerb;
     if (off <= (right ? sample.wallR : sample.wallL)) return SURFACES[right ? sample.surfR : sample.surfL];
     return SURFACES.wall;
   }
 
-  wallContact(x: number, y: number): WallContact | null {
+  /**
+   * Wall penetration at a point (e.g. a car corner). The car's centre decides which side
+   * of the pit wall it is on, since the pit wall can be hit from both sides.
+   */
+  wallContact(x: number, y: number, carX = x, carY = y): WallContact | null {
     const hit = this.query(x, y);
     if (!hit) return null;
     const { d, sample, nx, ny } = hit;
     if (d > sample.wallR) return { nx: -nx, ny: -ny, depth: d - sample.wallR };
     if (-d > sample.wallL) return { nx, ny, depth: -d - sample.wallL };
+    if (this.pit && sample.pitWall) {
+      const side = this.pit.side;
+      const wall = sample.halfWidth + PIT_WALL_OFFSET;
+      const here = d * side;
+      const car = ((carX - x) * nx + (carY - y) * ny + d) * side;
+      if (car < wall && here > wall) return { nx: -nx * side, ny: -ny * side, depth: here - wall };
+      if (car >= wall && here < wall) return { nx: nx * side, ny: ny * side, depth: wall - here };
+    }
     return null;
+  }
+
+  /** Is lateral offset d on the pit lane side of a sample that has a pit lane? */
+  onPitSide(sample: TrackSample, d: number): boolean {
+    return sample.pit && this.pit !== null && d * this.pit.side > 0;
   }
 
   private buildGrid(): void {
@@ -179,6 +225,62 @@ export class Track {
       }
     }
   }
+}
+
+/**
+ * Pit lane alongside the start/finish straight, like at real circuits. Uses the side from
+ * the track file when given (if there is room), otherwise whichever side has more room.
+ */
+function buildPitLane(samples: TrackSample[], length: number, def: PitDef | undefined): PitLane | null {
+  const n = samples.length;
+  const at = (i: number) => samples[((i % n) + n) % n];
+  // Pit lanes follow the start/finish straight and any gentle bends either side of it.
+  const straight = (i: number) => Math.abs(at(i).curvature) < 1 / 100;
+  let back = 0;
+  while (back < n / 3 && straight(-back - 1)) back++;
+  let fwd = 0;
+  while (fwd < n / 3 && straight(fwd + 1)) fwd++;
+  const first = -back + 5;
+  const last = fwd - 10;
+  if ((last - first) * SAMPLE_SPACING < 2 * PIT_OPENING + 80) return null;
+
+  const range: TrackSample[] = [];
+  for (let i = first; i <= last; i++) range.push(at(i));
+  const need = (s: TrackSample) => s.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH + 1;
+  // On the inside of a bend the lane must also stay clear of the bend's centre.
+  const limit = (s: TrackSample, side: 1 | -1) => {
+    const wall = side > 0 ? s.maxWallR : s.maxWallL;
+    return s.curvature * side > 0 ? Math.min(wall, 0.8 / Math.abs(s.curvature)) : wall;
+  };
+  const room = (side: 1 | -1) => Math.min(...range.map((s) => limit(s, side) - need(s)));
+  const preferred: 1 | -1 = def?.side === 'left' ? -1 : 1;
+  const order: (1 | -1)[] = def ? [preferred, -preferred as 1 | -1] : room(1) >= room(-1) ? [1, -1] : [-1, 1];
+  const side = order.find((sd) => room(sd) >= 0);
+  if (!side) return null;
+
+  const wrap = (v: number) => ((v % length) + length) % length;
+  const laneLength = range.length * SAMPLE_SPACING;
+  range.forEach((s, k) => {
+    s.pit = true;
+    const along = k * SAMPLE_SPACING;
+    s.pitWall = along >= PIT_OPENING && along <= laneLength - PIT_OPENING;
+    if (side > 0) {
+      s.wallR = Math.max(s.wallR, need(s));
+      s.kerbR = false;
+    } else {
+      s.wallL = Math.max(s.wallL, need(s));
+      s.kerbL = false;
+    }
+  });
+
+  const entry = wrap(first * SAMPLE_SPACING);
+  const exit = wrap(last * SAMPLE_SPACING);
+  const wallStart = wrap(entry + PIT_OPENING);
+  const wallEnd = wrap(exit - PIT_OPENING);
+  // One box per possible car, spread along the pit wall section.
+  const spacing = Math.min(14, (laneLength - 2 * PIT_OPENING - 30) / 10);
+  const boxes = Array.from({ length: 10 }, (_, i) => wrap(wallStart + 15 + i * spacing));
+  return { side, entry, exit, wallStart, wallEnd, boxes };
 }
 
 /** DRS zones on the two longest straights: open just after the straight starts, close before braking. */
@@ -320,6 +422,10 @@ function buildSamples(pts: Pt[], halfWidth: number): TrackSample[] {
       wallL: halfWidth + KERB_WIDTH + runoffL,
       surfR: cornering && !turningRight ? 'gravel' : 'grass',
       surfL: cornering && turningRight ? 'gravel' : 'grass',
+      maxWallR: Infinity,
+      maxWallL: Infinity,
+      pit: false,
+      pitWall: false,
     });
   }
   limitWallsByClearance(samples);
@@ -363,6 +469,8 @@ function limitWallsByClearance(samples: TrackSample[]): void {
   for (let i = 0; i < n; i++) {
     const s = samples[i];
     const floor = s.halfWidth + 0.3;
+    s.maxWallR = minR[i] / 2 - 1;
+    s.maxWallL = minL[i] / 2 - 1;
     s.wallR = Math.max(floor, Math.min(s.wallR, minR[i] / 2 - 1));
     s.wallL = Math.max(floor, Math.min(s.wallL, minL[i] / 2 - 1));
   }
