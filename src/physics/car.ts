@@ -233,7 +233,9 @@ export class Car {
       const s = Math.sin(this.heading);
       const rx = c * lx - s * ly;
       const ry = s * lx + c * ly;
-      const hit = world.wallContact(this.x + rx, this.y + ry, this.x, this.y);
+      // Which side of a two-sided wall (the pit wall) we are on is decided by where the car
+      // was before this step, so a hard hit can never carry it through to the other side.
+      const hit = world.wallContact(this.x + rx, this.y + ry, this.prevX, this.prevY);
       if (!hit) continue;
       this.x += hit.nx * hit.depth;
       this.y += hit.ny * hit.depth;

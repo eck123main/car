@@ -76,11 +76,15 @@ export function updatePit(
   const hit = track.query(car.x, car.y);
   if (!hit) return input;
   const inLane = hit.sample.pit && hit.d * lane.side > hit.sample.halfWidth + 0.5;
+  // Entering needs a deliberate move: right across into the lane itself, not just a run wide.
+  const committed = hit.sample.pit && hit.d * lane.side > hit.sample.halfWidth + PIT_LANE_INNER + 1;
 
   switch (pit.phase) {
     case 'out':
       // Entering means driving into the lane through the entry opening.
-      if (inLane && track.inRange(hit.s, lane.entry, lane.wallStart) && car.forwardSpeed > 0) {
+      // Anywhere along the lane: the pit wall (which cars cannot pass through) means a car in
+      // the lane came in through the entry.
+      if (committed && track.inRange(hit.s, lane.entry, lane.wallEnd) && car.forwardSpeed > 0) {
         pit.phase = 'in';
         events.push({ kind: 'pitEntry', speeding: car.speed > PIT_SPEED_LIMIT + PIT_ENTRY_TOLERANCE });
         return autopilot(track, pit, car, hit.s, input, time, seed, events, others);

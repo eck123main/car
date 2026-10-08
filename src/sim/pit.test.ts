@@ -98,6 +98,37 @@ for (const id of ['silverstone', 'test'] as const) {
       expect(new Set(lane.boxes.map((s) => Math.round(s))).size).toBe(10);
     });
 
+    it('never lets a hard, angled hit carry a car through the pit wall', () => {
+      for (const speed of [30, 60, 85]) {
+        const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
+        const r = world.addRacer('a', 'A', 'red');
+        const t = sampleAt(lane.boxes[4]);
+        // Aim across the track straight at the pit wall.
+        const h = Math.atan2(t.ty, t.tx) + 0.6 * lane.side;
+        r.car.place(t.x - t.nx * lane.side * 2, t.y - t.ny * lane.side * 2, h);
+        r.car.vx = Math.cos(h) * speed;
+        r.car.vy = Math.sin(h) * speed;
+        for (let k = 0; k < 120; k++) world.step(DT, new Map([['a', { ...IDLE_INPUT, throttle: 1 }]]));
+        const q = track.query(r.car.x, r.car.y)!;
+        expect(q.d * lane.side).toBeLessThan(q.sample.halfWidth + 1.2);
+        expect(r.pit.phase).toBe('out');
+      }
+    });
+
+    it('running wide at the pit entry does not send you into the pits', () => {
+      const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
+      const r = world.addRacer('a', 'A', 'red');
+      const t = sampleAt(lane.entry + 5);
+      const h = Math.atan2(t.ty, t.tx);
+      // On the edge of the track, kerb-side, right by the pit entry.
+      const edge = (t.halfWidth + 1.5) * lane.side;
+      r.car.place(t.x + t.nx * edge, t.y + t.ny * edge, h);
+      r.car.vx = Math.cos(h) * 40;
+      r.car.vy = Math.sin(h) * 40;
+      for (let k = 0; k < 60; k++) world.step(DT, new Map([['a', towards(r, edge, 40)]]));
+      expect(r.pit.phase).toBe('out');
+    });
+
     it('stops cars crossing the pit wall from the track', () => {
       const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
       const r = world.addRacer('a', 'A', 'red');
