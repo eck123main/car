@@ -63,7 +63,7 @@ export const F1_CAR: CarParams = {
   width: 1.9,
   inertia: 1100,
 
-  mu: 2.0,
+  mu: 2.4,
 
   power: 740_000,
   maxDriveForce: 14_000,

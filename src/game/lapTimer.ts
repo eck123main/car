@@ -1,5 +1,5 @@
 import type { Car } from '../physics/car';
-import type { Track } from '../track/track';
+import { KERB_WIDTH, type Track, type TrackSample } from '../track/track';
 
 export const SECTOR_COUNT = 3;
 /** Back on track for this long before another excursion counts as a new warning. */
@@ -55,6 +55,11 @@ export class LapTimer {
   constructor(private readonly track: Track) {
     // Sector lines split the lap into equal thirds; the last one is the finish line.
     this.sectorEnds = Array.from({ length: SECTOR_COUNT }, (_, i) => (track.length * (i + 1)) / SECTOR_COUNT);
+  }
+
+  /** The car's distance along the lap (m) at the last update, if known. */
+  get lapDistance(): number | null {
+    return this.prevS;
   }
 
   /** Current lap time, or null on an out-lap. */
@@ -163,7 +168,7 @@ export class LapTimer {
     this.currentTrace = [];
   }
 
-  /** F1 rule: off track when all four wheels are beyond the white lines. */
+  /** Off track when all four wheels are beyond the track edge (kerbs count as track). */
   private checkTrackLimits(dt: number, car: Car, events: TimingEvent[]): void {
     const p = car.params;
     const c = Math.cos(car.heading);
@@ -173,7 +178,7 @@ export class LapTimer {
     for (const lx of [p.cgToFront, -p.cgToRear]) {
       for (const ly of [-half, half]) {
         const hit = this.track.query(car.x + c * lx - s * ly, car.y + s * lx + c * ly);
-        if (hit && Math.abs(hit.d) <= hit.sample.halfWidth) anyWheelOn = true;
+        if (hit && Math.abs(hit.d) <= trackEdge(hit.sample, hit.d)) anyWheelOn = true;
       }
     }
     this.offTrack = !anyWheelOn;
@@ -190,4 +195,10 @@ export class LapTimer {
     if (this.lapStart !== null) this.valid = false;
     events.push({ kind: 'trackLimits', warnings: this.trackLimitWarnings, lapDeleted });
   }
+}
+
+/** Where the track ends on the side of offset d: the white line, or the outer edge of a kerb. */
+function trackEdge(sample: TrackSample, d: number): number {
+  const kerb = d >= 0 ? sample.kerbR : sample.kerbL;
+  return sample.halfWidth + (kerb ? KERB_WIDTH : 0);
 }

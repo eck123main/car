@@ -5,6 +5,17 @@ export interface TrackDef {
   width: number;
   /** Closed centreline control points [x, y], in driving order. The first point is the start/finish line. */
   points: [number, number][];
+  /** Optional DRS zones; found automatically on the longest straights when missing. */
+  drsZones?: DrsZone[];
+}
+
+/** Distances along the lap (m) from the start line. */
+export interface DrsZone {
+  /** Gap to the car ahead is measured here. */
+  detect: number;
+  /** DRS can be opened between start and end. */
+  start: number;
+  end: number;
 }
 
 export type SurfaceType = 'asphalt' | 'kerb' | 'grass' | 'gravel' | 'wall';
@@ -22,7 +33,7 @@ export interface Surface {
 export const SURFACES: Record<SurfaceType, Surface> = {
   asphalt: { type: 'asphalt', grip: 1, drag: 0, dragPerSpeed: 0 },
   kerb: { type: 'kerb', grip: 0.95, drag: 0.2, dragPerSpeed: 0 },
-  grass: { type: 'grass', grip: 0.7, drag: 1.5, dragPerSpeed: 0.25 },
-  gravel: { type: 'gravel', grip: 0.6, drag: 3.5, dragPerSpeed: 0.5 },
+  grass: { type: 'grass', grip: 0.7, drag: 1.5, dragPerSpeed: 0.33 },
+  gravel: { type: 'gravel', grip: 0.6, drag: 3.5, dragPerSpeed: 0.6 },
   wall: { type: 'wall', grip: 0.4, drag: 4, dragPerSpeed: 0.4 },
 };
