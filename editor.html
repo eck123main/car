@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Track Editor</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #ddd; font: 13px system-ui, sans-serif; }
+      #app { display: flex; height: 100%; }
+      #side { width: 260px; flex: none; overflow-y: auto; background: #1a1b1f; border-right: 1px solid #2c2d33; padding: 12px; box-sizing: border-box; }
+      #view { flex: 1; position: relative; }
+      canvas { display: block; width: 100%; height: 100%; }
+      h1 { font-size: 16px; margin: 0 0 10px; color: #fff; }
+      h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin: 16px 0 6px; }
+      label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 0; }
+      input[type=text], input[type=number], select { width: 120px; background: #0f1013; color: #eee; border: 1px solid #34363d; border-radius: 4px; padding: 4px 6px; }
+      input[type=range] { width: 120px; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+      button { background: #2b2d34; color: #eee; border: 1px solid #3a3d45; border-radius: 4px; padding: 5px 9px; cursor: pointer; }
+      button:hover { background: #363943; }
+      button.primary { background: #c8102e; border-color: #e0223f; }
+      button.primary:hover { background: #dd1a38; }
+      #info { color: #aaa; line-height: 1.6; }
+      #msg { min-height: 18px; color: #ffcc66; margin-top: 8px; }
+      .help { color: #888; line-height: 1.6; }
+      .help b { color: #bbb; font-weight: 600; }
+      input[type=file] { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="side">
+        <h1>Track Editor</h1>
+
+        <h2>Track</h2>
+        <label>Name <input id="name" type="text" /></label>
+        <label>Width (m) <input id="width" type="number" min="6" max="30" step="0.5" /></label>
+        <div id="info"></div>
+
+        <h2>File</h2>
+        <label>Open <select id="builtin"><option value="">Built-in track…</option></select></label>
+        <div class="row">
+          <button id="new">New</button>
+          <button id="importJson">Import JSON</button>
+          <button id="exportJson">Export JSON</button>
+          <button id="copyJson">Copy JSON</button>
+        </div>
+        <label>GeoJSON scale <input id="geoScale" type="number" min="0.1" max="1" step="0.05" value="0.4" /></label>
+        <div class="row"><button id="importGeo">Import GeoJSON</button></div>
+
+        <h2>Edit</h2>
+        <div class="row">
+          <button id="setStart">Start at selected</button>
+          <button id="reverse">Reverse direction</button>
+        </div>
+        <label>Scale (%) <input id="scalePct" type="number" min="10" max="400" step="5" value="100" /></label>
+        <div class="row">
+          <button id="applyScale">Apply scale</button>
+          <button id="undo">Undo</button>
+        </div>
+
+        <h2>Background image</h2>
+        <div class="row"><button id="loadImage">Load image</button><button id="clearImage">Remove</button></div>
+        <label>Metres / pixel <input id="imgScale" type="number" min="0.01" step="0.05" value="1" /></label>
+        <label>Opacity <input id="imgOpacity" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+
+        <h2>Test</h2>
+        <div class="row"><button id="testDrive" class="primary">Test drive ▶</button></div>
+        <div id="msg"></div>
+
+        <h2>Controls</h2>
+        <div class="help">
+          <b>Click</b> add point (on the line: insert)<br />
+          <b>Drag</b> move point<br />
+          <b>Right-click</b> / <b>Delete</b> remove point<br />
+          <b>Wheel</b> zoom &nbsp; <b>Space / middle drag</b> pan<br />
+          <b>Alt + drag</b> move background image<br />
+          <b>Ctrl + Z</b> undo<br />
+          Point 1 (green) is the start/finish line. The arrow shows driving direction.
+        </div>
+        <input id="fileJson" type="file" accept=".json,application/json" />
+        <input id="fileGeo" type="file" accept=".geojson,.json,application/json" />
+        <input id="fileImage" type="file" accept="image/*" />
+      </div>
+      <div id="view"><canvas id="canvas"></canvas></div>
+    </div>
+    <script type="module" src="/src/editor/main.ts"></script>
+  </body>
+</html>

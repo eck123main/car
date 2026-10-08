@@ -166,10 +166,12 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 - Format: **JSON**. The core is a **centreline** (a list of points, smoothed into a
   spline) with a **width per point**. Everything else (kerbs, sectors, DRS zones, pit
   lane, grid slots) is placed relative to the centreline, by distance along it.
-- To make tracks: a simple **in-browser track editor**. Load a real circuit map image
-  as a background, click points to trace the centreline, then mark the start line, DRS
-  zones, pit lane, etc. It exports the JSON. (Real coordinate data, e.g. public GeoJSON,
-  could be imported later as a starting point.)
+- To make tracks: the **track editor** at `/editor.html` (`npm run dev`, then open
+  http://localhost:5173/editor.html). Trace over a circuit image or import GeoJSON, drag
+  points, set the start point/direction, export JSON into `src/tracks/` and register it in
+  `src/tracks/index.ts`. "Test drive" opens the game with `?track=custom`.
+- Real circuit layouts come from **bacinger/f1-circuits** (MIT) GeoJSON, scaled to about
+  0.4 so laps stay short. Silverstone is the first one.
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
   start/finish line, DRS zone markers and pit lane drawn plainly.
 
