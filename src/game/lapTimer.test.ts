@@ -105,3 +105,46 @@ describe('LapTimer', () => {
     expect(d.timer.currentTime(d.now)).not.toBeNull();
   });
 });
+
+describe('LapTimer with real physics', () => {
+  it('records clean laps for a careful driver on Silverstone', () => {
+    const silverstone = new Track(TRACKS.silverstone);
+    const ss = silverstone.samples;
+    const n = ss.length;
+    const car = new Car(F1_CAR, 'red');
+    const start = ss[n - 10];
+    car.place(start.x, start.y, Math.atan2(start.ty, start.tx));
+    const timer = new LapTimer(silverstone);
+    const laps = [];
+    let now = 0;
+    // Simple keyboard-style bot: aim ahead on the centreline, brake for upcoming corners.
+    while (now < 300 && laps.length < 2) {
+      const q = silverstone.query(car.x, car.y)!;
+      const aim = ss[(q.index + Math.round((8 + car.speed * 0.3) / 2)) % n];
+      let err = Math.atan2(aim.y - car.y, aim.x - car.x) - car.heading;
+      err = Math.atan2(Math.sin(err), Math.cos(err));
+      let k = 0;
+      for (let j = 0; j < 80; j++) {
+        const a = ss[(q.index + j) % n];
+        const b = ss[(q.index + j + 4) % n];
+        k = Math.max(k, Math.abs(Math.atan2(a.tx * b.ty - a.ty * b.tx, a.tx * b.tx + a.ty * b.ty)) / 8);
+      }
+      const limit = Math.sqrt(20 / Math.max(k, 1e-4));
+      car.step(
+        { throttle: car.speed < limit ? 1 : 0, brake: car.speed > limit + 4 ? 1 : 0, steer: err > 0.02 ? 1 : err < -0.02 ? -1 : 0 },
+        DT,
+        silverstone,
+      );
+      now += DT;
+      for (const e of timer.update(now, DT, car)) if (e.kind === 'lap') laps.push(e.lap);
+    }
+    expect(car.retired).toBe(false);
+    expect(laps).toHaveLength(2);
+    for (const lap of laps) {
+      expect(lap.valid).toBe(true);
+      expect(lap.time).toBeGreaterThan(50);
+      expect(lap.time).toBeLessThan(120);
+    }
+    expect(timer.trackLimitWarnings).toBe(0);
+  });
+});

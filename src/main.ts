@@ -1,9 +1,10 @@
 import { Keyboard } from './game/input';
+import { LapTimer, type TimingEvent } from './game/lapTimer';
 import { Car } from './physics/car';
 import { F1_CAR } from './physics/carParams';
 import { Camera } from './render/camera';
 import { drawCar } from './render/drawCar';
-import { drawHud, Minimap } from './render/hud';
+import { drawHud, drawTiming, drawToasts, formatLapTime, Minimap, type Toast } from './render/hud';
 import { TrackGraphics } from './render/trackGraphics';
 import { Track } from './track/track';
 import { DEFAULT_TRACK, loadCustomTrack, TRACKS } from './tracks';
@@ -23,6 +24,10 @@ const minimap = new Minimap(track);
 const car = new Car(F1_CAR, '#e10600');
 const keyboard = new Keyboard(window);
 const camera = new Camera();
+const timer = new LapTimer(track);
+const toasts: Toast[] = [];
+/** Simulation clock (s): advances only in fixed physics steps. */
+let simTime = 0;
 
 let dpr = 1;
 function resize(): void {
@@ -43,6 +48,7 @@ function resetCar(atStart: boolean): void {
   car.place(s.x, s.y, Math.atan2(s.ty, s.tx));
   car.repair();
   camera.snap(s.x, s.y);
+  timer.abortLap();
 }
 resetCar(true);
 
@@ -58,11 +64,25 @@ function frame(now: number): void {
   const input = keyboard.driverInput();
   while (acc >= DT) {
     car.step(input, DT, track);
+    simTime += DT;
+    for (const e of timer.update(simTime, DT, car)) showEvent(e);
     acc -= DT;
   }
 
   render(acc / DT, elapsed);
   requestAnimationFrame(frame);
+}
+
+function showEvent(e: TimingEvent): void {
+  const until = simTime + 3;
+  if (e.kind === 'lap') {
+    const text = `${e.personalBest ? 'PERSONAL BEST  ' : ''}${formatLapTime(e.lap.time)}${e.lap.valid ? '' : '  (deleted)'}`;
+    toasts.push({ text, color: e.personalBest ? '#b84dff' : e.lap.valid ? '#ffffff' : '#888', until });
+  } else {
+    const text = e.lapDeleted ? 'TRACK LIMITS: LAP TIME DELETED' : 'TRACK LIMITS';
+    toasts.push({ text: `${text} (warning ${e.warnings})`, color: '#ffb347', until });
+  }
+  while (toasts.length > 3) toasts.shift();
 }
 
 function render(alpha: number, dt: number): void {
@@ -84,6 +104,8 @@ function render(alpha: number, dt: number): void {
   const h = canvas.height / dpr;
   minimap.draw(ctx, w, [car]);
   drawHud(ctx, car, track.name, w, h);
+  drawTiming(ctx, timer, simTime);
+  drawToasts(ctx, toasts, simTime, w);
 }
 
 requestAnimationFrame(frame);

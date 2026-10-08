@@ -1,5 +1,6 @@
 import type { Car } from '../physics/car';
 import type { Track } from '../track/track';
+import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
 
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
@@ -130,4 +131,92 @@ function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
   ctx.fillRect(bx, y, bw, h);
   ctx.fillStyle = color;
   ctx.fillRect(bx, y, bw * Math.max(0, Math.min(1, value)), h);
+}
+
+export function formatLapTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds - m * 60;
+  return `${m}:${s.toFixed(3).padStart(6, '0')}`;
+}
+
+const SECTOR_COLORS = { best: '#b84dff', slower: '#ffd400', pending: 'rgba(255,255,255,0.15)' };
+
+/** Lap / sector timing panel, top left. */
+export function drawTiming(ctx: CanvasRenderingContext2D, timer: LapTimer, now: number): void {
+  const x = 20;
+  const y = 44;
+  const w = 250;
+  panel(ctx, x, y, w, 132);
+  ctx.textAlign = 'left';
+
+  const current = timer.currentTime(now);
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(current === null ? 'OUT LAP' : `LAP ${timer.lapsCompleted + 1}`, x + 14, y + 22);
+  if (current !== null && !timer.valid) {
+    ctx.fillStyle = '#ff4136';
+    ctx.fillText('LAP DELETED', x + 80, y + 22);
+  }
+
+  ctx.font = 'bold 28px ui-monospace, monospace';
+  ctx.fillStyle = current !== null && !timer.valid ? '#888' : '#fff';
+  ctx.fillText(current === null ? '-:--.---' : formatLapTime(current), x + 14, y + 54);
+
+  const delta = timer.valid ? timer.delta(now) : null;
+  if (delta !== null) {
+    ctx.font = 'bold 16px ui-monospace, monospace';
+    ctx.fillStyle = delta <= 0 ? '#2ecc40' : '#ff4136';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${delta <= 0 ? '-' : '+'}${Math.abs(delta).toFixed(3)}`, x + w - 14, y + 54);
+    ctx.textAlign = 'left';
+  }
+
+  // Sector bars: purple = personal best, yellow = slower.
+  const barW = (w - 28 - 2 * 6) / SECTOR_COUNT;
+  for (let i = 0; i < SECTOR_COUNT; i++) {
+    const t = timer.sectors[i];
+    const best = timer.bestSectors[i];
+    let color = SECTOR_COLORS.pending;
+    if (t !== undefined) color = !timer.valid ? '#666' : best === null || t <= best ? SECTOR_COLORS.best : SECTOR_COLORS.slower;
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 14 + i * (barW + 6), y + 64, barW, 6);
+  }
+
+  ctx.font = '13px ui-monospace, monospace';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('LAST', x + 14, y + 92);
+  ctx.fillText('BEST', x + 14, y + 112);
+  ctx.fillStyle = '#fff';
+  const last = timer.lastLap;
+  ctx.fillText(last ? formatLapTime(last.time) + (last.valid ? '' : '  deleted') : '-', x + 60, y + 92);
+  ctx.fillStyle = SECTOR_COLORS.best;
+  ctx.fillText(timer.bestLap ? formatLapTime(timer.bestLap.time) : '-', x + 60, y + 112);
+  if (timer.trackLimitWarnings > 0) {
+    ctx.fillStyle = '#ffb347';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Track limits: ${timer.trackLimitWarnings}`, x + w - 14, y + 112);
+    ctx.textAlign = 'left';
+  }
+}
+
+export interface Toast {
+  text: string;
+  color: string;
+  until: number;
+}
+
+/** Short messages in the top middle (lap times, track limits). */
+export function drawToasts(ctx: CanvasRenderingContext2D, toasts: Toast[], now: number, width: number): void {
+  let y = 90;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 20px system-ui, sans-serif';
+  for (const t of toasts) {
+    if (t.until < now) continue;
+    const tw = ctx.measureText(t.text).width + 32;
+    panel(ctx, width / 2 - tw / 2, y - 24, tw, 34);
+    ctx.fillStyle = t.color;
+    ctx.fillText(t.text, width / 2, y);
+    y += 42;
+  }
+  ctx.textAlign = 'left';
 }
