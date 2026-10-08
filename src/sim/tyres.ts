@@ -39,12 +39,17 @@ export class Tyres {
     return base * (1 - Math.min(loss, 0.35));
   }
 
-  /** Wear the tyres for `distance` metres driven. */
-  update(distance: number, trackLength: number, wetness: number): void {
+  /**
+   * Wear the tyres for `distance` metres driven. How you drive matters: `load` is the share
+   * of grip in use (about 0.55 on a normal racing lap), and sliding or running off the
+   * track wears them much faster. Gentle driving makes them last longer.
+   */
+  update(distance: number, trackLength: number, wetness: number, load = 0.55, sliding = false, offTrack = false): void {
     const c = COMPOUNDS[this.compound];
-    let rate = 1;
+    const l = Math.min(load, 1.2);
+    let rate = 0.45 + 1.7 * l * l + (sliding ? 2 : 0) + (offTrack ? 0.6 : 0);
     // Rain tyres overheat and wear fast on a drying track.
-    if ((this.compound === 'inter' || this.compound === 'wet') && wetness < 0.3) rate = 2;
+    if ((this.compound === 'inter' || this.compound === 'wet') && wetness < 0.3) rate *= 2;
     this.wear = Math.min(1, this.wear + (distance / (c.lifeLaps * trackLength)) * rate);
   }
 }

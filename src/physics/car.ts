@@ -69,6 +69,10 @@ export class Car {
   /** Holding the brake at a standstill reverses the car, except on the grid. */
   allowReverse = true;
 
+  /** Share of grip in use (0..1) and whether the tyres are sliding: drives tyre wear. */
+  tyreLoad = 0;
+  sliding = false;
+
   /** For the HUD. */
   latG = 0;
   longG = 0;
@@ -169,6 +173,7 @@ export class Car {
       const brakeForce = this.brake * p.brakeGrip * p.mu * gripMul * (loadF + loadR);
       fx -= Math.sign(vx) * Math.min(brakeForce, (m * Math.abs(vx)) / dt);
     }
+    const wantedFx = fx;
     fx = clampAbs(fx, grip * 0.98);
 
     // --- Lateral: tyres cancel sideways sliding, up to what's left of the grip.
@@ -176,7 +181,12 @@ export class Car {
     // braking into a corner while steering (natural on a keyboard) still turns the car.
     const longUse = fx / grip;
     const lateralGrip = grip * Math.sqrt(Math.max(0, 1 - p.combinedGripPenalty * longUse * longUse));
-    const fy = clampAbs((-m * vy) / dt, lateralGrip);
+    const wantedFy = (-m * vy) / dt;
+    const fy = clampAbs(wantedFy, lateralGrip);
+    // How hard the tyres are working, for tyre wear: share of grip used, and whether they
+    // are sliding (asked for more than they can give: locking up, spinning, skidding wide).
+    this.tyreLoad = Math.hypot(fx, fy) / Math.max(grip, 1);
+    this.sliding = speed > 3 && (Math.abs(wantedFy) > lateralGrip * 1.02 || Math.abs(wantedFx) > grip);
 
     // --- Rotation: steering asks for a turn rate, capped by the tightest turn
     // the tyres can hold at this speed. Too fast for a corner = the car runs wide.

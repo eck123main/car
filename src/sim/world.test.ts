@@ -56,6 +56,30 @@ describe('Tyres', () => {
     expect(t.grip(0)).toBeLessThan(half * 0.85);
   });
 
+  it('wear depends on how hard you drive', () => {
+    const lap = (load: number, sliding = false, offTrack = false) => {
+      const t = new Tyres('medium');
+      t.update(2000, 2000, 0, load, sliding, offTrack);
+      return t.wear;
+    };
+    expect(lap(0.9)).toBeGreaterThan(lap(0.55) * 1.6); // pushing hard
+    expect(lap(0.3)).toBeLessThan(lap(0.55) * 0.75); // looking after them
+    expect(lap(0.55, true)).toBeGreaterThan(lap(0.55) * 2); // sliding / locking up
+    expect(lap(0.55, false, true)).toBeGreaterThan(lap(0.55)); // off the track
+    // A normal racing lap uses about one lap of the compound's life.
+    expect(lap(0.55)).toBeCloseTo(1 / 7, 1);
+  });
+
+  it('each compound wears at its own rate', () => {
+    const wear = ['soft', 'medium', 'hard'].map((c) => {
+      const t = new Tyres(c as 'soft');
+      t.update(2000, 2000, 0, 0.55);
+      return t.wear;
+    });
+    expect(wear[0]).toBeGreaterThan(wear[1]);
+    expect(wear[1]).toBeGreaterThan(wear[2]);
+  });
+
   it('slicks are poor in the wet and wets are good', () => {
     expect(new Tyres('wet').grip(1)).toBeGreaterThan(new Tyres('soft').grip(1) * 1.5);
   });

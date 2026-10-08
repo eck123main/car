@@ -232,7 +232,8 @@ export class RaceWorld {
     const x0 = car.x;
     const y0 = car.y;
     car.step(input, dt, this.track);
-    r.tyres.update(Math.hypot(car.x - x0, car.y - y0), this.track.length, this.options.wetness);
+    const offTrack = ['grass', 'gravel'].includes(car.surfaceFront) || ['grass', 'gravel'].includes(car.surfaceRear);
+    r.tyres.update(Math.hypot(car.x - x0, car.y - y0), this.track.length, this.options.wetness, car.tyreLoad, car.sliding, offTrack);
 
     for (const e of r.timer.update(this.time, dt, car)) events.push({ ...e, racerId: r.id });
     this.updateDrs(r, prevS);
