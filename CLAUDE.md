@@ -67,7 +67,7 @@ Top-down 2D car physics that feels like an F1 car:
   added). Softs are faster but wear quickly, hards are slower but last. Grip drops as
   tyres wear.
 - **[OPEN]** Fuel load / car getting lighter over the race? (Probably skip at first.)
-- **[OPEN]** Engine/ERS-style boost button? (Possible later addition.)
+- **ERS boost** button with a battery meter (see Controls).
 
 ## Controls
 
@@ -117,12 +117,17 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 
 - Cars collide with each other and with walls/barriers using simple physics (bounce,
   lose speed, maybe spin).
-- **Car damage is in.** Big hits damage the car (e.g. front wing damage: less grip/more
-  understeer; floor/body: lower top speed). Damage scales with impact force.
-- A damaged car **must always stay drivable enough to reach the pits**. Damage has a
-  cap and never stops the car completely. Repairs happen at a pit stop (and add time
-  to the stop).
-- **[OPEN]** Whether damage shows visually (e.g. missing wing shape) or only on the HUD.
+- **Carrying too much speed into a corner should end badly**: the car runs wide,
+  off the track onto grass/gravel (which slows it hard and has little grip), and can
+  end up in the wall.
+- **Car damage is in, as one general damage value for now** (0–100%). Damage scales
+  with impact force and lowers grip and top speed. Per-part damage (front wing, floor,
+  etc.) and visual damage may come **later**.
+- Below the crash threshold, a damaged car **always stays drivable enough to reach the
+  pits**. Normal damage has a cap and never stops the car. Repairs happen at a pit stop
+  (and add time to the stop).
+- **Big crashes retire the car**: hitting a wall (or another car) clearly, above a
+  set impact speed, means **DNF / out of the race**.
 
 ## Pit stops
 
