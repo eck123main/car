@@ -53,6 +53,8 @@ const TYRE_KEYS: Record<string, Compound> = {
 export class LocalControls {
   limiter = false;
   nextTyre: Compound = 'medium';
+  /** Ready on the grid (Enter, or the Ready button). */
+  ready = false;
 
   constructor(private readonly keyboard: Keyboard) {}
 
@@ -68,6 +70,7 @@ export class LocalControls {
       limiter: this.limiter,
       nextTyre: this.nextTyre,
       reset: this.keyboard.wasPressed('KeyR'),
+      ready: this.ready || this.keyboard.isDown(['Enter', 'NumpadEnter']),
     };
   }
 }

@@ -52,6 +52,8 @@ export interface Standing {
   laps: number;
   /** Seconds behind the leader (race), or behind pole (qualifying). Null if unknown. */
   gap: number | null;
+  /** Laps behind the leader (lapped cars). */
+  lapsDown: number;
   status: 'running' | 'finished' | 'dnf' | 'pit';
   penalties: number;
   bestLap: number | null;
@@ -65,10 +67,12 @@ export type SessionEvent =
   | { kind: 'phase'; phase: SessionPhase }
   | { kind: 'finished'; racerId: string; position: number };
 
-const GRID_TIME = 4;
+/** On the grid: at least this long, at most GRID_MAX_TIME while drivers pick tyres. */
+const GRID_MIN_TIME = 3;
+export const GRID_MAX_TIME = 20;
 const LIGHT_INTERVAL = 1;
 const QUALI_TIME_LIMIT = 240;
-const FINISH_TIMEOUT = 60;
+const FINISH_TIMEOUT = 180;
 const GRID_SPACING = 8;
 const JUMP_START_DISTANCE = 1;
 const JUMP_START_PENALTY = 5;
@@ -98,6 +102,8 @@ export class Session {
   private readonly progressTimes = new Map<string, number[]>();
   /** Cars waiting to be put back on track, and when. */
   readonly recovering = new Map<string, number>();
+  /** Drivers ready on the grid. */
+  readonly ready = new Set<string>();
 
   constructor(
     readonly track: Track,
@@ -138,7 +144,13 @@ export class Session {
         this.updateQualifying(worldEvents, events);
         break;
       case 'grid':
-        if (now - this.phaseStart >= GRID_TIME) this.setPhase('lights', events);
+        {
+          // Lights once everyone has picked their tyres and is ready (or time is up).
+          const waited = now - this.phaseStart;
+          for (const r of this.world.racers) if (inputs.get(r.id)?.ready) this.ready.add(r.id);
+          const allReady = this.world.racers.every((r) => this.ready.has(r.id) || r.car.retired);
+          if ((allReady && waited >= GRID_MIN_TIME) || waited >= GRID_MAX_TIME) this.setPhase('lights', events);
+        }
         break;
       case 'lights':
         this.updateLights(events);
@@ -209,6 +221,7 @@ export class Session {
 
   private startGrid(order: string[]): void {
     this.recovering.clear();
+    this.ready.clear();
     this.gridOrder = order;
     const n = this.track.samples.length;
     order.forEach((id, k) => {
@@ -270,6 +283,8 @@ export class Session {
     for (const r of this.world.racers) this.recordProgress(r);
 
     const everyoneDone = this.world.racers.every((r) => this.finishTimes.has(r.id) || r.car.retired);
+    // Everyone still running (lapped cars too) finishes the next time they cross the line;
+    // the timeout is only a safety net for someone who has parked up.
     const timedOut = this.firstFinishAt !== null && now - this.firstFinishAt > FINISH_TIMEOUT;
     if (everyoneDone || timedOut) this.setPhase('finished', events);
   }
@@ -321,6 +336,7 @@ export class Session {
           position: i + 1,
           laps: r.timer.lapsCompleted,
           gap: t !== null && pole !== null ? t - pole : null,
+          lapsDown: 0,
           status: r.car.retired ? 'dnf' : 'running',
           penalties: 0,
           bestLap: t,
@@ -331,13 +347,18 @@ export class Session {
     if (this.phase === 'grid' || this.phase === 'lights') {
       return this.gridOrder.map((id, i) => {
         const r = this.world.racer(id)!;
-        return { id, position: i + 1, laps: 0, gap: null, status: 'running', penalties: penaltyTime(r), bestLap: null, totalTime: null };
+        return { id, position: i + 1, laps: 0, gap: null, lapsDown: 0, status: 'running', penalties: penaltyTime(r), bestLap: null, totalTime: null };
       });
     }
 
     const finished = this.finishOrder.map((id) => this.world.racer(id)!);
     // Finished cars are ordered by race time including penalties.
-    finished.sort((a, b) => this.finishTimes.get(a.id)! + penaltyTime(a) - (this.finishTimes.get(b.id)! + penaltyTime(b)));
+    // Full distance first, then race time including penalties.
+    finished.sort(
+      (a, b) =>
+        b.timer.lapsCompleted - a.timer.lapsCompleted ||
+        this.finishTimes.get(a.id)! + penaltyTime(a) - (this.finishTimes.get(b.id)! + penaltyTime(b)),
+    );
     const running = racers
       .filter((r) => !this.finishTimes.has(r.id) && !r.car.retired)
       .sort((a, b) => this.progress(b) - this.progress(a));
@@ -351,6 +372,7 @@ export class Session {
         position: i + 1,
         laps: r.timer.lapsCompleted,
         gap: this.gapTo(leader, r),
+        lapsDown: Math.max(0, leader.timer.lapsCompleted - r.timer.lapsCompleted - (this.progress(leader) - this.progress(r) < this.track.length ? 1 : 0)),
         status: finishTime !== undefined ? 'finished' : r.car.retired ? 'dnf' : r.pit.phase !== 'out' ? 'pit' : 'running',
         penalties: penaltyTime(r),
         bestLap: best(r),

@@ -20,6 +20,8 @@ export interface PlayerInput extends DriverInput {
   nextTyre: Compound;
   /** Pressed R this step: put the car back on track (rules depend on the session). */
   reset?: boolean;
+  /** On the grid: happy with the starting tyres, ready to go. */
+  ready?: boolean;
 }
 
 export const IDLE_INPUT: PlayerInput = {

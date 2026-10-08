@@ -77,6 +77,9 @@ export interface SessionSnap {
   quali: [string, QualiEntry][];
   /** Cars waiting after a reset, and when they go back on track. */
   recovering: [string, number][];
+  /** Grid: who is ready, and when the lights start at the latest. */
+  ready: string[];
+  gridEndsAt: number;
 }
 
 export type ClientMessage =

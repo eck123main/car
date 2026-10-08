@@ -1,5 +1,6 @@
 import { ClientDriver, GameScreen, HostDriver, PracticeDriver, type GameDriver } from './app/game';
-import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showWelcome } from './app/ui';
+import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTyrePicker, showWelcome } from './app/ui';
+import { recommendedStartTyre } from './sim/strategy';
 import { Keyboard } from './game/input';
 import { ClientGame } from './net/client';
 import { HostGame } from './net/host';
@@ -66,12 +67,42 @@ function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: 
       opts.menuNote,
     );
   };
+  let closePicker: (() => void) | null = null;
   g.onPhase = (phase) => {
+    closePicker?.();
+    closePicker = null;
     if (phase === 'finished') opts.onFinished?.();
     // A new session started (play again): take the results screen away.
     else if (phase === 'qualifying' || phase === 'grid') clearUi();
+    if (phase === 'grid') closePicker = openTyrePicker(g, driver);
+    else g.controls.ready = false;
   };
   g.start();
+}
+
+/** Starting tyre choice while the cars sit on the grid. */
+function openTyrePicker(g: GameScreen, driver: GameDriver): () => void {
+  g.controls.ready = false;
+  return showTyrePicker(
+    () => {
+      const s = driver.session();
+      const world = driver.world();
+      const wet = world?.options.wetness ?? 0;
+      const waitingFor = (world?.racers ?? []).filter((r) => !s?.ready.includes(r.id)).map((r) => r.name);
+      return {
+        selected: g.controls.nextTyre,
+        ready: s?.ready.includes(driver.meId) ?? false,
+        endsIn: (s?.gridEndsAt ?? 0) - driver.now(),
+        recommended: recommendedStartTyre(wet, s?.laps ?? 5, s?.mandatoryStop ?? false),
+        note: s?.mandatoryStop
+          ? 'Dry race: you must also use a second dry compound at your pit stop.'
+          : 'Pick the tyres you start the race on.',
+        waitingFor,
+      };
+    },
+    (c) => (g.controls.nextTyre = c),
+    () => (g.controls.ready = true),
+  );
 }
 
 // ---------- Practice

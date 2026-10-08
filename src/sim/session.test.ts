@@ -172,3 +172,30 @@ describe('Track limits in a race', () => {
     expect(penaltyTime(a)).toBe(5);
   });
 });
+
+describe('Grid and finish', () => {
+  it('waits on the grid until everyone is ready (at least 3 s)', () => {
+    const s = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test', qualifying: false }, PLAYERS);
+    const step = (readyIds: string[]) =>
+      s.step(DT, new Map(s.world.racers.map((r) => [r.id, { ...botInput(track, r, { hold: true }), ready: readyIds.includes(r.id) }] as const)));
+    for (let t = 0; t < 10; t += DT) step(['a', 'b']);
+    expect(s.phase).toBe('grid'); // c isn't ready
+    step(['c']);
+    expect(s.phase).toBe('lights');
+  });
+
+  it('lets lapped cars finish when they next cross the line', () => {
+    const { session } = run(
+      { qualifying: false, laps: 3, mandatoryStop: false },
+      { a: { grip: 26, offset: -3 }, b: { grip: 24, offset: 3 }, c: { grip: 5 } },
+      'finished',
+      900,
+      (s) => (s.world.options.collisions = false),
+    );
+    const st = session.standings();
+    const slow = st.find((x) => x.id === 'c')!;
+    expect(slow.status).toBe('finished');
+    expect(slow.lapsDown).toBeGreaterThanOrEqual(1);
+    expect(slow.position).toBe(3);
+  }, 60_000);
+});

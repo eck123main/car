@@ -96,6 +96,7 @@ export function drawTower(ctx: CanvasRenderingContext2D, session: SessionSnap, w
     else if (s.status === 'pit') right = 'PIT';
     else if (session.phase === 'qualifying') right = s.bestLap !== null ? (s.position === 1 ? formatLapTime(s.bestLap) : `+${(s.gap ?? 0).toFixed(3)}`) : '';
     else if (s.position === 1) right = s.status === 'finished' ? 'FINISHED' : 'Leader';
+    else if (s.lapsDown > 0) right = `+${s.lapsDown} lap${s.lapsDown > 1 ? 's' : ''}`;
     else if (s.gap !== null) right = `+${s.gap.toFixed(1)}`;
     if (s.penalties > 0 && session.phase !== 'qualifying') right += ` (+${s.penalties}s)`;
     ctx.textAlign = 'right';

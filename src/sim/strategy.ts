@@ -75,3 +75,13 @@ function mandatoryWindow(s: StrategyInput): [number, number] | null {
   if (earliest > latest) return [latest, latest];
   return [earliest, latest];
 }
+
+/** A sensible starting tyre for the weather and race length. */
+export function recommendedStartTyre(wetness: number, laps: number, mandatoryStop: boolean): Compound {
+  if (wetness >= 0.7) return 'wet';
+  if (wetness >= 0.35) return 'inter';
+  // With a compulsory stop, start on something quick and switch later.
+  if (mandatoryStop) return laps <= 6 ? 'soft' : 'medium';
+  // No stop needed: the fastest tyre that lasts the whole race.
+  return (DRY_COMPOUNDS.find((c) => COMPOUNDS[c].lifeLaps * USABLE_LIFE >= laps) ?? 'hard') as Compound;
+}

@@ -197,7 +197,7 @@ function resetHint(phase: string | undefined): string {
 /** Draws the race and runs the fixed-step loop for whichever driver is active. */
 export class GameScreen {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly controls: LocalControls;
+  readonly controls: LocalControls;
   private readonly camera = new Camera();
   private gfx: { track: Track; graphics: TrackGraphics; minimap: Minimap } | null = null;
   private readonly toasts: Toast[] = [];

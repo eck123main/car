@@ -1,4 +1,4 @@
-import type { Session } from '../sim/session';
+import { GRID_MAX_TIME, type Session } from '../sim/session';
 import { Tyres } from '../sim/tyres';
 import type { Racer } from '../sim/world';
 import type { CarSnap, SessionSnap, TimingSnap } from './protocol';
@@ -104,5 +104,7 @@ export function sessionSnap(session: Session): SessionSnap {
     standings: session.standings(),
     quali: [...session.quali.entries()],
     recovering: [...session.recovering.entries()],
+    ready: [...session.ready],
+    gridEndsAt: session.phase === 'grid' ? session.phaseStart + GRID_MAX_TIME : 0,
   };
 }

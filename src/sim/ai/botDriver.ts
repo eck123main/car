@@ -85,8 +85,9 @@ export class BotDriver {
       return { ...base, brake: 1, reset: world.time - this.retiredAt > 2 };
     }
     this.retiredAt = null;
+    // On the grid (cars are held still there): bots are always ready.
+    if (ctx.phase === 'grid' || ctx.phase === 'lights') return { ...base, brake: 1, ready: true };
     if (me.frozen) return { ...base, brake: 1 };
-    if (ctx.phase === 'grid' || ctx.phase === 'lights') return { ...base, brake: 1 };
     // Reacting to lights out: no pedals (holding the brake at a standstill would reverse).
     if (ctx.phase === 'race' && world.time - ctx.raceStart < this.reaction) return base;
 

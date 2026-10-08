@@ -1,5 +1,6 @@
 import type { LobbyState } from '../net/protocol';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
+import { ALL_COMPOUNDS, COMPOUNDS, type Compound } from '../sim/tyres';
 import { formatLapTime } from '../render/hud';
 import type { RaceSettings, Standing, Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
@@ -283,6 +284,7 @@ export function showResults(v: ResultsView): void {
     let time = '';
     if (s.status === 'dnf') time = 'DNF';
     else if (s.totalTime !== null && s === leader) time = formatLapTime(s.totalTime);
+    else if (s.lapsDown > 0) time = `+${s.lapsDown} lap${s.lapsDown > 1 ? 's' : ''}`;
     else if (s.totalTime !== null && leader.totalTime !== null) time = `+${(s.totalTime - leader.totalTime).toFixed(3)}`;
     else time = `${s.laps} laps`;
     const tr = el(
@@ -338,4 +340,70 @@ export function showPauseMenu(onResume: () => void, onLeave: () => void, note: s
       ),
     ),
   );
+}
+
+export interface TyrePickerState {
+  selected: Compound;
+  ready: boolean;
+  /** Seconds until the lights start at the latest. */
+  endsIn: number;
+  recommended: Compound;
+  /** Extra advice, e.g. the two-compound rule. */
+  note: string;
+  /** Names of drivers not ready yet. */
+  waitingFor: string[];
+}
+
+/**
+ * Starting tyre choice on the grid. Updates itself from `state()` until closed.
+ * Returns a function that removes it.
+ */
+export function showTyrePicker(state: () => TyrePickerState, onPick: (c: Compound) => void, onReady: () => void): () => void {
+  const cards = new Map<Compound, HTMLElement>();
+  const grid = el('div', { class: 'tyres' });
+  for (const c of ALL_COMPOUNDS) {
+    const info = COMPOUNDS[c];
+    const bars = (label: string, value: number) =>
+      el('div', { class: 'tyre-bar' }, el('span', {}, label), el('i', { style: `width:${Math.round(value * 100)}%` }));
+    const card = el(
+      'button',
+      { class: 'tyre', onclick: () => onPick(c), title: `${info.name} (key ${ALL_COMPOUNDS.indexOf(c) + 1})` },
+      el('div', { class: 'badge', style: `border-color:${info.color};color:${info.color}` }, info.letter),
+      el('b', {}, info.name),
+      bars('Dry', info.dryGrip / 1.05),
+      bars('Wet', info.wetGrip / 1.05),
+      el('div', { class: 'muted' }, `Lasts ~${Math.round(info.lifeLaps * 0.75)} laps`),
+      el('div', { class: 'rec' }, 'Recommended'),
+    );
+    cards.set(c, card);
+    grid.append(card);
+  }
+  const countdown = el('div', { class: 'muted' });
+  const note = el('div', { class: 'muted' });
+  const ready = el('button', { class: 'primary', onclick: onReady }, 'Ready (Enter)');
+  show(
+    el(
+      'div',
+      { class: 'screen overlay picker' },
+      el('div', { class: 'card wide' }, el('h1', {}, 'Choose your starting tyres'), note, grid, el('div', { class: 'buttons' }, ready, countdown)),
+    ),
+  );
+  const update = () => {
+    const s = state();
+    for (const [c, card] of cards) {
+      card.classList.toggle('selected', c === s.selected);
+      card.classList.toggle('recommended', c === s.recommended);
+    }
+    note.textContent = s.note;
+    ready.disabled = s.ready;
+    ready.textContent = s.ready ? 'Ready ✓' : 'Ready (Enter)';
+    const waiting = s.waitingFor.length ? ` · waiting for ${s.waitingFor.join(', ')}` : '';
+    countdown.textContent = `Lights in ${Math.max(0, Math.ceil(s.endsIn))} s at the latest${waiting}`;
+  };
+  update();
+  const timer = setInterval(update, 100);
+  return () => {
+    clearInterval(timer);
+    if (root.querySelector('.picker')) clearUi();
+  };
 }

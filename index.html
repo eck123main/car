@@ -42,6 +42,16 @@
       table.results th { text-align: left; font-size: 11px; color: #8a8d96; font-weight: 600; padding: 6px 6px; text-transform: uppercase; }
       table.results td { padding: 7px 6px; border-top: 1px solid #23242a; }
       table.results tr.me td { background: rgba(255,255,255,0.06); }
+      .tyres { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 14px; }
+      @media (max-width: 560px) { .tyres { grid-template-columns: repeat(2, 1fr); } }
+      button.tyre { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; text-align: center; border: 2px solid #34363d; }
+      button.tyre.selected { border-color: #ffd400; background: #2a2b22; }
+      button.tyre .badge { width: 34px; height: 34px; border-radius: 50%; border: 4px solid; display: flex; align-items: center; justify-content: center; font-weight: 700; background: #111; }
+      button.tyre .rec { visibility: hidden; font-size: 11px; color: #2ecc40; font-weight: 600; }
+      button.tyre.recommended .rec { visibility: visible; }
+      .tyre-bar { width: 100%; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #9a9da6; }
+      .tyre-bar span { width: 26px; text-align: left; }
+      .tyre-bar i { display: block; height: 6px; border-radius: 3px; background: #4dd2ff; }
       .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
       .keys b { color: #ddd; font-weight: 600; }
     </style>

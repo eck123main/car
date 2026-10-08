@@ -8,6 +8,8 @@ import { MAX_PLAYERS } from './protocol';
 import { LoopbackNetwork } from './transport';
 
 const DT = 1 / 120;
+/** Test players are always ready on the grid. */
+const READY = { ...IDLE_INPUT, ready: true };
 
 function setup(latency = 0) {
   const net = new LoopbackNetwork(latency);
@@ -76,10 +78,10 @@ describe('Online race', () => {
     for (let t = 0; t < 25; t += DT) {
       const session = host.session!;
       const waiting = session.phase === 'grid' || session.phase === 'lights';
-      host.step(DT, botInput(session.track, session.world.racer(HostGame.HOST_ID)!, { hold: waiting }));
+      host.step(DT, { ...botInput(session.track, session.world.racer(HostGame.HOST_ID)!, { hold: waiting }), ready: true });
       const me = c.me;
       const cWaiting = c.session?.phase !== 'race';
-      c.step(DT, me && c.track ? botInput(c.track, me, { hold: cWaiting, offset: 3 }) : IDLE_INPUT);
+      c.step(DT, me && c.track ? { ...botInput(c.track, me, { hold: cWaiting, offset: 3 }), ready: true } : READY);
       c.flush();
       tick();
       if (session.phase === 'race' && session.world.time - session.raceStart > 2) {
@@ -133,8 +135,8 @@ describe('Bots in an online lobby', () => {
     host.updateSettings({ trackId: 'test', qualifying: false, laps: 2 });
     host.start();
     for (let t = 0; t < 20; t += DT) {
-      host.step(DT, IDLE_INPUT);
-      c.step(DT, IDLE_INPUT);
+      host.step(DT, READY);
+      c.step(DT, READY);
       c.flush();
       tick();
     }
@@ -156,8 +158,8 @@ describe('Reset over the network', () => {
     host.updateSettings({ trackId: 'test', qualifying: false });
     host.start();
     for (let t = 0; t < 14; t += DT) {
-      host.step(DT, IDLE_INPUT);
-      c.step(DT, IDLE_INPUT);
+      host.step(DT, READY);
+      c.step(DT, READY);
       c.flush();
       tick();
     }
@@ -168,7 +170,7 @@ describe('Reset over the network', () => {
     c.flush();
     for (let t = 0; t < 5.2; t += DT) {
       tick();
-      host.step(DT, IDLE_INPUT);
+      host.step(DT, READY);
     }
     expect(racer.car.retired).toBe(false);
   });
@@ -181,8 +183,12 @@ describe('Lag', () => {
     tick();
     host.updateSettings({ trackId: 'test', qualifying: false });
     host.start();
+    // The client is ready on the grid, then goes quiet.
+    tick();
+    c.step(DT, READY);
+    c.flush();
     for (let t = 0; t < 14; t += DT) {
-      host.step(DT, IDLE_INPUT);
+      host.step(DT, READY);
       tick();
     }
     const racer = host.session!.world.racer(c.id!)!;
@@ -191,7 +197,7 @@ describe('Lag', () => {
     for (let i = 0; i < 30; i++) c.step(DT, { ...IDLE_INPUT, reset: i === 2 });
     c.flush();
     tick();
-    for (let t = 0; t < 5.5; t += DT) host.step(DT, IDLE_INPUT);
+    for (let t = 0; t < 5.5; t += DT) host.step(DT, READY);
     expect(racer.car.retired).toBe(false);
   });
 });
@@ -205,13 +211,13 @@ describe('Play again', () => {
     host.updateSettings({ trackId: 'test', qualifying: false });
     host.start();
     for (let t = 0; t < 2; t += DT) {
-      host.step(DT, IDLE_INPUT);
+      host.step(DT, READY);
       tick();
     }
     const first = host.session;
     host.start();
     for (let i = 0; i < 5; i++) {
-      host.step(DT, IDLE_INPUT);
+      host.step(DT, READY);
       tick();
     }
     expect(host.session).not.toBe(first);
