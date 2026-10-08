@@ -23,9 +23,13 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 3. **F1-style, not a full simulation.** Use real F1 ideas (grip, tyre wear, downforce,
    DRS, pit stops) but keep them readable and fun. Choose game feel over strict realism
    when the two conflict.
-4. **Short sessions.** Short qualifying, short races (a few laps), quick to jump into
+4. **Easy to pick up.** Handling leans arcade: forgiving grip, traction help, a car that
+   would rather understeer than spin. Overdriving still costs time and can end in the
+   wall, but driving normally shouldn't be a fight. Off-track surfaces are drivable,
+   just slow.
+5. **Short sessions.** Short qualifying, short races (a few laps), quick to jump into
    with friends.
-5. **Data-driven content.** Tracks (and ideally teams/cars) load from data files, so you
+6. **Data-driven content.** Tracks (and ideally teams/cars) load from data files, so you
    can add real F1 circuits without changing code.
 
 ## Race weekend flow
@@ -61,8 +65,13 @@ Top-down 2D car physics that feels like an F1 car:
 - **DRS**: in marked DRS zones, a player within ~1 second of the car ahead (at the
   detection point) can open DRS for a top-speed boost. DRS closes on braking. Disabled
   on lap 1 and in the wet (real rules).
-- **Surfaces**: track (full grip), kerbs (slightly less), grass/gravel (slow, low
-  grip), walls/barriers (collision).
+- **Surfaces**: track (full grip), kerbs (slightly less), grass/gravel/dirt (drivable
+  but slower with less grip; you can always drive back onto the track), walls/barriers
+  (collision).
+- **Track scale**: keep tracks compact. Laps should be roughly 30–60 s, so real circuits
+  are scaled down rather than built at full size.
+- **Camera**: chase mode (rotates so the car points up; default) or north-up, toggled
+  with **C**.
 - **Tyres**: compounds **Soft / Medium / Hard** (and **Intermediate / Wet** if rain is
   added). Softs are faster but wear quickly, hards are slower but last. Grip drops as
   tyres wear.
