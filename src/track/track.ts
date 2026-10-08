@@ -12,7 +12,7 @@ export const PIT_LANE_WIDTH = 8;
 /** Open gap in the pit wall at the pit entry and exit (m). */
 const PIT_OPENING = 35;
 /** The lane surface tapers into the track over this distance before the entry and after the exit (m). */
-const PIT_TAPER = 50;
+const PIT_TAPER = 30;
 
 export interface PitLane {
   /** +1 = right of the track, -1 = left. */

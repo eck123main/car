@@ -386,7 +386,7 @@ builtin.addEventListener('change', () => {
   builtin.value = '';
 });
 
-$('new').addEventListener('click', () => setDef({ name: 'New Track', width: 17, points: [] }));
+$('new').addEventListener('click', () => setDef({ name: 'New Track', width: 19, points: [] }));
 
 $('setStart').addEventListener('click', () => {
   if (selected <= 0) return say('Select a point first');
