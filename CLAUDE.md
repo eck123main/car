@@ -211,7 +211,8 @@ The timing tower is always shown (no Tab needed).
   `src/tracks/index.ts`. "Test drive" opens the game with `?track=custom`.
 - Real circuit layouts come from **bacinger/f1-circuits** (MIT) GeoJSON, scaled to about
   0.5 (0.4 made slow corners too tight to drive). Tracks: Silverstone, Bahrain (3 DRS
-  zones like the real one; pits on the right).
+  zones like the real one), Albert Park (4 DRS zones). Pits on the right at all three.
+  For DRS zones on new tracks, use the flat-out sections of the bots' speed profile.
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
   start/finish line, DRS zone markers and pit lane drawn plainly.
 
