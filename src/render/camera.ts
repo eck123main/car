@@ -22,7 +22,7 @@ export class Camera {
   follow(x: number, y: number, vx: number, vy: number, heading: number, dt: number): void {
     const speed = Math.hypot(vx, vy);
     const screenScale = window.innerHeight / 800;
-    const targetZoom = (5.5 - 2.5 * Math.min(speed / 90, 1)) * screenScale;
+    const targetZoom = (8 - 2.5 * Math.min(speed / 90, 1)) * screenScale;
     this.zoom += (targetZoom - this.zoom) * (1 - Math.exp(-dt * 1.5));
     const k = 1 - Math.exp(-dt * 4);
     this.x += (x + vx * 0.4 - this.x) * k;
