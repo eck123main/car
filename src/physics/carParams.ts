@@ -14,6 +14,8 @@ export interface CarParams {
   power: number;
   /** Caps drive force at low speed. */
   maxDriveForce: number;
+  /** How much braking/accelerating reduces cornering grip (1 = full friction circle, 0 = none). */
+  combinedGripPenalty: number;
   /** Fraction of the asphalt grip limit the brakes can use. */
   brakeGrip: number;
 
@@ -61,10 +63,11 @@ export const F1_CAR: CarParams = {
   width: 1.9,
   inertia: 1100,
 
-  mu: 1.75,
+  mu: 2.0,
 
   power: 740_000,
   maxDriveForce: 14_000,
+  combinedGripPenalty: 0.5,
   brakeGrip: 0.85,
 
   dragCoef: 0.85,

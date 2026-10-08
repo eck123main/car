@@ -127,8 +127,10 @@ export class Car {
     fx = clampAbs(fx, grip * 0.98);
 
     // --- Lateral: tyres cancel sideways sliding, up to what's left of the grip.
-    // Braking or accelerating hard leaves less grip for cornering.
-    const lateralGrip = Math.sqrt(Math.max(0, grip * grip - fx * fx));
+    // Braking or accelerating hard leaves less grip for cornering, but only partly, so
+    // braking into a corner while steering (natural on a keyboard) still turns the car.
+    const longUse = fx / grip;
+    const lateralGrip = grip * Math.sqrt(Math.max(0, 1 - p.combinedGripPenalty * longUse * longUse));
     const fy = clampAbs((-m * vy) / dt, lateralGrip);
 
     // --- Rotation: steering asks for a turn rate, capped by the tightest turn
