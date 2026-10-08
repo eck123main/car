@@ -13,6 +13,13 @@ export interface HostTransport {
   close(): void;
 }
 
+/** A host nobody can join: for racing bots on your own, without going online. */
+export class OfflineTransport implements HostTransport {
+  readonly code = '';
+  onConnection(): void {}
+  close(): void {}
+}
+
 /**
  * In-memory network for tests: delivers messages after `latency` seconds of simulated
  * time when `advance` is called. Messages are JSON round-tripped like a real network.

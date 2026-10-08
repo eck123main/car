@@ -1,4 +1,5 @@
 import type { TimerState } from '../game/lapTimer';
+import type { Difficulty } from '../sim/ai/botDriver';
 import type { PitPhase } from '../sim/pit';
 import type { PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
 import type { Compound } from '../sim/tyres';
@@ -11,6 +12,8 @@ export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
   host: boolean;
+  /** Set for computer drivers. */
+  bot?: Difficulty;
 }
 
 export interface LobbyState {

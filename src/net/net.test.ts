@@ -108,3 +108,42 @@ describe('Online race', () => {
     expect(host.session!.world.racer(c.id!)!.car.retired).toBe(true);
   });
 });
+
+describe('Bots in an online lobby', () => {
+  it('shows bots to everyone, counts them towards the limit, and races them on the host', () => {
+    const { host, join, tick } = setup();
+    const c = join('Alice');
+    tick();
+    expect(host.addBot('hard')).toBe(true);
+    expect(host.addBot('easy')).toBe(true);
+    tick();
+    const bots = c.lobby!.players.filter((p) => p.bot);
+    expect(bots.map((b) => b.bot)).toEqual(['hard', 'easy']);
+    expect(new Set(c.lobby!.players.map((p) => p.color)).size).toBe(4);
+    // Fill up: host + Alice + bots = 10.
+    for (let i = 0; i < 6; i++) expect(host.addBot('medium')).toBe(true);
+    expect(host.addBot('medium')).toBe(false);
+    const late = join('Late');
+    tick();
+    tick();
+    expect(late.status).toBe('rejected');
+    host.removeBot(bots[0].id);
+    expect(host.lobby.players).toHaveLength(9);
+
+    host.updateSettings({ trackId: 'test', qualifying: false, laps: 2 });
+    host.start();
+    for (let t = 0; t < 20; t += DT) {
+      host.step(DT, IDLE_INPUT);
+      c.step(DT, IDLE_INPUT);
+      c.flush();
+      tick();
+    }
+    const session = host.session!;
+    expect(session.phase).toBe('race');
+    const botRacers = session.world.racers.filter((r) => r.id.startsWith('bot'));
+    expect(botRacers).toHaveLength(7);
+    // The bots are off the line and racing; the client sees them move.
+    for (const r of botRacers) expect(session.progress(r)).toBeGreaterThan(50);
+    expect(c.pose(botRacers[0].id, DT)).not.toBeNull();
+  });
+});

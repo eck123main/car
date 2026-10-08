@@ -1,3 +1,4 @@
+import { BotDriver, type Difficulty } from '../sim/ai/botDriver';
 import { DEFAULT_SETTINGS, Session, type RaceSettings, type SessionEvent } from '../sim/session';
 import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { Track } from '../track/track';
@@ -10,6 +11,12 @@ import type { Connection, HostTransport } from './transport';
 export const CAR_COLORS = [
   '#e10600', '#1e5bff', '#ff8700', '#00d2be', '#f596c8',
   '#52e252', '#ffd400', '#b06cff', '#e8e8e8', '#8b5a2b',
+];
+
+/** Names for computer drivers (made up, not real drivers). */
+const BOT_NAMES = [
+  'Max Throttle', 'Lewis Late-Brake', 'Kimi Kerb', 'Fernando Flatout', 'Sebastian Slipstream',
+  'Lando Apex', 'Charles Chicane', 'Oscar Overtake', 'George Gravel', 'Nico Notch',
 ];
 
 /** Physics steps between snapshots (20 Hz) and between timing/standings updates (4 Hz). */
@@ -37,6 +44,9 @@ export class HostGame {
   track: Track | null = null;
   private readonly hostPlayer: LobbyPlayer;
   private readonly remotes = new Map<string, Remote>();
+  /** Computer drivers in the lobby, and their brains once a race starts. */
+  private readonly bots = new Map<string, { player: LobbyPlayer; driver: BotDriver | null }>();
+  private nextBot = 1;
   private nextId = 1;
   private steps = 0;
   private localEvents: SessionEvent[] = [];
@@ -53,11 +63,33 @@ export class HostGame {
   }
 
   get lobby(): LobbyState {
-    return { players: [this.hostPlayer, ...[...this.remotes.values()].map((r) => r.player)], settings: this.settings };
+    return {
+      players: [this.hostPlayer, ...[...this.remotes.values()].map((r) => r.player), ...[...this.bots.values()].map((b) => b.player)],
+      settings: this.settings,
+    };
   }
 
   updateSettings(changes: Partial<RaceSettings>): void {
     this.settings = { ...this.settings, ...changes };
+    this.lobbyChanged();
+  }
+
+  /** Add a computer driver to the lobby. Returns false if the lobby is full. */
+  addBot(difficulty: Difficulty): boolean {
+    const players = this.lobby.players;
+    if (players.length >= MAX_PLAYERS || this.session) return false;
+    const id = `bot${this.nextBot++}`;
+    const used = new Set(players.map((p) => p.color));
+    const color = CAR_COLORS.find((c) => !used.has(c)) ?? CAR_COLORS[0];
+    const names = new Set(players.map((p) => p.name));
+    const name = BOT_NAMES.find((n) => !names.has(n)) ?? `Bot ${this.nextBot - 1}`;
+    this.bots.set(id, { player: { id, name, color, host: false, bot: difficulty }, driver: null });
+    this.lobbyChanged();
+    return true;
+  }
+
+  removeBot(id: string): void {
+    if (this.session || !this.bots.delete(id)) return;
     this.lobbyChanged();
   }
 
@@ -67,6 +99,7 @@ export class HostGame {
     this.track = new Track(def);
     const players = this.lobby.players.map(({ id, name, color }) => ({ id, name, color }));
     this.session = new Session(this.track, this.settings, players);
+    for (const b of this.bots.values()) b.driver = new BotDriver(this.track, b.player.id, b.player.bot!);
     this.steps = 0;
     for (const r of this.remotes.values()) {
       r.queue = [];
@@ -96,6 +129,13 @@ export class HostGame {
       }
       inputs.set(id, r.last);
     }
+    const ctx = {
+      phase: session.phase,
+      raceStart: session.raceStart,
+      laps: session.settings.laps,
+      mandatoryStop: session.settings.mandatoryStop && session.settings.weather === 'dry',
+    };
+    for (const [id, b] of this.bots) if (b.driver) inputs.set(id, b.driver.drive(session.world, ctx, dt));
     const events = session.step(dt, inputs);
     this.steps++;
     if (events.length) {
@@ -132,7 +172,7 @@ export class HostGame {
             ? 'Different game version: refresh the page'
             : this.session
               ? 'A race is already running'
-              : this.remotes.size + 1 >= MAX_PLAYERS
+              : this.lobby.players.length >= MAX_PLAYERS
                 ? 'The lobby is full'
                 : null;
         if (reason) {

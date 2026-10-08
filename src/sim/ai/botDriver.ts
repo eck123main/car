@@ -246,16 +246,21 @@ export class BotDriver {
         const passLeft = q.d - PASS_OFFSET;
         const canRight = passRight <= half;
         const canLeft = passLeft >= -half;
-        if (!startCaution && closing > 0.5 && gap < 35 && (canLeft || canRight)) {
+        // At the start only go round cars that have stalled.
+        const mayPass = !startCaution || other.car.speed < 2;
+        if (mayPass && closing > 0.5 && gap < 35 && (canLeft || canRight)) {
           // Pass on the side closer to where we already are.
           lateral = canRight && (!canLeft || Math.abs(passRight - d) <= Math.abs(passLeft - d)) ? passRight : passLeft;
         }
       }
       // Until we're actually beside them, don't run into the back of them.
       if (Math.abs(side) < SAFE_LATERAL) {
-        const safeGap = CAR_LENGTH + 3 + speed * 0.22 + Math.max(0, closing) * 1.1 + (startCaution ? 6 : 0);
+        const safeGap = CAR_LENGTH + 3 + speed * 0.22 + Math.max(0, closing) * 1.1 + (startCaution && other.car.speed >= 2 ? 6 : 0);
         const braking = other.car.brake > 0.3 ? 4 : 0;
-        speedCap = Math.min(speedCap, other.car.speed - braking + (gap - safeGap) * 0.4);
+        let cap = other.car.speed - braking + (gap - safeGap) * 0.4;
+        // Going round a stopped or very slow car: keep creeping forward, or we can never steer past.
+        if (lateral !== wanted && gap > CAR_LENGTH + 1.5 && other.car.speed < 5) cap = Math.max(cap, 4);
+        speedCap = Math.min(speedCap, cap);
       }
     }
     if (minLateral > maxLateral) lateral = d; // squeezed: hold our position
