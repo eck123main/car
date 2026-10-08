@@ -14,6 +14,7 @@ const canvas = $<HTMLCanvasElement>('canvas');
 const ctx = canvas.getContext('2d')!;
 const nameInput = $<HTMLInputElement>('name');
 const widthInput = $<HTMLInputElement>('width');
+const pitSide = $<HTMLSelectElement>('pitSide');
 const info = $<HTMLDivElement>('info');
 const msg = $<HTMLDivElement>('msg');
 
@@ -54,6 +55,7 @@ function undo(): void {
 function changed(): void {
   nameInput.value = def.name;
   widthInput.value = String(def.width);
+  pitSide.value = def.pit?.side ?? '';
   previewStale = true;
   try {
     localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(def));
@@ -72,7 +74,8 @@ function rebuildPreview(): void {
   try {
     const track = new Track(def);
     preview = { track, gfx: new TrackGraphics(track) };
-    info.innerHTML = `${def.points.length} points<br>Lap length: ${(track.length / 1000).toFixed(2)} km`;
+    const pit = track.pit ? `Pit lane: ${track.pit.side > 0 ? 'right' : 'left'}` : 'No room for a pit lane on the start straight';
+    info.innerHTML = `${def.points.length} points<br>Lap length: ${(track.length / 1000).toFixed(2)} km<br>${pit}`;
   } catch {
     info.textContent = `${def.points.length} points (shape can't be built yet)`;
   }
@@ -364,6 +367,14 @@ widthInput.addEventListener('change', () => {
   if (!(w >= 6 && w <= 30)) return say('Width must be between 6 and 30 m');
   snapshot();
   def.width = w;
+  changed();
+});
+
+// The pit lane goes along the start/finish straight; pick the side the real circuit uses.
+pitSide.addEventListener('change', () => {
+  snapshot();
+  if (pitSide.value === 'left' || pitSide.value === 'right') def.pit = { side: pitSide.value };
+  else delete def.pit;
   changed();
 });
 
