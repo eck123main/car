@@ -39,6 +39,16 @@ export class Car {
   retired = false;
   lastImpact = 0;
 
+  // Set by the race world each step (tyres, weather, DRS, slipstream, ERS, pit limiter).
+  /** Grip multiplier from tyres and weather. */
+  gripFactor = 1;
+  /** Aero drag multiplier (DRS, slipstream). */
+  dragFactor = 1;
+  /** Extra engine power (W), e.g. ERS deployment. */
+  extraPower = 0;
+  /** Pit limiter speed (m/s), or null when off. */
+  speedLimit: number | null = null;
+
   /** For the HUD. */
   latG = 0;
   longG = 0;
@@ -109,7 +119,7 @@ export class Car {
     const surfR = world.surfaceAt(this.x - c * p.cgToRear, this.y - s * p.cgToRear);
     this.surfaceFront = surfF.type;
     this.surfaceRear = surfR.type;
-    const gripMul = 1 - 0.25 * this.damage;
+    const gripMul = (1 - 0.25 * this.damage) * this.gripFactor;
     const grip = p.mu * gripMul * (surfF.grip * loadF + surfR.grip * loadR);
 
     // --- Longitudinal: engine, brakes, reverse. Limited by grip (no wheelspin or lockups).
@@ -118,9 +128,12 @@ export class Car {
     if (reversing) {
       if (vx > -p.maxReverseSpeed) fx -= p.reverseForce;
     } else {
-      const power = p.power * (1 - 0.2 * this.damage);
+      const power = p.power * (1 - 0.2 * this.damage) + this.extraPower;
       const rearGrip = p.mu * gripMul * surfR.grip * loadR;
-      fx += Math.min(rearGrip, this.throttle * Math.min(p.maxDriveForce, power / Math.max(vx, 1)));
+      const limited = this.speedLimit !== null && vx > this.speedLimit - 0.3;
+      if (!limited) fx += Math.min(rearGrip, this.throttle * Math.min(p.maxDriveForce, power / Math.max(vx, 1)));
+      // The limiter also gently brakes a car that enters the pit lane too fast.
+      if (this.speedLimit !== null && vx > this.speedLimit + 1) fx -= m * 4;
       const brakeForce = this.brake * p.brakeGrip * p.mu * gripMul * (loadF + loadR);
       fx -= Math.sign(vx) * Math.min(brakeForce, (m * Math.abs(vx)) / dt);
     }
@@ -145,7 +158,7 @@ export class Car {
     let fxTotal = fx;
     let fyTotal = fy;
     if (speed > 1e-3) {
-      const drag = p.dragCoef * (1 + 0.3 * this.damage) * v2;
+      const drag = p.dragCoef * this.dragFactor * (1 + 0.3 * this.damage) * v2;
       const surfaceDrag = surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed;
       const rolling = p.rollingResistance * m * G + (m * surfaceDrag) / 2;
       const resist = Math.min(drag + rolling, (m * speed) / dt);

@@ -1,16 +1,15 @@
-import { Keyboard } from './game/input';
-import { LapTimer, type TimingEvent } from './game/lapTimer';
-import { Car } from './physics/car';
-import { F1_CAR } from './physics/carParams';
+import { Keyboard, LocalControls } from './game/input';
 import { Camera } from './render/camera';
 import { drawCar } from './render/drawCar';
-import { drawHud, drawTiming, drawToasts, formatLapTime, Minimap, type Toast } from './render/hud';
+import { drawHud, drawRacerStatus, drawTiming, drawToasts, formatLapTime, Minimap, type Toast } from './render/hud';
 import { TrackGraphics } from './render/trackGraphics';
+import { RaceWorld, type PlayerInput, type WorldEvent } from './sim/world';
 import { Track } from './track/track';
 import { DEFAULT_TRACK, loadCustomTrack, TRACKS } from './tracks';
 
 /** Fixed physics step. Rendering interpolates between steps. */
 const DT = 1 / 120;
+const ME = 'me';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -21,13 +20,12 @@ const trackDef = (trackId === 'custom' ? loadCustomTrack() : TRACKS[trackId]) ??
 const track = new Track(trackDef);
 const trackGfx = new TrackGraphics(track);
 const minimap = new Minimap(track);
-const car = new Car(F1_CAR, '#e10600');
+const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
+const me = world.addRacer(ME, 'You', '#e10600', 'medium');
 const keyboard = new Keyboard(window);
+const controls = new LocalControls(keyboard);
 const camera = new Camera();
-const timer = new LapTimer(track);
 const toasts: Toast[] = [];
-/** Simulation clock (s): advances only in fixed physics steps. */
-let simTime = 0;
 
 let dpr = 1;
 function resize(): void {
@@ -43,12 +41,12 @@ resize();
 function resetCar(atStart: boolean): void {
   const ss = track.samples;
   let i = ss.length - 10;
-  if (!atStart) i = track.query(car.x, car.y)?.index ?? i;
+  if (!atStart) i = track.query(me.car.x, me.car.y)?.index ?? i;
   const s = ss[i];
-  car.place(s.x, s.y, Math.atan2(s.ty, s.tx));
-  car.repair();
+  me.car.place(s.x, s.y, Math.atan2(s.ty, s.tx));
+  me.car.repair();
   camera.snap(s.x, s.y);
-  timer.abortLap();
+  me.timer.abortLap();
 }
 resetCar(true);
 
@@ -61,11 +59,9 @@ function frame(now: number): void {
   acc += elapsed;
 
   if (keyboard.wasPressed('KeyR')) resetCar(false);
-  const input = keyboard.driverInput();
+  const inputs = new Map<string, PlayerInput>([[ME, controls.read()]]);
   while (acc >= DT) {
-    car.step(input, DT, track);
-    simTime += DT;
-    for (const e of timer.update(simTime, DT, car)) showEvent(e);
+    for (const e of world.step(DT, inputs)) showEvent(e);
     acc -= DT;
   }
 
@@ -73,8 +69,9 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-function showEvent(e: TimingEvent): void {
-  const until = simTime + 3;
+function showEvent(e: WorldEvent): void {
+  if (e.racerId !== ME) return;
+  const until = world.time + 3;
   if (e.kind === 'lap') {
     const text = `${e.personalBest ? 'PERSONAL BEST  ' : ''}${formatLapTime(e.lap.time)}${e.lap.valid ? '' : '  (deleted)'}`;
     toasts.push({ text, color: e.personalBest ? '#b84dff' : e.lap.valid ? '#ffffff' : '#888', until });
@@ -86,9 +83,9 @@ function showEvent(e: TimingEvent): void {
 }
 
 function render(alpha: number, dt: number): void {
+  const car = me.car;
   const x = car.prevX + (car.x - car.prevX) * alpha;
   const y = car.prevY + (car.y - car.prevY) * alpha;
-  const heading = car.prevHeading + (car.heading - car.prevHeading) * alpha;
   camera.follow(x, y, car.vx, car.vy, dt);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -97,15 +94,22 @@ function render(alpha: number, dt: number): void {
 
   camera.apply(ctx, canvas.width, canvas.height, dpr);
   trackGfx.draw(ctx, camera.bounds(canvas.width, canvas.height, dpr));
-  drawCar(ctx, car.params, x, y, heading, car.steer * car.params.wheelAngleVisual, car.color);
+  for (const r of world.racers) {
+    const c = r.car;
+    const rx = c.prevX + (c.x - c.prevX) * alpha;
+    const ry = c.prevY + (c.y - c.prevY) * alpha;
+    const heading = c.prevHeading + (c.heading - c.prevHeading) * alpha;
+    drawCar(ctx, c.params, rx, ry, heading, c.steer * c.params.wheelAngleVisual, r.color);
+  }
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
-  minimap.draw(ctx, w, [car]);
+  minimap.draw(ctx, w, world.racers.map((r) => r.car));
   drawHud(ctx, car, track.name, w, h);
-  drawTiming(ctx, timer, simTime);
-  drawToasts(ctx, toasts, simTime, w);
+  drawRacerStatus(ctx, me, w, h);
+  drawTiming(ctx, me.timer, world.time);
+  drawToasts(ctx, toasts, world.time, w);
 }
 
 requestAnimationFrame(frame);

@@ -18,7 +18,17 @@ export function parseTrackDef(data: unknown): TrackDef {
   }
   if (points.length < 4) throw new Error('Track needs at least 4 points');
   if (points.length > 2000) throw new Error('Track has too many points (max 2000)');
-  return { name, width, points };
+  const def: TrackDef = { name, width, points };
+  if (Array.isArray(d.drsZones)) {
+    def.drsZones = [];
+    for (const z of d.drsZones as Record<string, unknown>[]) {
+      const { detect, start, end } = z ?? {};
+      if (typeof detect === 'number' && typeof start === 'number' && typeof end === 'number') {
+        def.drsZones.push({ detect, start, end });
+      }
+    }
+  }
+  return def;
 }
 
 export function trackToJson(def: TrackDef): string {
@@ -26,7 +36,8 @@ export function trackToJson(def: TrackDef): string {
   for (let i = 0; i < def.points.length; i += 6) {
     rows.push('    ' + def.points.slice(i, i + 6).map(([x, y]) => `[${round1(x)}, ${round1(y)}]`).join(', '));
   }
-  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]\n}\n`;
+  const drs = def.drsZones ? `,\n  "drsZones": ${JSON.stringify(def.drsZones)}` : '';
+  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}\n}\n`;
 }
 
 /**

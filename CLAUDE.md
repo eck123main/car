@@ -74,9 +74,10 @@ Top-down 2D car physics that feels like an F1 car:
   are scaled down rather than built at full size.
 - **Camera**: fixed north-up, following the car and zooming out a little with speed.
   It must **never rotate** with the car (tried it: disorienting, can cause motion sickness).
-- **Tyres**: compounds **Soft / Medium / Hard** (and **Intermediate / Wet** if rain is
-  added). Softs are faster but wear quickly, hards are slower but last. Grip drops as
-  tyres wear.
+- **Tyres**: **Soft / Medium / Hard / Intermediate / Wet** (`src/sim/tyres.ts`). Life in
+  laps (S 4, M 7, H 11, I 8, W 10, scaled to track length). Grip drops slowly with wear,
+  then sharply past 75% (the cliff). Rain tyres wear double on a dry track.
+- **Brake boards** (100 / 50 m) are drawn before slow corners that follow a fast stretch.
 - **[OPEN]** Fuel load / car getting lighter over the race? (Probably skip at first.)
 - **ERS boost** button with a battery meter (see Controls).
 
@@ -102,7 +103,8 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 ## Rules to enforce
 
 - Start lights and jump-start detection.
-- **Track limits** (F1 rule): off track = all four wheels beyond the white lines. Each
+- **Track limits**: off track = all four wheels beyond the track edge. Kerbs count as
+  track (friendlier than the strict F1 white-line rule, which flagged nearly every corner). Each
   excursion is a warning and deletes the current lap time (done). In races, repeated
   warnings will turn into a time penalty (later). Grass/gravel also slow the car hard, so
   cutting never pays.
@@ -175,7 +177,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
   points, set the start point/direction, export JSON into `src/tracks/` and register it in
   `src/tracks/index.ts`. "Test drive" opens the game with `?track=custom`.
 - Real circuit layouts come from **bacinger/f1-circuits** (MIT) GeoJSON, scaled to about
-  0.4 so laps stay short. Silverstone is the first one.
+  0.5 (0.4 made slow corners too tight to drive). Silverstone is the first one.
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
   start/finish line, DRS zone markers and pit lane drawn plainly.
 

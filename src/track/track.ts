@@ -1,4 +1,4 @@
-import { SURFACES, type Surface, type SurfaceType, type TrackDef } from './types';
+import { SURFACES, type DrsZone, type Surface, type SurfaceType, type TrackDef } from './types';
 
 /** Width of the kerb band just outside the track edge (m). */
 export const KERB_WIDTH = 1.2;
@@ -52,6 +52,7 @@ export class Track {
   readonly name: string;
   readonly samples: TrackSample[];
   readonly length: number;
+  readonly drsZones: DrsZone[];
   private readonly grid = new Map<number, number[]>();
 
   constructor(def: TrackDef) {
@@ -61,6 +62,17 @@ export class Track {
     this.samples = buildSamples(pts, def.width / 2);
     this.buildGrid();
     this.fixWallOwnership();
+    this.drsZones = def.drsZones ?? findDrsZones(this.samples, this.length);
+  }
+
+  /** Forward distance along the lap from a to b (0..length). */
+  forwardDistance(a: number, b: number): number {
+    return (((b - a) % this.length) + this.length) % this.length;
+  }
+
+  /** Whether lap distance s lies in [from, to), allowing for the start-line wrap. */
+  inRange(s: number, from: number, to: number): boolean {
+    return this.forwardDistance(from, s) < this.forwardDistance(from, to);
   }
 
   /**
@@ -167,6 +179,32 @@ export class Track {
       }
     }
   }
+}
+
+/** DRS zones on the two longest straights: open just after the straight starts, close before braking. */
+function findDrsZones(samples: TrackSample[], length: number): DrsZone[] {
+  const n = samples.length;
+  const straight = samples.map((s) => Math.abs(s.curvature) < 1 / 500);
+  const first = straight.indexOf(false);
+  if (first < 0) return [];
+  const runs: { start: number; len: number }[] = [];
+  let runStart = -1;
+  for (let k = 1; k <= n; k++) {
+    const i = (first + k) % n;
+    if (straight[i] && runStart < 0) runStart = i;
+    if (!straight[i] && runStart >= 0) {
+      runs.push({ start: runStart, len: (((i - runStart) % n) + n) % n });
+      runStart = -1;
+    }
+  }
+  const wrap = (v: number) => ((v % length) + length) % length;
+  return runs
+    .map((r) => ({ start: samples[r.start].s, len: r.len * SAMPLE_SPACING }))
+    .filter((r) => r.len >= 200)
+    .sort((a, b) => b.len - a.len)
+    .slice(0, 2)
+    .map((r) => ({ detect: wrap(r.start - 80), start: wrap(r.start + 20), end: wrap(r.start + r.len - 40) }))
+    .sort((a, b) => a.start - b.start);
 }
 
 function cellKey(cx: number, cy: number): number {

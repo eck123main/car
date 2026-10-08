@@ -1,6 +1,8 @@
 import type { Car } from '../physics/car';
 import type { Track } from '../track/track';
 import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
+import { COMPOUNDS } from '../sim/tyres';
+import type { Racer } from '../sim/world';
 
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
@@ -54,7 +56,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: stri
   ctx.textAlign = 'left';
   ctx.font = '13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillText(`${trackName}    WASD / Arrows: drive    R: reset to track`, 20, 28);
+  ctx.fillText(`${trackName}    WASD/Arrows drive · Space DRS · Shift ERS · P pit limiter · 1-5 next tyres · R reset`, 20, 28);
 }
 
 /** Small track map in the top-right corner. */
@@ -217,6 +219,69 @@ export function drawToasts(ctx: CanvasRenderingContext2D, toasts: Toast[], now: 
     ctx.fillStyle = t.color;
     ctx.fillText(t.text, width / 2, y);
     y += 42;
+  }
+  ctx.textAlign = 'left';
+}
+
+/** Tyres, ERS, DRS, limiter and slipstream for the local car, bottom left. */
+export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width: number, height: number): void {
+  const x = 260;
+  const y = height - 150;
+  const w = 210;
+  panel(ctx, x, y, w, 130);
+
+  // Tyre compound badge + wear.
+  const c = COMPOUNDS[r.tyres.compound];
+  ctx.beginPath();
+  ctx.arc(x + 30, y + 32, 16, 0, Math.PI * 2);
+  ctx.fillStyle = '#111';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = c.color;
+  ctx.stroke();
+  ctx.fillStyle = c.color;
+  ctx.font = 'bold 16px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(c.letter, x + 30, y + 38);
+  ctx.textAlign = 'left';
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.fillStyle = '#ddd';
+  ctx.fillText(c.name, x + 56, y + 28);
+  const wear = r.tyres.wear;
+  ctx.fillStyle = wear > 0.75 ? '#ff4136' : wear > 0.5 ? '#ffb347' : '#aaa';
+  ctx.fillText(`${Math.round(wear * 100)}% worn`, x + 56, y + 45);
+  if (r.input.nextTyre !== r.tyres.compound) {
+    const next = COMPOUNDS[r.input.nextTyre];
+    ctx.fillStyle = next.color;
+    ctx.textAlign = 'right';
+    ctx.fillText(`Next: ${next.letter}`, x + w - 14, y + 28);
+    ctx.textAlign = 'left';
+  }
+
+  bar(ctx, x + 14, y + 64, w - 28, 10, r.ers, r.ersActive ? '#4dd2ff' : '#1f7fbf', 'ERS');
+
+  // DRS light: grey = no, outlined = allowed in this/next zone, filled = open.
+  const bx = x + 14;
+  const by = y + 88;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = r.drsEligible || r.drsOpen ? '#2ecc40' : '#555';
+  ctx.fillStyle = r.drsOpen ? '#2ecc40' : 'transparent';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, 52, 26, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 'bold 14px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = r.drsOpen ? '#06210a' : r.drsEligible ? '#2ecc40' : '#666';
+  ctx.fillText('DRS', bx + 26, by + 18);
+
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  if (r.input.limiter) {
+    ctx.fillStyle = '#ffd400';
+    ctx.fillText('PIT LIMITER', bx + 105, by + 17);
+  } else if (r.slipstream > 0.2) {
+    ctx.fillStyle = '#9fd8ff';
+    ctx.fillText('TOW', bx + 90, by + 17);
   }
   ctx.textAlign = 'left';
 }
