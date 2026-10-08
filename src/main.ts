@@ -39,7 +39,7 @@ function resetCar(atStart: boolean): void {
   const s = ss[i];
   car.place(s.x, s.y, Math.atan2(s.ty, s.tx));
   car.repair();
-  camera.snap(s.x, s.y);
+  camera.snap(s.x, s.y, Math.atan2(s.ty, s.tx));
 }
 resetCar(true);
 
@@ -52,6 +52,7 @@ function frame(now: number): void {
   acc += elapsed;
 
   if (keyboard.wasPressed('KeyR')) resetCar(false);
+  if (keyboard.wasPressed('KeyC')) camera.mode = camera.mode === 'chase' ? 'north' : 'chase';
   const input = keyboard.driverInput();
   while (acc >= DT) {
     car.step(input, DT, track);
@@ -66,7 +67,7 @@ function render(alpha: number, dt: number): void {
   const x = car.prevX + (car.x - car.prevX) * alpha;
   const y = car.prevY + (car.y - car.prevY) * alpha;
   const heading = car.prevHeading + (car.heading - car.prevHeading) * alpha;
-  camera.follow(x, y, car.vx, car.vy, dt);
+  camera.follow(x, y, car.vx, car.vy, heading, dt);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = TrackGraphics.backgroundColor;
