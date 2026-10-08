@@ -149,7 +149,8 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 ## Pit stops
 
 - The pit lane runs alongside the **start/finish straight** (and gentle bends either side),
-  like real circuits. Track files can set the real side:   (Silverstone: right). Without it, the side with more room is used.
+  like real circuits. Track files can set the real side: `"pit": {"side": "right"}`
+  (Silverstone: right). Without it, the side with more room is used.
 - A pit wall separates the lane from the track, with openings at the entry and exit.
 - **Entering**: drive into the lane through the entry opening. Over 80 km/h (+5 km/h
   tolerance) at entry = **+5 s penalty**. From then on the car **drives itself** to the
@@ -158,7 +159,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
   5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted.
 - **Leaving**: the driver drives off; the pit limiter (80 km/h) stays forced on until the
   car is past the lane.
-- Logic: ; lane geometry:  in .
+- Logic: `src/sim/pit.ts`; lane geometry: `buildPitLane` in `src/track/track.ts`.
 
 ## Weather (later)
 
