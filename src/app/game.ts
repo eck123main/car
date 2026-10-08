@@ -31,8 +31,8 @@ export interface GameDriver {
   endFrame(): void;
   pose(r: Racer, alpha: number, dt: number): Pose;
   takeEvents(): SessionEvent[];
-  /** Practice only: R puts the car back on track. */
-  reset?(): void;
+  /** Hint for the crashed-out overlay: what R does here. */
+  readonly resetHint: string;
 }
 
 function lerpPose(r: Racer, alpha: number): Pose {
@@ -47,6 +47,7 @@ function lerpPose(r: Racer, alpha: number): Pose {
 /** Free practice on one machine, no network. */
 export class PracticeDriver implements GameDriver {
   readonly meId = 'me';
+  readonly resetHint = 'Press R to reset';
   private readonly w: RaceWorld;
   private events: SessionEvent[] = [];
 
@@ -73,6 +74,7 @@ export class PracticeDriver implements GameDriver {
     return me.timer.delta(this.w.time);
   }
   step(dt: number, input: PlayerInput) {
+    if (input.reset) this.reset();
     this.events.push(...this.w.step(dt, new Map([[this.meId, input]])));
   }
   endFrame() {}
@@ -101,6 +103,9 @@ export class PracticeDriver implements GameDriver {
 /** The lobby owner: runs the real race. */
 export class HostDriver implements GameDriver {
   readonly meId = HostGame.HOST_ID;
+  get resetHint() {
+    return resetHint(this.session()?.phase);
+  }
   constructor(private readonly host: HostGame) {}
   world() {
     return this.host.session?.world ?? null;
@@ -133,6 +138,9 @@ export class ClientDriver implements GameDriver {
   get meId() {
     return this.client.id ?? '';
   }
+  get resetHint() {
+    return resetHint(this.client.session?.phase);
+  }
   world() {
     return this.client.world;
   }
@@ -157,6 +165,12 @@ export class ClientDriver implements GameDriver {
   takeEvents() {
     return this.client.takeEvents();
   }
+}
+
+function resetHint(phase: string | undefined): string {
+  if (phase === 'race') return 'Press R to get back on track (+10 s penalty)';
+  if (phase === 'qualifying') return 'Press R to return to the pit exit (your timed lap is lost)';
+  return 'Wait for the next session';
 }
 
 /** Draws the race and runs the fixed-step loop for whichever driver is active. */
@@ -234,11 +248,12 @@ export class GameScreen {
     this.acc += elapsed;
 
     if (this.keyboard.wasPressed('Escape')) this.onMenu();
-    if (this.keyboard.wasPressed('KeyR')) this.driver.reset?.();
-    const input = this.controls.read();
-    const idle = { ...input, throttle: 0, brake: 0, steer: 0, drs: false, ers: false };
+    let input = this.controls.read();
+    const idle = { ...input, throttle: 0, brake: 0, steer: 0, drs: false, ers: false, reset: false };
     while (this.acc >= DT) {
       this.driver.step(DT, this.paused ? idle : input);
+      // A key press is one event: only the first step of this frame sees it.
+      input = { ...input, reset: false };
       this.acc -= DT;
     }
     this.driver.endFrame();
@@ -308,7 +323,7 @@ export class GameScreen {
         return { x: p.x, y: p.y, color: r.color };
       }),
     );
-    drawHud(ctx, me.car, world.track.name, w, h);
+    drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint);
     drawDamage(ctx, me.car, w);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);

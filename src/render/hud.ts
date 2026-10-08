@@ -8,7 +8,7 @@ import type { Racer } from '../sim/world';
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
 /** Draws in CSS pixels; expects ctx already scaled by devicePixelRatio. */
-export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: string, width: number, height: number): void {
+export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: string, width: number, height: number, resetHint: string): void {
   const kmh = car.speed * 3.6;
   const gear = car.forwardSpeed < -0.5 ? 'R' : String(gearFor(kmh));
 
@@ -48,10 +48,10 @@ export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: stri
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ff4136';
     ctx.font = 'bold 48px system-ui, sans-serif';
-    ctx.fillText('DNF — CRASHED', width / 2, height / 2 + 4);
+    ctx.fillText('CRASHED OUT', width / 2, height / 2 + 4);
     ctx.fillStyle = '#ddd';
     ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText('Press R to reset', width / 2, height / 2 + 38);
+    ctx.fillText(resetHint, width / 2, height / 2 + 38);
   }
 
   ctx.textAlign = 'left';

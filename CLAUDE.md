@@ -96,7 +96,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
-| Reset to track | **R** | Practice only |
+| Reset to track | **R** | Practice: free. Race: +10 s. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 
 The timing tower is always shown (no Tab needed).
@@ -159,8 +159,10 @@ The timing tower is always shown (no Tab needed).
 - Below the crash threshold, a damaged car **always stays drivable enough to reach the
   pits**. Normal damage has a cap and never stops the car. Repairs happen at a pit stop
   (and add time to the stop).
-- **Big crashes retire the car**: hitting a wall (or another car) clearly, above a
-  set impact speed, means **DNF / out of the race**.
+- **Big crashes wreck the car** (above a set impact speed). Then **R** (for every player,
+  online too): in a race, back on track where you are, repaired, **+10 s**; in qualifying,
+  back to the pit exit (a timed lap in progress is lost). 3 s cooldown. Bots reset
+  themselves 2 s after wrecking. Leaving the race counts as DNF.
 
 ## Pit stops
 

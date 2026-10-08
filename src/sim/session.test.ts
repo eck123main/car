@@ -3,7 +3,7 @@ import { Track } from '../track/track';
 import { TRACKS } from '../tracks';
 import { botInput, type BotOptions } from './bot';
 import { DEFAULT_SETTINGS, Session, type RaceSettings, type SessionEvent, type SessionPhase } from './session';
-import type { PlayerInput } from './world';
+import { penaltyTime, type PlayerInput } from './world';
 
 const DT = 1 / 120;
 const track = new Track(TRACKS.test);
@@ -107,5 +107,43 @@ describe('Session', () => {
       drs ||= session.world.racers.some((r) => r.drsOpen);
     }
     expect(drs).toBe(false);
+  });
+});
+
+describe('Reset (R)', () => {
+  const step = (s: Session, reset: string | null) => {
+    const inputs = new Map<string, PlayerInput>();
+    const waiting = s.phase === 'grid' || s.phase === 'lights';
+    for (const r of s.world.racers) inputs.set(r.id, { ...botInput(track, r, { hold: waiting }), reset: r.id === reset });
+    return s.step(DT, inputs);
+  };
+
+  it('puts a crashed car back on track in a race, with a penalty', () => {
+    const s = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test', qualifying: false }, PLAYERS);
+    while (s.phase !== 'race') step(s, null);
+    for (let t = 0; t < 5; t += DT) step(s, null);
+    const a = s.world.racer('a')!;
+    a.car.impact(30, 2.6, 0);
+    expect(a.car.retired).toBe(true);
+    const events = step(s, 'a');
+    expect(a.car.retired).toBe(false);
+    expect(a.car.damage).toBe(0);
+    expect(penaltyTime(a)).toBe(10);
+    expect(events.some((e) => e.kind === 'reset')).toBe(true);
+    const q = track.query(a.car.x, a.car.y)!;
+    expect(Math.abs(q.d)).toBeLessThan(1);
+    // Spamming R doesn't stack penalties.
+    step(s, 'a');
+    expect(penaltyTime(a)).toBe(10);
+  });
+
+  it('loses the timed lap in qualifying', () => {
+    const s = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test' }, PLAYERS);
+    let guard = 0;
+    while (s.quali.get('a')!.status !== 'flying' && guard++ < 120 * 200) step(s, null);
+    expect(s.quali.get('a')!.status).toBe('flying');
+    step(s, 'a');
+    expect(s.quali.get('a')!.status).toBe('done');
+    expect(s.quali.get('a')!.time).toBeNull();
   });
 });

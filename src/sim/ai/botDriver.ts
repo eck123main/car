@@ -55,6 +55,8 @@ export class BotDriver {
   private deviation = 0;
   private startLateral: number | null = null;
   private stuckFor = 0;
+  /** When the car was wrecked, so the bot can reset after a moment. */
+  private retiredAt: number | null = null;
   private reverseUntil = 0;
   private nextTyre: Compound = 'medium';
   /** Close behind someone: worth spending ERS. */
@@ -77,7 +79,13 @@ export class BotDriver {
     if (!me) return IDLE_INPUT;
     const car = me.car;
     const base: PlayerInput = { ...IDLE_INPUT, nextTyre: this.chooseTyre(me, world, ctx) };
-    if (car.retired || me.frozen) return { ...base, brake: 1 };
+    if (car.retired) {
+      // Wrecked: sit for a moment, then reset to the track like a player would.
+      this.retiredAt ??= world.time;
+      return { ...base, brake: 1, reset: world.time - this.retiredAt > 2 };
+    }
+    this.retiredAt = null;
+    if (me.frozen) return { ...base, brake: 1 };
     if (ctx.phase === 'grid' || ctx.phase === 'lights') return { ...base, brake: 1 };
     // Reacting to lights out: no pedals (holding the brake at a standstill would reverse).
     if (ctx.phase === 'race' && world.time - ctx.raceStart < this.reaction) return base;

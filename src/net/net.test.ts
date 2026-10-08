@@ -147,3 +147,29 @@ describe('Bots in an online lobby', () => {
     expect(c.pose(botRacers[0].id, DT)).not.toBeNull();
   });
 });
+
+describe('Reset over the network', () => {
+  it("a client's R reaches the host", () => {
+    const { host, join, tick } = setup();
+    const c = join('Alice');
+    tick();
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    for (let t = 0; t < 14; t += DT) {
+      host.step(DT, IDLE_INPUT);
+      c.step(DT, IDLE_INPUT);
+      c.flush();
+      tick();
+    }
+    const racer = host.session!.world.racer(c.id!)!;
+    racer.car.impact(30, 2.6, 0);
+    expect(racer.car.retired).toBe(true);
+    c.step(DT, { ...IDLE_INPUT, reset: true });
+    c.flush();
+    for (let i = 0; i < 4; i++) {
+      tick();
+      host.step(DT, IDLE_INPUT);
+    }
+    expect(racer.car.retired).toBe(false);
+  });
+});

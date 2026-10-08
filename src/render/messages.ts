@@ -32,6 +32,8 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
       if (e.verdict === 'incident') return { text: `Contact with ${e.other}: racing incident`, color: '#cccccc', until };
       if (e.verdict === 'theirFault') return { text: `${e.other} hit you: they're penalised`, color: '#cccccc', until };
       return null;
+    case 'reset':
+      return { text: e.note.toUpperCase(), color: '#ffffff', until };
     case 'penalty':
       return { text: `+${e.penalty.seconds}s PENALTY: ${e.penalty.reason}`, color: '#ff4136', until: now + 5 };
   }

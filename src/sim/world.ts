@@ -18,6 +18,8 @@ export interface PlayerInput extends DriverInput {
   limiter: boolean;
   /** Tyres to fit at the next pit stop. */
   nextTyre: Compound;
+  /** Pressed R this step: put the car back on track (rules depend on the session). */
+  reset?: boolean;
 }
 
 export const IDLE_INPUT: PlayerInput = {

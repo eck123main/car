@@ -67,6 +67,7 @@ export class LocalControls {
       ers: this.keyboard.isDown(['ShiftLeft', 'ShiftRight']),
       limiter: this.limiter,
       nextTyre: this.nextTyre,
+      reset: this.keyboard.wasPressed('KeyR'),
     };
   }
 }
