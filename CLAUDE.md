@@ -148,12 +148,17 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 
 ## Pit stops
 
-- The track has a **pit lane** with entry and exit and a speed limit.
-- The player drives into their pit box and the car **stops for a few seconds** (simple
-  wait timer, no mini-game).
-- During the stop the player can **choose new tyres** (and later repair damage or other
-  options).
-- Stop time = a base tyre-change time, plus extra time if damage is repaired.
+- The pit lane runs alongside the **start/finish straight** (and gentle bends either side),
+  like real circuits. Track files can set the real side:   (Silverstone: right). Without it, the side with more room is used.
+- A pit wall separates the lane from the track, with openings at the entry and exit.
+- **Entering**: drive into the lane through the entry opening. Over 80 km/h (+5 km/h
+  tolerance) at entry = **+5 s penalty**. From then on the car **drives itself** to the
+  driver's own box (one box per car, 10 boxes), with the limiter on.
+- **The stop**: 3-4 s stationary (3 s + up to 1 s crew variation, deterministic), plus
+  5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted.
+- **Leaving**: the driver drives off; the pit limiter (80 km/h) stays forced on until the
+  car is past the lane.
+- Logic: ; lane geometry:  in .
 
 ## Weather (later)
 

@@ -12,7 +12,8 @@ export interface DriverInput {
 /** What the car needs to know about the world around it. */
 export interface CarWorld {
   surfaceAt(x: number, y: number): Surface;
-  wallContact(x: number, y: number): WallContact | null;
+  /** carX/carY: the car centre, so two-sided walls (the pit wall) know which side it is on. */
+  wallContact(x: number, y: number, carX: number, carY: number): WallContact | null;
 }
 
 const G = 9.81;
@@ -198,7 +199,7 @@ export class Car {
       const s = Math.sin(this.heading);
       const rx = c * lx - s * ly;
       const ry = s * lx + c * ly;
-      const hit = world.wallContact(this.x + rx, this.y + ry);
+      const hit = world.wallContact(this.x + rx, this.y + ry, this.x, this.y);
       if (!hit) continue;
       this.x += hit.nx * hit.depth;
       this.y += hit.ny * hit.depth;

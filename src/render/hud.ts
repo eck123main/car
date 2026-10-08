@@ -209,7 +209,7 @@ export interface Toast {
 
 /** Short messages in the top middle (lap times, track limits). */
 export function drawToasts(ctx: CanvasRenderingContext2D, toasts: Toast[], now: number, width: number): void {
-  let y = 90;
+  let y = 120;
   ctx.textAlign = 'center';
   ctx.font = 'bold 20px system-ui, sans-serif';
   for (const t of toasts) {

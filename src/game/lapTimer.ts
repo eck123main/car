@@ -1,5 +1,5 @@
 import type { Car } from '../physics/car';
-import { KERB_WIDTH, type Track, type TrackSample } from '../track/track';
+import { KERB_WIDTH, PIT_LANE_INNER, PIT_LANE_WIDTH, type Track, type TrackSample } from '../track/track';
 
 export const SECTOR_COUNT = 3;
 /** Back on track for this long before another excursion counts as a new warning. */
@@ -178,7 +178,7 @@ export class LapTimer {
     for (const lx of [p.cgToFront, -p.cgToRear]) {
       for (const ly of [-half, half]) {
         const hit = this.track.query(car.x + c * lx - s * ly, car.y + s * lx + c * ly);
-        if (hit && Math.abs(hit.d) <= trackEdge(hit.sample, hit.d)) anyWheelOn = true;
+        if (hit && Math.abs(hit.d) <= trackEdge(this.track, hit.sample, hit.d)) anyWheelOn = true;
       }
     }
     this.offTrack = !anyWheelOn;
@@ -197,8 +197,9 @@ export class LapTimer {
   }
 }
 
-/** Where the track ends on the side of offset d: the white line, or the outer edge of a kerb. */
-function trackEdge(sample: TrackSample, d: number): number {
+/** Where the track ends on the side of offset d: the white line, a kerb's outer edge, or the pit lane. */
+function trackEdge(track: Track, sample: TrackSample, d: number): number {
+  if (track.onPitSide(sample, d)) return sample.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH;
   const kerb = d >= 0 ? sample.kerbR : sample.kerbL;
   return sample.halfWidth + (kerb ? KERB_WIDTH : 0);
 }

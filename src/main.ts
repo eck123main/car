@@ -1,7 +1,9 @@
 import { Keyboard, LocalControls } from './game/input';
 import { Camera } from './render/camera';
 import { drawCar } from './render/drawCar';
-import { drawHud, drawRacerStatus, drawTiming, drawToasts, formatLapTime, Minimap, type Toast } from './render/hud';
+import { drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from './render/hud';
+import { eventToast } from './render/messages';
+import { drawPitBoxes, drawPitStatus } from './render/pit';
 import { TrackGraphics } from './render/trackGraphics';
 import { RaceWorld, type PlayerInput, type WorldEvent } from './sim/world';
 import { Track } from './track/track';
@@ -71,14 +73,8 @@ function frame(now: number): void {
 
 function showEvent(e: WorldEvent): void {
   if (e.racerId !== ME) return;
-  const until = world.time + 3;
-  if (e.kind === 'lap') {
-    const text = `${e.personalBest ? 'PERSONAL BEST  ' : ''}${formatLapTime(e.lap.time)}${e.lap.valid ? '' : '  (deleted)'}`;
-    toasts.push({ text, color: e.personalBest ? '#b84dff' : e.lap.valid ? '#ffffff' : '#888', until });
-  } else {
-    const text = e.lapDeleted ? 'TRACK LIMITS: LAP TIME DELETED' : 'TRACK LIMITS';
-    toasts.push({ text: `${text} (warning ${e.warnings})`, color: '#ffb347', until });
-  }
+  const toast = eventToast(e, world.time);
+  if (toast) toasts.push(toast);
   while (toasts.length > 3) toasts.shift();
 }
 
@@ -94,6 +90,7 @@ function render(alpha: number, dt: number): void {
 
   camera.apply(ctx, canvas.width, canvas.height, dpr);
   trackGfx.draw(ctx, camera.bounds(canvas.width, canvas.height, dpr));
+  drawPitBoxes(ctx, world);
   for (const r of world.racers) {
     const c = r.car;
     const rx = c.prevX + (c.x - c.prevX) * alpha;
@@ -109,6 +106,7 @@ function render(alpha: number, dt: number): void {
   drawHud(ctx, car, track.name, w, h);
   drawRacerStatus(ctx, me, w, h);
   drawTiming(ctx, me.timer, world.time);
+  drawPitStatus(ctx, world, me, w);
   drawToasts(ctx, toasts, world.time, w);
 }
 

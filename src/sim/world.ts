@@ -2,7 +2,10 @@ import { LapTimer, type TimingEvent } from '../game/lapTimer';
 import { Car, type DriverInput } from '../physics/car';
 import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
+import { newPitState, PIT_SPEED_LIMIT, PIT_SPEEDING_PENALTY, updatePit, type PitEvent, type PitState } from './pit';
 import { type Compound, Tyres } from './tyres';
+
+export { PIT_SPEED_LIMIT } from './pit';
 
 /** Everything a player controls. Sent over the network as state, not key events. */
 export interface PlayerInput extends DriverInput {
@@ -26,7 +29,6 @@ export const IDLE_INPUT: PlayerInput = {
   nextTyre: 'medium',
 };
 
-export const PIT_SPEED_LIMIT = 80 / 3.6;
 /** ERS: extra power while deploying, seconds of deployment in a full battery. */
 const ERS_POWER = 120_000;
 const ERS_DEPLOY_TIME = 7;
@@ -53,6 +55,20 @@ export interface Racer {
   slipstream: number;
   /** Per DRS zone: has this car earned DRS for it? */
   drsZoneEligible: boolean[];
+  pit: PitState;
+  /** Every compound this car has raced on (for the two-compound rule). */
+  compoundsUsed: Compound[];
+  penalties: Penalty[];
+}
+
+export interface Penalty {
+  seconds: number;
+  reason: string;
+}
+
+/** Total time penalties (s). */
+export function penaltyTime(r: Racer): number {
+  return r.penalties.reduce((sum, p) => sum + p.seconds, 0);
 }
 
 export interface WorldOptions {
@@ -62,7 +78,12 @@ export interface WorldOptions {
   wetness: number;
 }
 
-export type WorldEvent = TimingEvent & { racerId: string };
+export type WorldEvent = (
+  | TimingEvent
+  | { kind: 'pitEntry' }
+  | { kind: 'pitStop'; duration: number; compound: Compound }
+  | { kind: 'penalty'; penalty: Penalty }
+) & { racerId: string };
 
 /**
  * The shared race simulation: every car, its tyres, ERS, DRS and timing.
@@ -96,6 +117,9 @@ export class RaceWorld {
       drsEligible: false,
       slipstream: 0,
       drsZoneEligible: this.track.drsZones.map(() => false),
+      pit: newPitState(this.racers.length),
+      compoundsUsed: [compound],
+      penalties: [],
     };
     this.racers.push(racer);
     return racer;
@@ -116,9 +140,26 @@ export class RaceWorld {
     return events;
   }
 
+  addPenalty(r: Racer, seconds: number, reason: string, events: WorldEvent[]): void {
+    const penalty = { seconds, reason };
+    r.penalties.push(penalty);
+    events.push({ kind: 'penalty', penalty, racerId: r.id });
+  }
+
   private stepRacer(r: Racer, dt: number, events: WorldEvent[]): void {
-    const { car, input } = r;
+    const { car } = r;
     const prevS = r.timer.lapDistance;
+
+    const pitEvents: PitEvent[] = [];
+    const pitInput = updatePit(this.track, r.pit, car, r.input, this.time, r.id, pitEvents);
+    for (const e of pitEvents) this.handlePitEvent(r, e, events);
+    if (pitInput === 'hold') {
+      // Sitting in the box: the car doesn't move, the clock keeps running.
+      car.place(car.x, car.y, car.heading);
+      for (const e of r.timer.update(this.time, dt, car)) events.push({ ...e, racerId: r.id });
+      return;
+    }
+    const input = pitInput;
 
     // ERS: deploy on the throttle while the button is held; harvest under braking.
     r.ersActive = input.ers && r.ers > 0 && car.throttle > 0.5 && !car.retired;
@@ -137,6 +178,19 @@ export class RaceWorld {
 
     for (const e of r.timer.update(this.time, dt, car)) events.push({ ...e, racerId: r.id });
     this.updateDrs(r, prevS);
+  }
+
+  private handlePitEvent(r: Racer, e: PitEvent, events: WorldEvent[]): void {
+    if (e.kind === 'pitEntry') {
+      events.push({ kind: 'pitEntry', racerId: r.id });
+      if (e.speeding) this.addPenalty(r, PIT_SPEEDING_PENALTY, 'Speeding at pit entry', events);
+    } else if (e.kind === 'pitStopDone') {
+      const compound = r.input.nextTyre;
+      r.tyres = new Tyres(compound);
+      if (!r.compoundsUsed.includes(compound)) r.compoundsUsed.push(compound);
+      r.car.damage = 0;
+      events.push({ kind: 'pitStop', duration: r.pit.stopDuration, compound, racerId: r.id });
+    }
   }
 
   private updateDrs(r: Racer, prevS: number | null): void {

@@ -1,4 +1,4 @@
-import { KERB_WIDTH, type Track, type TrackSample } from '../track/track';
+import { KERB_WIDTH, PIT_LANE_INNER, PIT_LANE_WIDTH, PIT_WALL_OFFSET, type Track, type TrackSample } from '../track/track';
 import type { ViewBounds } from './camera';
 
 /** Kerb band runs from just inside the track edge to KERB_WIDTH outside it. */
@@ -10,6 +10,7 @@ const COLORS = {
   grass: '#3b7533',
   gravel: '#c8b37e',
   asphalt: '#46474c',
+  pitLane: '#56575d',
   edgeLine: '#e8e8e8',
   kerbRed: '#d22b2b',
   kerbWhite: '#f2f2f2',
@@ -37,6 +38,9 @@ interface Chunk {
   asphalt: Path2D;
   edgeLines: Path2D;
   walls: Path2D;
+  pitLane: Path2D;
+  pitWall: Path2D;
+  pitLine: Path2D;
   /** Kerb polylines with their lap distance, so the stripes line up across chunks. */
   kerbs: { path: Path2D; s: number }[];
 }
@@ -46,6 +50,7 @@ export class TrackGraphics {
   private readonly chunks: Chunk[] = [];
   private readonly startLine: Path2D[] = [new Path2D(), new Path2D()];
   private readonly brakeBoards: BrakeBoard[];
+  private readonly pitLines = new Path2D();
   private readonly drsDetect = new Path2D();
   private readonly drsStart = new Path2D();
   private readonly drsLabels: { x: number; y: number; angle: number }[] = [];
@@ -57,10 +62,20 @@ export class TrackGraphics {
       // One sample of overlap with the next chunk so there are no seams.
       const part: TrackSample[] = [];
       for (let i = i0; i <= Math.min(i0 + CHUNK, n); i++) part.push(ss[i % n]);
-      this.chunks.push(buildChunk(part));
+      this.chunks.push(buildChunk(part, track.pit?.side ?? 1));
     }
 
     this.brakeBoards = findBrakeBoards(track);
+    if (track.pit) {
+      const side = track.pit.side;
+      for (const at of [track.pit.entry, track.pit.exit]) {
+        const t = ss[Math.floor(at / 2) % ss.length];
+        const a = t.halfWidth * side;
+        const b = (t.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH) * side;
+        this.pitLines.moveTo(t.x + t.nx * a, t.y + t.ny * a);
+        this.pitLines.lineTo(t.x + t.nx * b, t.y + t.ny * b);
+      }
+    }
     for (const zone of track.drsZones) {
       const across = (path: Path2D, at: number) => {
         const t = ss[Math.floor(at / 2) % ss.length];
@@ -103,6 +118,16 @@ export class TrackGraphics {
     ctx.fill(merge(visible, 'runoff'));
     ctx.fillStyle = COLORS.gravel;
     ctx.fill(merge(visible, 'gravel'));
+    ctx.fillStyle = COLORS.pitLane;
+    ctx.fill(merge(visible, 'pitLane'));
+    ctx.lineWidth = 0.25;
+    ctx.strokeStyle = '#d8d8d8';
+    ctx.setLineDash([3, 3]);
+    for (const c of visible) ctx.stroke(c.pitLine);
+    ctx.setLineDash([]);
+    ctx.lineWidth = 0.4;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke(this.pitLines);
 
     ctx.lineCap = 'butt';
     ctx.lineWidth = KERB_LINE_WIDTH;
@@ -137,6 +162,12 @@ export class TrackGraphics {
     ctx.lineWidth = 0.8;
     ctx.strokeStyle = COLORS.wall;
     for (const c of visible) ctx.stroke(c.walls);
+    ctx.lineWidth = 0.9;
+    ctx.strokeStyle = COLORS.wallEdge;
+    for (const c of visible) ctx.stroke(c.pitWall);
+    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = '#e8e8e8';
+    for (const c of visible) ctx.stroke(c.pitWall);
 
     this.drawBrakeBoards(ctx, view);
     this.drawDrs(ctx);
@@ -203,6 +234,7 @@ function findBrakeBoards(track: Track): BrakeBoard[] {
     for (const dist of [100, 50]) {
       const s = ss[(((i - dist / 2) % n) + n) % n];
       for (const side of [1, -1]) {
+        if (track.onPitSide(s, side)) continue;
         const off = (s.halfWidth + KERB_WIDTH + 2.5) * side;
         boards.push({ x: s.x + s.nx * off, y: s.y + s.ny * off, label: String(dist) });
       }
@@ -211,18 +243,29 @@ function findBrakeBoards(track: Track): BrakeBoard[] {
   return boards;
 }
 
-function merge(chunks: Chunk[], layer: 'runoff' | 'gravel' | 'asphalt'): Path2D {
+function merge(chunks: Chunk[], layer: 'runoff' | 'gravel' | 'asphalt' | 'pitLane'): Path2D {
   const path = new Path2D();
   for (const c of chunks) path.addPath(c[layer]);
   return path;
 }
 
-function buildChunk(part: TrackSample[]): Chunk {
+function buildChunk(part: TrackSample[], pitSide: 1 | -1): Chunk {
   const runoff = new Path2D();
   const gravel = new Path2D();
   const asphalt = new Path2D();
   const edgeLines = new Path2D();
   const walls = new Path2D();
+  const pitLane = new Path2D();
+  const pitWall = new Path2D();
+  const pitLine = new Path2D();
+  const pitEdge = (t: TrackSample, off: number): Pt => edge(t, pitSide > 0 ? 'R' : 'L', off);
+  for (const run of runs(part, (t) => t.pit)) {
+    strip(pitLane, run, (t) => pitEdge(t, t.halfWidth), (t) => pitEdge(t, t.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH));
+  }
+  for (const run of runs(part, (t) => t.pitWall)) {
+    polyline(pitWall, run, (t) => pitEdge(t, t.halfWidth + PIT_WALL_OFFSET));
+    polyline(pitLine, run, (t) => pitEdge(t, t.halfWidth + PIT_LANE_INNER));
+  }
   const kerbs: Chunk['kerbs'] = [];
 
   strip(runoff, part, (t) => edge(t, 'R', t.wallR), (t) => edge(t, 'L', t.wallL));
@@ -253,7 +296,7 @@ function buildChunk(part: TrackSample[]): Chunk {
       maxY = Math.max(maxY, y);
     }
   }
-  return { minX, minY, maxX, maxY, runoff, gravel, asphalt, edgeLines, walls, kerbs };
+  return { minX, minY, maxX, maxY, runoff, gravel, asphalt, edgeLines, walls, pitLane, pitWall, pitLine, kerbs };
 }
 
 type Pt = [number, number];
