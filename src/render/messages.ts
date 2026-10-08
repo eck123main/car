@@ -28,6 +28,10 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
       return null;
     case 'finished':
       return { text: `FINISHED · P${e.position}`, color: '#ffffff', until: now + 6 };
+    case 'contact':
+      if (e.verdict === 'incident') return { text: `Contact with ${e.other}: racing incident`, color: '#cccccc', until };
+      if (e.verdict === 'theirFault') return { text: `${e.other} hit you: they're penalised`, color: '#cccccc', until };
+      return null;
     case 'penalty':
       return { text: `+${e.penalty.seconds}s PENALTY: ${e.penalty.reason}`, color: '#ff4136', until: now + 5 };
   }

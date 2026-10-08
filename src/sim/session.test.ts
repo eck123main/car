@@ -76,7 +76,8 @@ describe('Session', () => {
   it('runs a race to the finish with a mandatory stop penalty for non-stoppers', () => {
     const { session, events } = run(
       { qualifying: false, laps: 3 },
-      { a: { pitOnLap: 1, nextTyre: 'hard' }, b: {}, c: { pitOnLap: 1, nextTyre: 'medium' } },
+      // Separate lines so the bots don't run into each other.
+      { a: { pitOnLap: 1, nextTyre: 'hard', offset: -3.5 }, b: { offset: 0 }, c: { pitOnLap: 1, nextTyre: 'medium', offset: 3.5 } },
       'finished',
     );
     expect(session.phase).toBe('finished');

@@ -2,6 +2,7 @@ import { LapTimer, type TimingEvent } from '../game/lapTimer';
 import { Car, type DriverInput } from '../physics/car';
 import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
+import { resolveCollisions } from './collisions';
 import { newPitState, PIT_SPEED_LIMIT, PIT_SPEEDING_PENALTY, updatePit, type PitEvent, type PitState } from './pit';
 import { type Compound, Tyres } from './tyres';
 
@@ -80,6 +81,8 @@ export interface WorldOptions {
   wetness: number;
   /** Off in qualifying, where cars are ghosts. */
   slipstream?: boolean;
+  /** Car-to-car contact. Off in qualifying, where cars are ghosts. */
+  collisions?: boolean;
 }
 
 export type WorldEvent = (
@@ -87,6 +90,8 @@ export type WorldEvent = (
   | { kind: 'pitEntry' }
   | { kind: 'pitStop'; duration: number; compound: Compound }
   | { kind: 'penalty'; penalty: Penalty }
+  /** A significant hit with another car, and who (if anyone) was blamed. */
+  | { kind: 'contact'; other: string; verdict: 'incident' | 'yourFault' | 'theirFault' }
 ) & { racerId: string };
 
 /**
@@ -98,6 +103,7 @@ export class RaceWorld {
   readonly racers: Racer[] = [];
   /** Last time any car crossed each DRS detection line, and which car. */
   private readonly detections: { time: number; id: string }[];
+  private readonly contactCooldowns = new Map<string, number>();
 
   constructor(
     readonly track: Track,
@@ -142,7 +148,23 @@ export class RaceWorld {
       r.input = inputs.get(r.id) ?? r.input;
       this.stepRacer(r, dt, events);
     }
+    if (this.options.collisions !== false) this.handleContacts(events);
     return events;
+  }
+
+  private handleContacts(events: WorldEvent[]): void {
+    for (const c of resolveCollisions(this.track, this.racers, this.time, this.contactCooldowns)) {
+      const tell = (r: Racer, other: Racer) => {
+        const verdict = c.atFault === null ? 'incident' : c.atFault === r ? 'yourFault' : 'theirFault';
+        events.push({ kind: 'contact', other: other.name, verdict, racerId: r.id });
+      };
+      tell(c.a, c.b);
+      tell(c.b, c.a);
+      if (c.atFault) {
+        const victim = c.atFault === c.a ? c.b : c.a;
+        this.addPenalty(c.atFault, c.penalty, `Causing a collision with ${victim.name}`, events);
+      }
+    }
   }
 
   /** Put a car at a spot as if new: repaired, fresh tyres, full ERS, timing and penalties cleared. */

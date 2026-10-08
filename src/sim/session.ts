@@ -98,7 +98,7 @@ export class Session {
     readonly settings: RaceSettings,
     players: PlayerInfo[],
   ) {
-    this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false });
+    this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false, collisions: false });
     for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium');
     this.world.options.wetness = this.wetnessAt(0);
     this.phase = settings.qualifying ? 'qualifying' : 'grid';
@@ -149,6 +149,7 @@ export class Session {
   private startQualifying(): void {
     this.world.options.drsRule = 'free';
     this.world.options.slipstream = false;
+    this.world.options.collisions = false;
     const start = this.qualiStart();
     this.world.racers.forEach((r, i) => {
       this.world.resetRacer(r, start.x, start.y, start.heading, r.input.nextTyre);
@@ -216,6 +217,7 @@ export class Session {
     });
     this.world.options.drsRule = 'race';
     this.world.options.slipstream = true;
+    this.world.options.collisions = true;
     this.phaseStart = this.world.time;
   }
 

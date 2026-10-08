@@ -227,11 +227,12 @@ export class Car {
       this.vy += jt * ty * invM;
       this.yawRate += rt * jt * invI;
 
-      this.registerImpact(-vn);
+      this.impact(-vn);
     }
   }
 
-  private registerImpact(impactSpeed: number): void {
+  /** Take damage from a hit at this speed (m/s along the contact normal); a big one retires the car. */
+  impact(impactSpeed: number): void {
     const p = this.params;
     this.lastImpact = impactSpeed;
     if (this.retired) return;
