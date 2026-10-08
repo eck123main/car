@@ -8,7 +8,16 @@ import type { Racer } from '../sim/world';
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
 /** Draws in CSS pixels; expects ctx already scaled by devicePixelRatio. */
-export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: string, width: number, height: number, resetHint: string): void {
+export function drawHud(
+  ctx: CanvasRenderingContext2D,
+  car: Car,
+  trackName: string,
+  width: number,
+  height: number,
+  resetHint: string,
+  /** Seconds until a reset car goes back on track, if it is waiting. */
+  recovering: number | null = null,
+): void {
   const kmh = car.speed * 3.6;
   const gear = car.forwardSpeed < -0.5 ? 'R' : String(gearFor(kmh));
 
@@ -42,7 +51,14 @@ export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: stri
     ctx.fillText(off.toUpperCase(), width / 2, 108);
   }
 
-  if (car.retired) {
+  if (recovering !== null) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, height / 2 - 50, width, 100);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd400';
+    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.fillText(`RECOVERING  ${Math.max(0, recovering).toFixed(1)} s`, width / 2, height / 2 + 14);
+  } else if (car.retired) {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, height / 2 - 60, width, 120);
     ctx.textAlign = 'center';

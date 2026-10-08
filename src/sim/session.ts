@@ -76,9 +76,8 @@ const TRACK_LIMIT_FREE_WARNINGS = 3;
 const TRACK_LIMIT_PENALTY = 5;
 const MANDATORY_STOP_PENALTY = 30;
 const GAP_BUCKET = 25;
-const RESET_PENALTY = 10;
-/** Minimum time between two resets by the same driver (s). */
-const RESET_COOLDOWN = 3;
+/** Seconds a reset car waits before going back on track. */
+export const RESET_WAIT = 5;
 
 export class Session {
   readonly world: RaceWorld;
@@ -96,7 +95,8 @@ export class Session {
   private firstFinishAt: number | null = null;
   /** Race time at each GAP_BUCKET metres of race distance, per car (for gaps). */
   private readonly progressTimes = new Map<string, number[]>();
-  private readonly lastReset = new Map<string, number>();
+  /** Cars waiting to be put back on track, and when. */
+  readonly recovering = new Map<string, number>();
 
   constructor(
     readonly track: Track,
@@ -127,7 +127,8 @@ export class Session {
       }
     }
 
-    for (const r of this.world.racers) if (inputs.get(r.id)?.reset) this.reset(r, events);
+    for (const r of this.world.racers) if (inputs.get(r.id)?.reset) this.requestReset(r, events);
+    this.finishResets(events);
     const worldEvents = this.world.step(dt, inputs);
     events.push(...worldEvents);
 
@@ -206,6 +207,7 @@ export class Session {
   // ---------- Grid and lights
 
   private startGrid(order: string[]): void {
+    this.recovering.clear();
     this.gridOrder = order;
     const n = this.track.samples.length;
     order.forEach((id, k) => {
@@ -372,40 +374,48 @@ export class Session {
   // ---------- Resets
 
   /**
-   * R: get back on track. Qualifying: back to the pit exit (a timed lap in progress is
-   * lost). Race: back on the track where you are, repaired, for a time penalty — so a
-   * crash costs time but doesn't end your race.
+   * R: the car waits RESET_WAIT seconds (a ghost, so nobody hits the wreck), then goes
+   * back on track. Race: where it crashed, repaired; the wait is the time cost.
+   * Qualifying: back to the pit exit, and a timed lap in progress is lost.
    */
-  private reset(r: Racer, events: SessionEvent[]): void {
-    const now = this.world.time;
-    if (r.frozen || r.pit.phase !== 'out') return;
-    if (now - (this.lastReset.get(r.id) ?? -Infinity) < RESET_COOLDOWN) return;
+  private requestReset(r: Racer, events: SessionEvent[]): void {
+    if (this.recovering.has(r.id) || r.frozen || r.pit.phase !== 'out') return;
     if (this.phase === 'qualifying') {
       const q = this.quali.get(r.id)!;
       if (q.status !== 'outLap' && q.status !== 'flying') return;
-      const start = this.qualiStart();
-      r.car.place(start.x, start.y, start.heading);
-      r.car.repair();
-      r.timer.abortLap();
       if (q.status === 'flying') {
         q.status = 'done';
         q.time = null;
-        r.frozen = true;
-        events.push({ kind: 'reset', racerId: r.id, note: 'Timed lap lost' });
-      } else {
-        events.push({ kind: 'reset', racerId: r.id, note: 'Back to the pit exit' });
       }
-    } else if (this.phase === 'race') {
-      const hit = this.track.query(r.car.x, r.car.y);
-      const t = hit?.sample ?? this.track.samples[0];
-      r.car.place(t.x, t.y, Math.atan2(t.ty, t.tx));
-      r.car.repair();
-      this.world.addPenalty(r, RESET_PENALTY, 'Reset to track', events as WorldEvent[]);
-      events.push({ kind: 'reset', racerId: r.id, note: 'Back on track' });
-    } else {
+    } else if (this.phase !== 'race') {
       return;
     }
-    this.lastReset.set(r.id, now);
+    this.recovering.set(r.id, this.world.time + RESET_WAIT);
+    r.frozen = true;
+    events.push({ kind: 'reset', racerId: r.id, note: `Recovering: back on track in ${RESET_WAIT} s` });
+  }
+
+  private finishResets(events: SessionEvent[]): void {
+    for (const [id, until] of this.recovering) {
+      if (this.world.time < until) continue;
+      this.recovering.delete(id);
+      const r = this.world.racer(id);
+      if (!r) continue;
+      if (this.phase === 'qualifying') {
+        const start = this.qualiStart();
+        r.car.place(start.x, start.y, start.heading);
+        r.timer.abortLap();
+        // A lost timed lap ends qualifying for this driver.
+        r.frozen = this.quali.get(id)!.status === 'done';
+      } else {
+        const hit = this.track.query(r.car.x, r.car.y);
+        const t = hit?.sample ?? this.track.samples[0];
+        r.car.place(t.x, t.y, Math.atan2(t.ty, t.tx));
+        r.frozen = false;
+      }
+      r.car.repair();
+      events.push({ kind: 'reset', racerId: id, note: 'Back on track' });
+    }
   }
 
   // ---------- Helpers

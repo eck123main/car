@@ -103,5 +103,6 @@ export function sessionSnap(session: Session): SessionSnap {
     wetness: session.world.options.wetness,
     standings: session.standings(),
     quali: [...session.quali.entries()],
+    recovering: [...session.recovering.entries()],
   };
 }

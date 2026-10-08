@@ -168,8 +168,8 @@ export class ClientDriver implements GameDriver {
 }
 
 function resetHint(phase: string | undefined): string {
-  if (phase === 'race') return 'Press R to get back on track (+10 s penalty)';
-  if (phase === 'qualifying') return 'Press R to return to the pit exit (your timed lap is lost)';
+  if (phase === 'race') return 'Press R to get back on track (5 s wait)';
+  if (phase === 'qualifying') return 'Press R to return to the pit exit (5 s wait; a timed lap is lost)';
   return 'Wait for the next session';
 }
 
@@ -323,7 +323,8 @@ export class GameScreen {
         return { x: p.x, y: p.y, color: r.color };
       }),
     );
-    drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint);
+    const recoverAt = session?.recovering.find(([id]) => id === me.id)?.[1];
+    drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint, recoverAt !== undefined ? recoverAt - now : null);
     drawDamage(ctx, me.car, w);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);

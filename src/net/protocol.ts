@@ -75,6 +75,8 @@ export interface SessionSnap {
   wetness: number;
   standings: Standing[];
   quali: [string, QualiEntry][];
+  /** Cars waiting after a reset, and when they go back on track. */
+  recovering: [string, number][];
 }
 
 export type ClientMessage =

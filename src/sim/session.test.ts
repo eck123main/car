@@ -118,23 +118,25 @@ describe('Reset (R)', () => {
     return s.step(DT, inputs);
   };
 
-  it('puts a crashed car back on track in a race, with a penalty', () => {
+  it('puts a crashed car back on track in a race after a 5 s wait', () => {
     const s = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test', qualifying: false }, PLAYERS);
     while (s.phase !== 'race') step(s, null);
     for (let t = 0; t < 5; t += DT) step(s, null);
     const a = s.world.racer('a')!;
     a.car.impact(30, 2.6, 0);
     expect(a.car.retired).toBe(true);
-    const events = step(s, 'a');
+    step(s, 'a');
+    // Waiting: still wrecked, held in place as a ghost.
+    expect(a.frozen).toBe(true);
+    for (let t = 0; t < 4.5; t += DT) step(s, t < 1 ? 'a' : null); // mashing R doesn't restart the wait
+    expect(a.car.retired).toBe(true);
+    for (let t = 0; t < 0.6; t += DT) step(s, null);
     expect(a.car.retired).toBe(false);
+    expect(a.frozen).toBe(false);
     expect(a.car.damage).toBe(0);
-    expect(penaltyTime(a)).toBe(10);
-    expect(events.some((e) => e.kind === 'reset')).toBe(true);
+    expect(penaltyTime(a)).toBe(0);
     const q = track.query(a.car.x, a.car.y)!;
     expect(Math.abs(q.d)).toBeLessThan(1);
-    // Spamming R doesn't stack penalties.
-    step(s, 'a');
-    expect(penaltyTime(a)).toBe(10);
   });
 
   it('loses the timed lap in qualifying', () => {
@@ -145,5 +147,6 @@ describe('Reset (R)', () => {
     step(s, 'a');
     expect(s.quali.get('a')!.status).toBe('done');
     expect(s.quali.get('a')!.time).toBeNull();
+    expect(s.recovering.has('a')).toBe(true);
   });
 });

@@ -191,7 +191,11 @@ export class HostGame {
       }
       if (msg.t === 'input' && Array.isArray(msg.inputs)) {
         for (const item of msg.inputs) if (item.seq > joined.ack) joined.queue.push(item);
-        while (joined.queue.length > MAX_QUEUED_INPUTS) joined.queue.shift();
+        while (joined.queue.length > MAX_QUEUED_INPUTS) {
+          const dropped = joined.queue.shift()!;
+          // Key presses (reset) must survive: carry them over to the next input.
+          if (dropped.input.reset) joined.queue[0] = { ...joined.queue[0], input: { ...joined.queue[0].input, reset: true } };
+        }
       }
     });
     conn.onClose(() => {

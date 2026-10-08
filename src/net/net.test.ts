@@ -166,10 +166,32 @@ describe('Reset over the network', () => {
     expect(racer.car.retired).toBe(true);
     c.step(DT, { ...IDLE_INPUT, reset: true });
     c.flush();
-    for (let i = 0; i < 4; i++) {
+    for (let t = 0; t < 5.2; t += DT) {
       tick();
       host.step(DT, IDLE_INPUT);
     }
+    expect(racer.car.retired).toBe(false);
+  });
+});
+
+describe('Lag', () => {
+  it('never loses an R press when a client sends a backlog of inputs', () => {
+    const { host, join, tick } = setup();
+    const c = join('Alice');
+    tick();
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    for (let t = 0; t < 14; t += DT) {
+      host.step(DT, IDLE_INPUT);
+      tick();
+    }
+    const racer = host.session!.world.racer(c.id!)!;
+    racer.car.impact(30, 2.6, 0);
+    // A lag spike: 30 inputs arrive at once, the R press among the oldest.
+    for (let i = 0; i < 30; i++) c.step(DT, { ...IDLE_INPUT, reset: i === 2 });
+    c.flush();
+    tick();
+    for (let t = 0; t < 5.5; t += DT) host.step(DT, IDLE_INPUT);
     expect(racer.car.retired).toBe(false);
   });
 });
