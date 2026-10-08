@@ -79,10 +79,11 @@ export class TrackGraphics {
       ? this.chunks.filter((c) => c.maxX >= view.minX && c.minX <= view.maxX && c.maxY >= view.minY && c.minY <= view.maxY)
       : this.chunks;
 
+    // Fills are merged into one path per layer so chunk edges leave no anti-aliasing seams.
     ctx.fillStyle = COLORS.grass;
-    for (const c of visible) ctx.fill(c.runoff);
+    ctx.fill(merge(visible, 'runoff'));
     ctx.fillStyle = COLORS.gravel;
-    for (const c of visible) ctx.fill(c.gravel);
+    ctx.fill(merge(visible, 'gravel'));
 
     ctx.lineCap = 'butt';
     ctx.lineWidth = KERB_LINE_WIDTH;
@@ -100,7 +101,7 @@ export class TrackGraphics {
     ctx.lineDashOffset = 0;
 
     ctx.fillStyle = COLORS.asphalt;
-    for (const c of visible) ctx.fill(c.asphalt);
+    ctx.fill(merge(visible, 'asphalt'));
     ctx.lineWidth = 0.25;
     ctx.strokeStyle = COLORS.edgeLine;
     for (const c of visible) ctx.stroke(c.edgeLines);
@@ -120,6 +121,12 @@ export class TrackGraphics {
   }
 
   static readonly backgroundColor = COLORS.outside;
+}
+
+function merge(chunks: Chunk[], layer: 'runoff' | 'gravel' | 'asphalt'): Path2D {
+  const path = new Path2D();
+  for (const c of chunks) path.addPath(c[layer]);
+  return path;
 }
 
 function buildChunk(part: TrackSample[]): Chunk {
