@@ -71,6 +71,8 @@ Top-down 2D car physics that feels like an F1 car:
 - **Surfaces**: track (full grip), kerbs (slightly less), grass/gravel/dirt (drivable
   but slower with less grip; you can always drive back onto the track), walls/barriers
   (collision).
+- **Track width**: 17 m (wider than real F1 tracks, ~12-15 m): at half scale with keyboard
+  steering, narrower tracks made track limits too easy to hit.
 - **Track scale**: keep tracks compact. Laps should be roughly 30–60 s, so real circuits
   are scaled down rather than built at full size.
 - **Camera**: fixed north-up, following the car and zooming out a little with speed.

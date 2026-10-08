@@ -65,7 +65,7 @@ export function trackFromGeoJson(data: unknown, scale: number, fallbackName = 'I
   pts = simplifyClosed(pts, 0.6);
   const props = findProperties(data);
   const name = typeof props?.Name === 'string' ? props.Name : fallbackName;
-  return { name, width: 13, points: pts.map(([x, y]) => [round1(x), round1(y)]) };
+  return { name, width: 17, points: pts.map(([x, y]) => [round1(x), round1(y)]) };
 }
 
 function findLineString(data: unknown): Pt[] | null {

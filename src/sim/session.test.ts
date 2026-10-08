@@ -75,15 +75,18 @@ describe('Session', () => {
 
   it('runs a race to the finish with a mandatory stop penalty for non-stoppers', () => {
     const { session, events } = run(
-      { qualifying: false, laps: 3 },
+      { qualifying: false, laps: 4 },
       // Separate lines so the bots don't run into each other.
-      { a: { pitOnLap: 1, nextTyre: 'hard', offset: -3.5 }, b: { offset: 0 }, c: { pitOnLap: 1, nextTyre: 'medium', offset: 3.5 } },
+      { a: { pitOnLap: 1, nextTyre: 'hard', offset: -3.5 }, b: { offset: 0 }, c: { pitOnLap: 2, nextTyre: 'medium', offset: 3.5 } },
       'finished',
+      900,
+      // The test bots aren't racers and crash into each other; collisions have their own tests.
+      (s) => (s.world.options.collisions = false),
     );
     expect(session.phase).toBe('finished');
     const standings = session.standings();
     expect(standings.every((s) => s.status === 'finished')).toBe(true);
-    expect(standings.every((s) => s.laps >= 3)).toBe(true);
+    expect(standings.every((s) => s.laps >= 4)).toBe(true);
     // b never stopped; c stopped but kept mediums: both break the two-compound rule.
     const reasons = events.flatMap((e) => (e.kind === 'penalty' ? [`${e.racerId}:${e.penalty.reason}`] : []));
     expect(reasons).toContain('b:No pit stop / one compound');
