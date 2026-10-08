@@ -11,6 +11,8 @@ export interface CarParams {
 
   /** Peak tyre friction coefficient on dry asphalt. */
   mu: number;
+  /** Extra rear grip so the car prefers to understeer rather than spin. */
+  rearGripBias: number;
   /** Simplified Pacejka shape: force = sin(C * atan(B * slip)). */
   tyreB: number;
   tyreC: number;
@@ -66,14 +68,15 @@ export const F1_CAR: CarParams = {
   width: 1.9,
 
   mu: 1.75,
-  tyreB: 20,
-  tyreC: 1.4,
+  rearGripBias: 1.12,
+  tyreB: 30,
+  tyreC: 1.2,
 
   power: 740_000,
   maxDriveForce: 14_000,
-  brakeGrip: 0.95,
+  brakeGrip: 0.85,
   brakeBiasFront: 0.57,
-  tractionAssist: 0.7,
+  tractionAssist: 1,
 
   dragCoef: 0.85,
   downforceCoef: 2.4,
@@ -81,10 +84,10 @@ export const F1_CAR: CarParams = {
   rollingResistance: 0.015,
 
   maxSteerLow: 0.4,
-  maxSteerHigh: 0.07,
+  maxSteerHigh: 0.1,
   steerSpeedRef: 22,
-  steerRate: 2.5,
-  steerReturnRate: 4,
+  steerRate: 4.5,
+  steerReturnRate: 6,
   throttleRate: 6,
   brakeRate: 8,
 

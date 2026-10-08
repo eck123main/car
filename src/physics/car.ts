@@ -123,7 +123,7 @@ export class Car {
     this.surfaceRear = surfR.type;
     const gripMul = 1 - 0.25 * this.damage;
     const capF = p.mu * surfF.grip * gripMul * loadF;
-    const capR = p.mu * surfR.grip * gripMul * loadR;
+    const capR = p.mu * p.rearGripBias * surfR.grip * gripMul * loadR;
 
     // --- Lateral tyre forces from slip angles.
     const cd = Math.cos(this.steer);

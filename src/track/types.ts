@@ -19,8 +19,8 @@ export interface Surface {
 
 export const SURFACES: Record<SurfaceType, Surface> = {
   asphalt: { type: 'asphalt', grip: 1, drag: 0 },
-  kerb: { type: 'kerb', grip: 0.9, drag: 0.4 },
-  grass: { type: 'grass', grip: 0.5, drag: 2.5 },
-  gravel: { type: 'gravel', grip: 0.45, drag: 9 },
+  kerb: { type: 'kerb', grip: 0.95, drag: 0.2 },
+  grass: { type: 'grass', grip: 0.7, drag: 1.5 },
+  gravel: { type: 'gravel', grip: 0.6, drag: 3.5 },
   wall: { type: 'wall', grip: 0.4, drag: 4 },
 };
