@@ -75,7 +75,7 @@ function render(alpha: number, dt: number): void {
 
   camera.apply(ctx, canvas.width, canvas.height, dpr);
   trackGfx.draw(ctx);
-  drawCar(ctx, car.params, x, y, heading, car.steer, car.color);
+  drawCar(ctx, car.params, x, y, heading, car.steer * car.params.wheelAngleVisual, car.color);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = canvas.width / dpr;

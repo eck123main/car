@@ -29,7 +29,7 @@ export class Camera {
     this.y += (y + vy * 0.4 - this.y) * k;
     let diff = heading - this.angle;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    this.angle += diff * (1 - Math.exp(-dt * 5));
+    this.angle += diff * (1 - Math.exp(-dt * 3));
   }
 
   /** Set ctx to draw in world metres. */

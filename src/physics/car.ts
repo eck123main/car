@@ -18,8 +18,9 @@ export interface CarWorld {
 const G = 9.81;
 
 /**
- * Top-down car with a two-axle (bicycle) tyre model, downforce, drag and a
- * friction circle per axle. Local frame: x = forward, y = right.
+ * Top-down car: grip from weight + downforce, shared between braking/accelerating and
+ * cornering. Steering sets a turn rate capped by that grip, so the car runs wide
+ * instead of spinning. Local frame: x = forward, y = right.
  */
 export class Car {
   x = 0;
@@ -48,8 +49,6 @@ export class Car {
   prevY = 0;
   prevHeading = 0;
 
-  private accelPrev = 0;
-
   constructor(
     readonly params: CarParams,
     readonly color: string,
@@ -70,7 +69,6 @@ export class Car {
     this.heading = this.prevHeading = heading;
     this.vx = this.vy = this.yawRate = 0;
     this.steer = this.throttle = this.brake = 0;
-    this.accelPrev = 0;
   }
 
   repair(): void {
@@ -91,6 +89,7 @@ export class Car {
     const vy = -this.vx * s + this.vy * c;
     const v2 = vx * vx + vy * vy;
     const speed = Math.sqrt(v2);
+    const m = p.mass;
 
     // --- Driver controls, ramped because keyboard input is on/off.
     const wantThrottle = this.retired ? 0 : input.throttle;
@@ -98,103 +97,72 @@ export class Car {
     const wantSteer = this.retired ? 0 : input.steer;
     this.throttle = approach(this.throttle, wantThrottle, p.throttleRate * dt);
     this.brake = approach(this.brake, wantBrake, p.brakeRate * dt);
-    const maxSteer = Math.max(p.maxSteerHigh, p.maxSteerLow / (1 + speed / p.steerSpeedRef));
-    const steerTarget = wantSteer * maxSteer;
-    const centring = Math.abs(steerTarget) < Math.abs(this.steer) || steerTarget * this.steer < 0;
-    this.steer = approach(this.steer, steerTarget, (centring ? p.steerReturnRate : p.steerRate) * dt);
+    const centring = Math.abs(wantSteer) < Math.abs(this.steer) || wantSteer * this.steer < 0;
+    this.steer = approach(this.steer, wantSteer, (centring ? p.steerReturnRate : p.steerRate) * dt);
 
-    // --- Axle loads: static weight + downforce + longitudinal weight transfer.
-    const a = p.cgToFront;
-    const b = p.cgToRear;
-    const L = a + b;
-    const m = p.mass;
+    // --- Grip: weight + downforce, per axle so each axle feels its own surface.
+    const L = p.cgToFront + p.cgToRear;
     const downforce = p.downforceCoef * v2 * (1 - 0.2 * this.damage);
-    const transfer = (m * this.accelPrev * p.cgHeight) / L;
-    const minLoad = 0.1 * m * G;
-    const loadF = Math.max(minLoad, (m * G * b) / L + downforce * p.aeroBalanceFront - transfer);
-    const loadR = Math.max(minLoad, (m * G * a) / L + downforce * (1 - p.aeroBalanceFront) + transfer);
-    const massF = (m * b) / L;
-    const massR = (m * a) / L;
-
-    // --- Surface under each axle.
-    const surfF = world.surfaceAt(this.x + c * a, this.y + s * a);
-    const surfR = world.surfaceAt(this.x - c * b, this.y - s * b);
+    const loadF = (m * G * p.cgToRear) / L + downforce * p.aeroBalanceFront;
+    const loadR = (m * G * p.cgToFront) / L + downforce * (1 - p.aeroBalanceFront);
+    const surfF = world.surfaceAt(this.x + c * p.cgToFront, this.y + s * p.cgToFront);
+    const surfR = world.surfaceAt(this.x - c * p.cgToRear, this.y - s * p.cgToRear);
     this.surfaceFront = surfF.type;
     this.surfaceRear = surfR.type;
     const gripMul = 1 - 0.25 * this.damage;
-    const capF = p.mu * surfF.grip * gripMul * loadF;
-    const capR = p.mu * p.rearGripBias * surfR.grip * gripMul * loadR;
+    const grip = p.mu * gripMul * (surfF.grip * loadF + surfR.grip * loadR);
 
-    // --- Lateral tyre forces from slip angles.
-    const cd = Math.cos(this.steer);
-    const sd = Math.sin(this.steer);
-    const vyFront = vy + this.yawRate * a;
-    const vxWheelF = vx * cd + vyFront * sd;
-    const vyWheelF = -vx * sd + vyFront * cd;
-    const slipF = Math.atan2(vyWheelF, Math.max(Math.abs(vxWheelF), 1));
-    // Never apply more force than it takes to stop the sideways motion this step.
-    let fyF = clampAbs(-this.tyre(slipF) * capF, (massF * Math.abs(vyWheelF)) / dt);
-
-    const vyRear = vy - this.yawRate * b;
-    const slipR = Math.atan2(vyRear, Math.max(Math.abs(vx), 1));
-    let fyR = clampAbs(-this.tyre(slipR) * capR, (massR * Math.abs(vyRear)) / dt);
-
-    // --- Longitudinal forces: brakes, engine, reverse.
+    // --- Longitudinal: engine, brakes, reverse. Limited by grip (no wheelspin or lockups).
     const reversing = input.brake > 0 && input.throttle === 0 && vx < 1.5 && !this.retired;
-    const brake = reversing ? 0 : this.brake;
-    const brakeCap = p.brakeGrip * p.mu * gripMul * (loadF + loadR);
-    let fxF = -Math.sign(vxWheelF) * Math.min(brake * brakeCap * p.brakeBiasFront, (massF * Math.abs(vxWheelF)) / dt);
-    let fxR = -Math.sign(vx) * Math.min(brake * brakeCap * (1 - p.brakeBiasFront), (massR * Math.abs(vx)) / dt);
-
+    let fx = 0;
     if (reversing) {
-      if (vx > -p.maxReverseSpeed) fxR -= p.reverseForce;
-    } else if (this.throttle > 0) {
+      if (vx > -p.maxReverseSpeed) fx -= p.reverseForce;
+    } else {
       const power = p.power * (1 - 0.2 * this.damage);
-      let drive = this.throttle * Math.min(p.maxDriveForce, power / Math.max(vx, 1));
-      const lateralUsed = Math.abs(fyR) * p.tractionAssist;
-      drive = Math.min(drive, Math.sqrt(Math.max(0, capR * capR - lateralUsed * lateralUsed)));
-      fxR += drive;
+      const rearGrip = p.mu * gripMul * surfR.grip * loadR;
+      fx += Math.min(rearGrip, this.throttle * Math.min(p.maxDriveForce, power / Math.max(vx, 1)));
+      const brakeForce = this.brake * p.brakeGrip * p.mu * gripMul * (loadF + loadR);
+      fx -= Math.sign(vx) * Math.min(brakeForce, (m * Math.abs(vx)) / dt);
     }
+    fx = clampAbs(fx, grip * 0.98);
 
-    // --- Friction circle: longitudinal force eats into lateral grip.
-    [fxF, fyF] = frictionCircle(fxF, fyF, capF);
-    [fxR, fyR] = frictionCircle(fxR, fyR, capR);
+    // --- Lateral: tyres cancel sideways sliding, up to what's left of the grip.
+    // Braking or accelerating hard leaves less grip for cornering.
+    const lateralGrip = Math.sqrt(Math.max(0, grip * grip - fx * fx));
+    const fy = clampAbs((-m * vy) / dt, lateralGrip);
 
-    // Front tyre forces into the car frame.
-    const fxFront = fxF * cd - fyF * sd;
-    const fyFront = fxF * sd + fyF * cd;
+    // --- Rotation: steering asks for a turn rate, capped by the tightest turn
+    // the tyres can hold at this speed. Too fast for a corner = the car runs wide.
+    const forward = Math.abs(vx);
+    const geometricLimit = forward / p.minTurnRadius;
+    const gripLimit = (p.turnGripUse * lateralGrip) / m / Math.max(forward, 1);
+    const targetYaw = this.steer * Math.min(geometricLimit, gripLimit) * Math.sign(vx);
+    this.yawRate += (targetYaw - this.yawRate) * Math.min(1, p.yawResponse * dt);
 
     // --- Resistance: aero drag, rolling resistance and surface drag.
-    let fx = fxFront + fxR;
-    let fy = fyFront + fyR;
+    let fxTotal = fx;
+    let fyTotal = fy;
     if (speed > 1e-3) {
       const drag = p.dragCoef * (1 + 0.3 * this.damage) * v2;
       const rolling = p.rollingResistance * m * G + (m * (surfF.drag + surfR.drag)) / 2;
       const resist = Math.min(drag + rolling, (m * speed) / dt);
-      fx -= (resist * vx) / speed;
-      fy -= (resist * vy) / speed;
+      fxTotal -= (resist * vx) / speed;
+      fyTotal -= (resist * vy) / speed;
     }
-    const torque = a * fyFront - b * fyR;
 
-    const ax = fx / m;
-    const ay = fy / m;
-    this.accelPrev += (ax - this.accelPrev) * Math.min(1, dt * 20);
+    const ax = fxTotal / m;
+    const ay = fyTotal / m;
     this.longG = ax / G;
-    this.latG = ay / G;
+    this.latG = (vx * this.yawRate) / G;
 
     // --- Integrate (semi-implicit Euler) in world space.
     this.vx += (ax * c - ay * s) * dt;
     this.vy += (ax * s + ay * c) * dt;
-    this.yawRate += (torque / p.inertia) * dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.heading += this.yawRate * dt;
 
     this.collideWalls(world);
-  }
-
-  private tyre(slip: number): number {
-    return Math.sin(this.params.tyreC * Math.atan(this.params.tyreB * slip));
   }
 
   private collideWalls(world: CarWorld): void {
@@ -264,12 +232,4 @@ function approach(current: number, target: number, maxDelta: number): number {
 
 function clampAbs(v: number, max: number): number {
   return v > max ? max : v < -max ? -max : v;
-}
-
-/** Keep the combined tyre force inside the grip limit. A locked or spinning wheel keeps little side grip. */
-function frictionCircle(fx: number, fy: number, cap: number): [number, number] {
-  if (fx * fx + fy * fy <= cap * cap) return [fx, fy];
-  if (Math.abs(fx) > cap) fx = Math.sign(fx) * cap * 0.9;
-  const fyMax = Math.sqrt(Math.max(0, cap * cap - fx * fx));
-  return [fx, clampAbs(fy, fyMax)];
 }

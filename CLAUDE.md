@@ -56,9 +56,11 @@ Top-down 2D car physics that feels like an F1 car:
 
 - **Throttle / brake / steering**, with acceleration that drops off at higher speed and
   strong braking.
-- **Grip model**: tyres have a grip limit. Going over it (too fast into a corner, too
-  much steering) causes understeer or oversteer/sliding. This is where "drift" comes from.
-  It should feel like a mistake you can recover from, not a power-up.
+- **Grip model**: grip comes from weight + downforce and is shared between braking/
+  accelerating and cornering. Steering sets a turn rate, capped by the tightest turn the
+  tyres can hold at the current speed. Too fast for a corner = the car runs wide (onto
+  grass/gravel, maybe into the wall); it does **not** spin. This was chosen after a
+  slip-angle tyre model proved too hard to control on a keyboard.
 - **Downforce**: more grip at high speed and less in slow corners, so fast corners and
   hairpins feel different.
 - **Slipstream**: following closely behind another car on a straight lowers drag.
