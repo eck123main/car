@@ -4,6 +4,7 @@ import { Keyboard } from './game/input';
 import { ClientGame } from './net/client';
 import { HostGame } from './net/host';
 import { connectToHost, createHost } from './net/peer';
+import { OfflineTransport } from './net/transport';
 import { Track } from './track/track';
 import type { TrackDef } from './track/types';
 import { DEFAULT_TRACK, loadCustomTrack, TRACKS } from './tracks';
@@ -46,7 +47,7 @@ function home(): void {
 }
 
 function welcome(joining: boolean): void {
-  showWelcome({ joining, onJoin: join, onHost: host, onPractice: practice });
+  showWelcome({ joining, onJoin: join, onHost: (n) => host(n, false), onBots: (n) => host(n, true), onPractice: practice });
 }
 
 function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: string }): void {
@@ -81,18 +82,21 @@ function practice(name: string): void {
 
 // ---------- Hosting
 
-async function host(name: string): Promise<void> {
-  showMessage('Creating lobby…', 'Connecting to the matchmaking server.');
+/** Host a lobby. Offline: nobody can join (racing bots on your own, no internet needed). */
+async function host(name: string, offline: boolean): Promise<void> {
+  if (!offline) showMessage('Creating lobby…', 'Connecting to the matchmaking server.');
   let hostGame: HostGame;
   try {
-    const transport = await createHost();
+    const transport = offline ? new OfflineTransport() : await createHost();
     hostGame = new HostGame(transport, name, trackDef);
+    // A bots race starts with a few opponents ready to go.
+    if (offline) for (const d of ['hard', 'medium', 'medium', 'easy', 'easy'] as const) hostGame.addBot(d);
   } catch (err) {
     showMessage("Couldn't create a lobby", (err as Error).message, { label: 'Back', onClick: home });
     return;
   }
   cleanup = () => hostGame.close();
-  const invite = `${location.origin}${location.pathname}?join=${hostGame.transport.code}`;
+  const invite = offline ? '' : `${location.origin}${location.pathname}?join=${hostGame.transport.code}`;
   const showResultsForHost = () => {
     const s = hostGame.session!;
     showResults({
@@ -116,10 +120,12 @@ async function host(name: string): Promise<void> {
       inviteLink: invite,
       tracks: trackList(),
       onSettings: (c) => hostGame.updateSettings(c),
+      onAddBot: (d) => hostGame.addBot(d),
+      onRemoveBot: (id) => hostGame.removeBot(id),
       onStart: () => {
         hostGame.start();
         runGame(new HostDriver(hostGame), {
-          menuNote: 'You are the host: leaving ends the race for everyone.',
+          menuNote: offline ? 'Leaving ends the race.' : 'You are the host: leaving ends the race for everyone.',
           onFinished: showResultsForHost,
         });
       },

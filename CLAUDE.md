@@ -237,7 +237,14 @@ The timing tower is always shown (no Tab needed).
 - The game itself is static files, deployable free to **GitHub Pages** (or similar).
 - If the host leaves, the race ends (host migration is out of scope for now). A client
   who disconnects mid-race is retired (DNF). Joining mid-race is refused.
-- **Max 10 players** per race. **No bots** for now (`src/sim/bot.ts` is a test driver).
+- **Max 10 players** per race, bots included.
+- **Bots** (`src/sim/ai/`): the host adds them in the lobby (Easy / Medium / Hard), or uses
+  "Race against bots" on the welcome screen (offline, starts with 5 bots). They follow a
+  minimum-curvature racing line with a planned speed profile (pace: Easy 74%, Medium 86%,
+  Hard 95% of grip), keep safe gaps, overtake when there is room, hold their grid column
+  for 4 s at the start, use DRS/ERS, pit using the race engineer, change to wets in the
+  rain, and reverse out if stuck. Bots run only on the host. `src/sim/bot.ts` is a
+  simpler driver used by older tests.
 - Code: `src/net/` — `host.ts` (lobby + authoritative session, snapshots 20 Hz,
   timing/standings 4 Hz), `client.ts` (mirror world, own-car prediction + reconciliation,
   interpolation 100 ms behind for other cars), `protocol.ts`, `peer.ts` (PeerJS),

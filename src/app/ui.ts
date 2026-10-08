@@ -1,4 +1,5 @@
 import type { LobbyState } from '../net/protocol';
+import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
 import { formatLapTime } from '../render/hud';
 import type { RaceSettings, Standing, Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
@@ -70,6 +71,7 @@ export interface WelcomeActions {
   joining: boolean;
   onJoin: (name: string) => void;
   onHost: (name: string) => void;
+  onBots: (name: string) => void;
   onPractice: (name: string) => void;
 }
 
@@ -89,6 +91,7 @@ export function showWelcome(a: WelcomeActions): void {
     ? [el('button', { class: 'primary', onclick: go(a.onJoin) }, 'Join lobby')]
     : [
         el('button', { class: 'primary', onclick: go(a.onHost) }, 'Create lobby'),
+        el('button', { onclick: go(a.onBots) }, 'Race against bots'),
         el('button', { onclick: go(a.onPractice) }, 'Practice solo'),
       ];
   name.addEventListener('keydown', (e) => e.key === 'Enter' && buttons[0].click());
@@ -136,7 +139,12 @@ export interface LobbyView {
   onSettings: (changes: Partial<RaceSettings>) => void;
   onStart: () => void;
   onLeave: () => void;
+  /** Host only. */
+  onAddBot?: (difficulty: Difficulty) => void;
+  onRemoveBot?: (id: string) => void;
 }
+
+const DIFFICULTY_NAMES: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 const WEATHER: Record<Weather, string> = {
   dry: 'Dry',
@@ -153,7 +161,27 @@ export function showLobby(v: LobbyView): void {
     const li = el('li', {}, el('span', { class: 'dot', style: `background:${p.color}` }), el('span', {}, p.name));
     if (p.host) li.append(el('span', { class: 'tag' }, 'HOST'));
     if (p.id === v.meId) li.append(el('span', { class: 'tag you' }, 'YOU'));
+    if (p.bot) {
+      li.append(el('span', { class: 'tag bot' }, `BOT · ${DIFFICULTY_NAMES[p.bot]}`));
+      if (v.isHost && v.onRemoveBot) {
+        const remove = v.onRemoveBot;
+        li.append(el('button', { class: 'small', title: 'Remove bot', onclick: () => remove(p.id) }, '✕'));
+      }
+    }
     players.append(li);
+  }
+  let botControls: HTMLElement | null = null;
+  if (v.isHost && v.onAddBot) {
+    const add = v.onAddBot;
+    const pick = el('select', {});
+    for (const d of DIFFICULTIES) pick.add(new Option(DIFFICULTY_NAMES[d], d, false, d === 'medium'));
+    const full = v.lobby.players.length >= 10;
+    botControls = el(
+      'div',
+      { class: 'buttons' },
+      pick,
+      el('button', { disabled: full, onclick: () => add(pick.value as Difficulty) }, full ? 'Lobby full' : 'Add bot'),
+    );
   }
 
   const link = el('input', { type: 'text', readOnly: true, value: v.inviteLink });
@@ -213,11 +241,16 @@ export function showLobby(v: LobbyView): void {
         'div',
         { class: 'card' },
         el('h1', {}, 'Lobby'),
-        el('p', { class: 'sub' }, v.isHost ? 'Send your friends the link, then start when everyone is in.' : 'Waiting for the host to start…'),
+        el(
+          'p',
+          { class: 'sub' },
+          !v.isHost ? 'Waiting for the host to start…' : v.inviteLink ? 'Send your friends the link, add bots if you like, then start.' : 'Add some bots, pick the race settings, then start.',
+        ),
         el('h2', {}, `Drivers (${v.lobby.players.length}/10)`),
         players,
-        el('h2', {}, 'Invite link'),
-        el('div', { class: 'invite' }, link, copy),
+        botControls,
+        v.inviteLink ? el('h2', {}, 'Invite link') : null,
+        v.inviteLink ? el('div', { class: 'invite' }, link, copy) : null,
         el('h2', {}, 'Race'),
         settings,
         el('div', { class: 'buttons' }, v.isHost ? start : null, el('button', { onclick: v.onLeave }, 'Leave')),
