@@ -187,7 +187,7 @@ describe('Grid and finish', () => {
   it('lets lapped cars finish when they next cross the line', () => {
     const { session } = run(
       { qualifying: false, laps: 3, mandatoryStop: false },
-      { a: { grip: 26, offset: -3 }, b: { grip: 24, offset: 3 }, c: { grip: 5 } },
+      { a: { grip: 26, offset: -3 }, b: { grip: 24, offset: 3 }, c: { grip: 2.5 } },
       'finished',
       900,
       (s) => (s.world.options.collisions = false),

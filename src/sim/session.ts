@@ -372,13 +372,19 @@ export class Session {
         position: i + 1,
         laps: r.timer.lapsCompleted,
         gap: this.gapTo(leader, r),
-        lapsDown: Math.max(0, leader.timer.lapsCompleted - r.timer.lapsCompleted - (this.progress(leader) - this.progress(r) < this.track.length ? 1 : 0)),
+        lapsDown: this.lapsDown(leader, r),
         status: finishTime !== undefined ? 'finished' : r.car.retired ? 'dnf' : r.pit.phase !== 'out' ? 'pit' : 'running',
         penalties: penaltyTime(r),
         bestLap: best(r),
         totalTime: finishTime !== undefined ? finishTime + penaltyTime(r) : null,
       };
     });
+  }
+
+  /** How many laps behind the leader a car is (finished cars: by laps completed). */
+  private lapsDown(leader: Racer, r: Racer): number {
+    if (this.finishTimes.has(r.id)) return Math.max(0, leader.timer.lapsCompleted - r.timer.lapsCompleted);
+    return Math.max(0, Math.floor((this.progress(leader) - this.progress(r)) / this.track.length));
   }
 
   private gapTo(leader: Racer, r: Racer): number | null {
