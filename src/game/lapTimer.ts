@@ -15,6 +15,20 @@ export interface LapRecord {
   valid: boolean;
 }
 
+/** Everything the HUD needs from a timer, for sending over the network. */
+export interface TimerState {
+  lapsCompleted: number;
+  lapStart: number | null;
+  sectors: number[];
+  valid: boolean;
+  lastLap: LapRecord | null;
+  bestLap: LapRecord | null;
+  bestSectors: (number | null)[];
+  trackLimitWarnings: number;
+  offTrack: boolean;
+  s: number | null;
+}
+
 export type TimingEvent =
   | { kind: 'lap'; lap: LapRecord; personalBest: boolean }
   | { kind: 'trackLimits'; warnings: number; lapDeleted: boolean };
@@ -55,6 +69,35 @@ export class LapTimer {
   constructor(private readonly track: Track) {
     // Sector lines split the lap into equal thirds; the last one is the finish line.
     this.sectorEnds = Array.from({ length: SECTOR_COUNT }, (_, i) => (track.length * (i + 1)) / SECTOR_COUNT);
+  }
+
+  snapshot(): TimerState {
+    return {
+      lapsCompleted: this.lapsCompleted,
+      lapStart: this.lapStart,
+      sectors: this.sectors,
+      valid: this.valid,
+      lastLap: this.lastLap,
+      bestLap: this.bestLap,
+      bestSectors: this.bestSectors,
+      trackLimitWarnings: this.trackLimitWarnings,
+      offTrack: this.offTrack,
+      s: this.prevS,
+    };
+  }
+
+  /** Mirror a timer from the host (clients only display it, they never time laps). */
+  restore(st: TimerState): void {
+    this.lapsCompleted = st.lapsCompleted;
+    this.lapStart = st.lapStart;
+    this.sectors = st.sectors;
+    this.valid = st.valid;
+    this.lastLap = st.lastLap;
+    this.bestLap = st.bestLap;
+    this.bestSectors = st.bestSectors;
+    this.trackLimitWarnings = st.trackLimitWarnings;
+    this.offTrack = st.offTrack;
+    this.prevS = st.s;
   }
 
   /** The car's distance along the lap (m) at the last update, if known. */
