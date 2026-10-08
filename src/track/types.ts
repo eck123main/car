@@ -15,12 +15,14 @@ export interface Surface {
   grip: number;
   /** Extra rolling drag as a deceleration in m/s^2. */
   drag: number;
+  /** Extra drag that grows with speed (deceleration per m/s), so going off is never faster. */
+  dragPerSpeed: number;
 }
 
 export const SURFACES: Record<SurfaceType, Surface> = {
-  asphalt: { type: 'asphalt', grip: 1, drag: 0 },
-  kerb: { type: 'kerb', grip: 0.95, drag: 0.2 },
-  grass: { type: 'grass', grip: 0.7, drag: 1.5 },
-  gravel: { type: 'gravel', grip: 0.6, drag: 3.5 },
-  wall: { type: 'wall', grip: 0.4, drag: 4 },
+  asphalt: { type: 'asphalt', grip: 1, drag: 0, dragPerSpeed: 0 },
+  kerb: { type: 'kerb', grip: 0.95, drag: 0.2, dragPerSpeed: 0 },
+  grass: { type: 'grass', grip: 0.7, drag: 1.5, dragPerSpeed: 0.25 },
+  gravel: { type: 'gravel', grip: 0.6, drag: 3.5, dragPerSpeed: 0.5 },
+  wall: { type: 'wall', grip: 0.4, drag: 4, dragPerSpeed: 0.4 },
 };

@@ -146,7 +146,8 @@ export class Car {
     let fyTotal = fy;
     if (speed > 1e-3) {
       const drag = p.dragCoef * (1 + 0.3 * this.damage) * v2;
-      const rolling = p.rollingResistance * m * G + (m * (surfF.drag + surfR.drag)) / 2;
+      const surfaceDrag = surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed;
+      const rolling = p.rollingResistance * m * G + (m * surfaceDrag) / 2;
       const resist = Math.min(drag + rolling, (m * speed) / dt);
       fxTotal -= (resist * vx) / speed;
       fyTotal -= (resist * vy) / speed;
