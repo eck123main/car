@@ -19,7 +19,10 @@ const kmh = (c: Car) => c.speed * 3.6;
 
 describe('Car', () => {
   it('accelerates and tops out like an F1 car on asphalt', () => {
-    expect(kmh(run(on(SURFACES.asphalt), 30, FLAT_OUT))).toBeGreaterThan(320);
+    // A little under real F1 (~340) on purpose: the tracks are half size.
+    const top = kmh(run(on(SURFACES.asphalt), 30, FLAT_OUT));
+    expect(top).toBeGreaterThan(300);
+    expect(top).toBeLessThan(330);
   });
 
   it('is much slower flat out on grass and gravel', () => {

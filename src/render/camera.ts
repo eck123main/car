@@ -27,8 +27,9 @@ export class Camera {
     const targetZoom = (8 - 2.5 * Math.min(speed / 90, 1)) * screenScale;
     this.zoom += (targetZoom - this.zoom) * (1 - Math.exp(-dt * 1.5));
     const k = 1 - Math.exp(-dt * 4);
-    this.x += (x + vx * 0.4 - this.x) * k;
-    this.y += (y + vy * 0.4 - this.y) * k;
+    // Look further ahead the faster we go, so corners come into view sooner.
+    this.x += (x + vx * 0.6 - this.x) * k;
+    this.y += (y + vy * 0.6 - this.y) * k;
   }
 
   /** Set ctx to draw in world metres. */

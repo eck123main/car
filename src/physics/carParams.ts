@@ -63,19 +63,19 @@ export const F1_CAR: CarParams = {
   width: 1.9,
   inertia: 1100,
 
-  mu: 2.4,
+  mu: 2.7,
 
   power: 740_000,
   maxDriveForce: 14_000,
   combinedGripPenalty: 0.5,
-  brakeGrip: 0.85,
+  brakeGrip: 0.95,
 
-  dragCoef: 0.85,
+  dragCoef: 1.1,
   downforceCoef: 2.4,
   aeroBalanceFront: 0.42,
   rollingResistance: 0.015,
 
-  minTurnRadius: 9,
+  minTurnRadius: 7.5,
   turnGripUse: 1,
   yawResponse: 8,
   steerRate: 7,
@@ -90,7 +90,7 @@ export const F1_CAR: CarParams = {
   wallRestitution: 0.3,
   wallFriction: 0.5,
   damageThreshold: 3,
-  crashSpeed: 20,
-  damagePerSpeed: 0.03,
+  crashSpeed: 25,
+  damagePerSpeed: 0.025,
   maxDamage: 0.8,
 };
