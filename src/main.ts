@@ -68,6 +68,8 @@ function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: 
   };
   g.onPhase = (phase) => {
     if (phase === 'finished') opts.onFinished?.();
+    // A new session started (play again): take the results screen away.
+    else if (phase === 'qualifying' || phase === 'grid') clearUi();
   };
   g.start();
 }
@@ -107,6 +109,10 @@ async function host(name: string, offline: boolean): Promise<void> {
       onContinue: () => {
         stopGame();
         hostGame.backToLobby();
+      },
+      onPlayAgain: () => {
+        hostGame.start();
+        clearUi();
       },
       onLeave: home,
     });

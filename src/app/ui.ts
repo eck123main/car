@@ -266,6 +266,8 @@ export interface ResultsView {
   isHost: boolean;
   /** Host: back to lobby. Others wait for the host. */
   onContinue?: () => void;
+  /** Host: race again with everyone, same settings. */
+  onPlayAgain?: () => void;
   onLeave: () => void;
 }
 
@@ -309,7 +311,8 @@ export function showResults(v: ResultsView): void {
         el(
           'div',
           { class: 'buttons' },
-          v.isHost && v.onContinue ? el('button', { class: 'primary', onclick: v.onContinue }, 'Back to lobby') : null,
+          v.isHost && v.onPlayAgain ? el('button', { class: 'primary', onclick: v.onPlayAgain }, 'Play again') : null,
+          v.isHost && v.onContinue ? el('button', { onclick: v.onContinue }, 'Back to lobby') : null,
           !v.isHost ? el('span', { class: 'muted' }, 'Waiting for the host…') : null,
           el('button', { onclick: v.onLeave }, 'Leave'),
         ),

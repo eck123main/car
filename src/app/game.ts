@@ -12,7 +12,7 @@ import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawRain } from '../render/rain';
 import { drawLights, drawNameTag, drawSessionBanner, drawTower } from '../render/sessionHud';
 import { TrackGraphics } from '../render/trackGraphics';
-import type { SessionEvent } from '../sim/session';
+import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import type { Track } from '../track/track';
 
@@ -33,6 +33,8 @@ export interface GameDriver {
   takeEvents(): SessionEvent[];
   /** Hint for the crashed-out overlay: what R does here. */
   readonly resetHint: string;
+  /** When our car goes back on track after a reset, if it is waiting. */
+  recoverAt(): number | null;
 }
 
 function lerpPose(r: Racer, alpha: number): Pose {
@@ -47,7 +49,8 @@ function lerpPose(r: Racer, alpha: number): Pose {
 /** Free practice on one machine, no network. */
 export class PracticeDriver implements GameDriver {
   readonly meId = 'me';
-  readonly resetHint = 'Press R to reset';
+  readonly resetHint = 'Press R to get back on track (5 s wait)';
+  private recovering: number | null = null;
   private readonly w: RaceWorld;
   private events: SessionEvent[] = [];
 
@@ -74,8 +77,20 @@ export class PracticeDriver implements GameDriver {
     return me.timer.delta(this.w.time);
   }
   step(dt: number, input: PlayerInput) {
-    if (input.reset) this.reset();
+    const me = this.w.racer(this.meId)!;
+    if (input.reset && this.recovering === null) {
+      this.recovering = this.w.time + RESET_WAIT;
+      me.frozen = true;
+    }
+    if (this.recovering !== null && this.w.time >= this.recovering) {
+      this.recovering = null;
+      me.frozen = false;
+      this.reset();
+    }
     this.events.push(...this.w.step(dt, new Map([[this.meId, input]])));
+  }
+  recoverAt() {
+    return this.recovering;
   }
   endFrame() {}
   pose(r: Racer, alpha: number) {
@@ -105,6 +120,9 @@ export class HostDriver implements GameDriver {
   readonly meId = HostGame.HOST_ID;
   get resetHint() {
     return resetHint(this.session()?.phase);
+  }
+  recoverAt() {
+    return this.host.session?.recovering.get(this.meId) ?? null;
   }
   constructor(private readonly host: HostGame) {}
   world() {
@@ -140,6 +158,9 @@ export class ClientDriver implements GameDriver {
   }
   get resetHint() {
     return resetHint(this.client.session?.phase);
+  }
+  recoverAt() {
+    return this.client.session?.recovering.find(([id]) => id === this.meId)?.[1] ?? null;
   }
   world() {
     return this.client.world;
@@ -323,8 +344,8 @@ export class GameScreen {
         return { x: p.x, y: p.y, color: r.color };
       }),
     );
-    const recoverAt = session?.recovering.find(([id]) => id === me.id)?.[1];
-    drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint, recoverAt !== undefined ? recoverAt - now : null);
+    const recoverAt = this.driver.recoverAt();
+    drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint, recoverAt !== null ? recoverAt - now : null);
     drawDamage(ctx, me.car, w);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);

@@ -150,3 +150,25 @@ describe('Reset (R)', () => {
     expect(s.recovering.has('a')).toBe(true);
   });
 });
+
+describe('Track limits in a race', () => {
+  it('only penalise every 20th warning', () => {
+    const s = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test', qualifying: false }, PLAYERS);
+    const idle = () => new Map(s.world.racers.map((r) => [r.id, { ...botInput(track, r, { hold: true }) }] as const));
+    while (s.phase !== 'race') s.step(DT, idle());
+    const a = s.world.racer('a')!;
+    const t = track.samples[200];
+    const h = Math.atan2(t.ty, t.tx);
+    // Hop off the track and back on, again and again.
+    for (let i = 0; i < 20; i++) {
+      const off = t.halfWidth + 6;
+      a.car.place(t.x + t.nx * off, t.y + t.ny * off, h);
+      s.step(DT, idle());
+      a.car.place(t.x, t.y, h);
+      for (let k = 0; k < 70; k++) s.step(DT, idle());
+      if (i === 18) expect(penaltyTime(a)).toBe(0);
+    }
+    expect(a.timer.trackLimitWarnings).toBe(20);
+    expect(penaltyTime(a)).toBe(5);
+  });
+});

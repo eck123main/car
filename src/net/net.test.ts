@@ -195,3 +195,29 @@ describe('Lag', () => {
     expect(racer.car.retired).toBe(false);
   });
 });
+
+describe('Play again', () => {
+  it('restarts the weekend for everyone in the lobby', () => {
+    const { host, join, tick } = setup();
+    const c = join('Alice');
+    tick();
+    host.addBot('easy');
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    for (let t = 0; t < 2; t += DT) {
+      host.step(DT, IDLE_INPUT);
+      tick();
+    }
+    const first = host.session;
+    host.start();
+    for (let i = 0; i < 5; i++) {
+      host.step(DT, IDLE_INPUT);
+      tick();
+    }
+    expect(host.session).not.toBe(first);
+    expect(host.session!.world.racers).toHaveLength(3);
+    expect(c.status).toBe('racing');
+    expect(c.world!.racers.map((r) => r.id).sort()).toEqual(host.session!.world.racers.map((r) => r.id).sort());
+    expect(c.session?.phase).toBe('grid');
+  });
+});

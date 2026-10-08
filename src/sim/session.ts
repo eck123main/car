@@ -72,7 +72,8 @@ const FINISH_TIMEOUT = 60;
 const GRID_SPACING = 8;
 const JUMP_START_DISTANCE = 1;
 const JUMP_START_PENALTY = 5;
-const TRACK_LIMIT_FREE_WARNINGS = 5;
+/** Track limits are only penalised on every Nth warning. */
+const TRACK_LIMIT_PENALTY_EVERY = 20;
 const TRACK_LIMIT_PENALTY = 5;
 const MANDATORY_STOP_PENALTY = 30;
 const GAP_BUCKET = 25;
@@ -259,7 +260,7 @@ export class Session {
     const now = this.world.time;
     for (const e of worldEvents) {
       const r = this.world.racer(e.racerId)!;
-      if (e.kind === 'trackLimits' && e.warnings > TRACK_LIMIT_FREE_WARNINGS) {
+      if (e.kind === 'trackLimits' && e.warnings % TRACK_LIMIT_PENALTY_EVERY === 0) {
         this.world.addPenalty(r, TRACK_LIMIT_PENALTY, `Track limits (warning ${e.warnings})`, events as WorldEvent[]);
       }
       if (e.kind === 'lap' && !this.finishTimes.has(r.id)) {

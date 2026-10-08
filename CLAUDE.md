@@ -49,7 +49,8 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
    out after a random delay, and the race starts. Players can rev on the grid. A
    **jump start** (moving before lights out) should be detected and penalised.
 5. **Race**: N laps. Pit stops, tyre strategy, DRS, collisions, possible weather.
-6. **Results**: finishing order, gaps, fastest lap, penalties.
+6. **Results**: finishing order, gaps, fastest lap, penalties. The host can **Play again**
+   (same lobby and settings, straight into a new weekend) or go back to the lobby.
 
 ## Driving & physics
 
@@ -96,7 +97,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
-| Reset to track | **R** | 5 s wait (instant in practice), no penalty. Qualifying: back to pit exit |
+| Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 
 The timing tower is always shown (no Tab needed).
@@ -113,7 +114,7 @@ The timing tower is always shown (no Tab needed).
 - **Track limits**: off track = all four wheels beyond the track edge. Kerbs count as
   track (friendlier than the strict F1 white-line rule, which flagged nearly every corner). Each
   excursion is a warning and deletes the current lap time. Wheels may go 1 m past the edge
-  before it counts. In races, the 6th and every later warning is **+5 s**. Grass/gravel also slow the car hard, so
+  before it counts. In races, only **every 20th** warning costs **+5 s**. Grass/gravel also slow the car hard, so
   cutting never pays.
 - **Timing**: three equal sectors; a lap only counts if the car passes every sector line
   in order (no faking laps by reversing). Uses simulation time, not wall-clock time.
@@ -163,7 +164,7 @@ The timing tower is always shown (no Tab needed).
 - **Big crashes wreck the car** (above a set impact speed). Then **R** (for every player,
   online too): in a race, back on track where you crashed, repaired; in qualifying,
   back to the pit exit (a timed lap in progress is lost). Always a **5 s wait** as a ghost,
-  never a penalty. Bots reset
+  never a penalty (practice too). Bots reset
   themselves 2 s after wrecking. Leaving the race counts as DNF.
 
 ## Pit stops
