@@ -16,7 +16,7 @@ function placeAt(track: Track, r: Racer, s: number, speed: number, lateral = 0):
   r.car.vy = Math.sin(h) * speed;
 }
 
-describe.each(['silverstone', 'bahrain', 'albert-park'])('DRS on %s', (id) => {
+describe.each(['silverstone', 'bahrain', 'albert-park', 'monaco'])('DRS on %s', (id) => {
   const track = new Track(TRACKS[id]);
 
   it.each(track.drsZones.map((z, i) => [i, z] as const))('opens in zone %i in practice, and only there', (_i, zone) => {

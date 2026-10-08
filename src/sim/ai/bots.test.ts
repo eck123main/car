@@ -7,7 +7,7 @@ import { BotDriver, DIFFICULTIES, type Difficulty } from './botDriver';
 import { racingLine } from './racingLine';
 
 const DT = 1 / 120;
-const REAL_TRACKS = ['silverstone', 'bahrain', 'albert-park'] as const;
+const REAL_TRACKS = ['silverstone', 'bahrain', 'albert-park', 'monaco'] as const;
 
 describe('Racing line', () => {
   it.each(REAL_TRACKS)('stays inside the track on %s', (id) => {
