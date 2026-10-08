@@ -234,7 +234,7 @@ export class RaceWorld {
       const compound = r.input.nextTyre;
       r.tyres = new Tyres(compound);
       if (!r.compoundsUsed.includes(compound)) r.compoundsUsed.push(compound);
-      r.car.damage = 0;
+      r.car.repair();
       events.push({ kind: 'pitStop', duration: r.pit.stopDuration, compound, racerId: r.id });
     }
   }

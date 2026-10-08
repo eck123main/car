@@ -151,9 +151,11 @@ The timing tower is always shown (no Tab needed).
 - **Carrying too much speed into a corner should end badly**: the car runs wide,
   off the track onto grass/gravel (which slows it hard and has little grip), and can
   end up in the wall.
-- **Car damage is in, as one general damage value for now** (0–100%). Damage scales
-  with impact force and lowers grip and top speed. Per-part damage (front wing, floor,
-  etc.) and visual damage may come **later**.
+- **Per-part damage** (`CarParts` in `src/physics/car.ts`), where the hit lands decides
+  the part: **front wing** (understeer: up to -40% turning grip), **rear wing** (-45%
+  downforce, -12% power), **left/right side** (more drag, -15% grip, and the car pulls
+  towards the damaged side). Overall damage = the worst part. Shown as a green/yellow/red
+  car diagram under the minimap. Visual damage on the car itself may come later.
 - Below the crash threshold, a damaged car **always stays drivable enough to reach the
   pits**. Normal damage has a cap and never stops the car. Repairs happen at a pit stop
   (and add time to the stop).

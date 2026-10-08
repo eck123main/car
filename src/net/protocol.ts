@@ -30,7 +30,7 @@ export interface CarSnap {
   steer: number;
   thr: number;
   brk: number;
-  dmg: number;
+  parts: [number, number, number, number];
   ret: boolean;
   frozen: boolean;
   /** Modifiers the client needs to predict its own car the same way. */

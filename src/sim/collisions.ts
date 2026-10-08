@@ -200,8 +200,8 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
       applyImpulse(cb, jt * tx, jt * ty, rbx, rby);
 
       // Cars crumple into each other more gently than into a wall.
-      ca.impact(impact * CAR_IMPACT_SCALE);
-      cb.impact(impact * CAR_IMPACT_SCALE);
+      ca.impact(impact * CAR_IMPACT_SCALE, ...toLocal(ca, px, py));
+      cb.impact(impact * CAR_IMPACT_SCALE, ...toLocal(cb, px, py));
 
       if (judged) {
         cooldowns.set(key, time);
@@ -212,6 +212,15 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
     }
   }
   return contacts;
+}
+
+/** A world point in a car's own frame (x forward, y right). */
+function toLocal(c: Car, px: number, py: number): [number, number] {
+  const dx = px - c.x;
+  const dy = py - c.y;
+  const cos = Math.cos(c.heading);
+  const sin = Math.sin(c.heading);
+  return [dx * cos + dy * sin, -dx * sin + dy * cos];
 }
 
 function applyImpulse(c: Car, jx: number, jy: number, rx: number, ry: number): void {

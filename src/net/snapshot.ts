@@ -16,7 +16,7 @@ export function carSnap(r: Racer, ack: number): CarSnap {
     steer: c.steer,
     thr: c.throttle,
     brk: c.brake,
-    dmg: c.damage,
+    parts: [c.parts.frontWing, c.parts.rearWing, c.parts.left, c.parts.right],
     ret: c.retired,
     frozen: r.frozen,
     grip: c.gripFactor,
@@ -51,7 +51,7 @@ export function applyCarPhysics(r: Racer, s: CarSnap): void {
   c.steer = s.steer;
   c.throttle = s.thr;
   c.brake = s.brk;
-  c.damage = s.dmg;
+  c.parts = { frontWing: s.parts[0], rearWing: s.parts[1], left: s.parts[2], right: s.parts[3] };
   c.retired = s.ret;
   c.gripFactor = s.grip;
   c.dragFactor = s.drag;

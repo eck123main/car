@@ -4,6 +4,7 @@ import { HostGame } from '../net/host';
 import type { SessionSnap } from '../net/protocol';
 import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
+import { drawDamage } from '../render/damage';
 import { drawCar } from '../render/drawCar';
 import { drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
@@ -306,6 +307,7 @@ export class GameScreen {
       }),
     );
     drawHud(ctx, me.car, world.track.name, w, h);
+    drawDamage(ctx, me.car, w);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);
     drawRacerStatus(ctx, me, w, h, advice);

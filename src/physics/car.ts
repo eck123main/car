@@ -18,6 +18,23 @@ export interface CarWorld {
 
 const G = 9.81;
 
+/** Damage per part, 0 (fine) to 1 (destroyed). */
+export interface CarParts {
+  frontWing: number;
+  rearWing: number;
+  left: number;
+  right: number;
+}
+
+export const PART_NAMES: Record<keyof CarParts, string> = {
+  frontWing: 'Front wing',
+  rearWing: 'Rear wing',
+  left: 'Left side',
+  right: 'Right side',
+};
+
+const noDamage = (): CarParts => ({ frontWing: 0, rearWing: 0, left: 0, right: 0 });
+
 /**
  * Top-down car: grip from weight + downforce, shared between braking/accelerating and
  * cornering. Steering sets a turn rate capped by that grip, so the car runs wide
@@ -35,8 +52,8 @@ export class Car {
   throttle = 0;
   brake = 0;
 
-  /** 0..1. Lowers grip and power. 1 = retired. */
-  damage = 0;
+  /** Damage to each part (see the effects in step()). */
+  parts: CarParts = noDamage();
   retired = false;
   lastImpact = 0;
 
@@ -67,6 +84,12 @@ export class Car {
     readonly color: string,
   ) {}
 
+  /** Overall damage: the worst part. 1 = retired. */
+  get damage(): number {
+    const d = this.parts;
+    return Math.max(d.frontWing, d.rearWing, d.left, d.right);
+  }
+
   get speed(): number {
     return Math.hypot(this.vx, this.vy);
   }
@@ -85,7 +108,7 @@ export class Car {
   }
 
   repair(): void {
-    this.damage = 0;
+    this.parts = noDamage();
     this.retired = false;
     this.lastImpact = 0;
   }
@@ -115,14 +138,20 @@ export class Car {
 
     // --- Grip: weight + downforce, per axle so each axle feels its own surface.
     const L = p.cgToFront + p.cgToRear;
-    const downforce = p.downforceCoef * v2 * (1 - 0.2 * this.damage);
+    // Damage effects, per part:
+    //   front wing -> less front grip, so the car won't turn in (understeer)
+    //   rear wing  -> less downforce (slower in fast corners) and a little less power
+    //   sides      -> more drag (slower on straights), less grip, and a pull to that side
+    const dmg = this.parts;
+    const sides = (dmg.left + dmg.right) / 2;
+    const downforce = p.downforceCoef * v2 * (1 - 0.45 * dmg.rearWing);
     const loadF = (m * G * p.cgToRear) / L + downforce * p.aeroBalanceFront;
     const loadR = (m * G * p.cgToFront) / L + downforce * (1 - p.aeroBalanceFront);
     const surfF = world.surfaceAt(this.x + c * p.cgToFront, this.y + s * p.cgToFront);
     const surfR = world.surfaceAt(this.x - c * p.cgToRear, this.y - s * p.cgToRear);
     this.surfaceFront = surfF.type;
     this.surfaceRear = surfR.type;
-    const gripMul = (1 - 0.25 * this.damage) * this.gripFactor;
+    const gripMul = (1 - 0.15 * sides) * this.gripFactor;
     const grip = p.mu * gripMul * (surfF.grip * loadF + surfR.grip * loadR);
 
     // --- Longitudinal: engine, brakes, reverse. Limited by grip (no wheelspin or lockups).
@@ -131,7 +160,7 @@ export class Car {
     if (reversing) {
       if (vx > -p.maxReverseSpeed) fx -= p.reverseForce;
     } else {
-      const power = p.power * (1 - 0.2 * this.damage) + this.extraPower;
+      const power = p.power * (1 - 0.12 * dmg.rearWing) + this.extraPower;
       const rearGrip = p.mu * gripMul * surfR.grip * loadR;
       const limited = this.speedLimit !== null && vx > this.speedLimit - 0.3;
       if (!limited) fx += Math.min(rearGrip, this.throttle * Math.min(p.maxDriveForce, power / Math.max(vx, 1)));
@@ -153,15 +182,18 @@ export class Car {
     // the tyres can hold at this speed. Too fast for a corner = the car runs wide.
     const forward = Math.abs(vx);
     const geometricLimit = forward / p.minTurnRadius;
-    const gripLimit = (p.turnGripUse * lateralGrip) / m / Math.max(forward, 1);
-    const targetYaw = this.steer * Math.min(geometricLimit, gripLimit) * Math.sign(vx);
+    const gripLimit = ((p.turnGripUse * lateralGrip) / m / Math.max(forward, 1)) * (1 - 0.4 * dmg.frontWing);
+    // A damaged side drags the car towards it.
+    const pull = 0.12 * (dmg.right - dmg.left) * Math.min(1, forward / 20);
+    const steerIn = Math.max(-1, Math.min(1, this.steer + pull));
+    const targetYaw = steerIn * Math.min(geometricLimit, gripLimit) * Math.sign(vx);
     this.yawRate += (targetYaw - this.yawRate) * Math.min(1, p.yawResponse * dt);
 
     // --- Resistance: aero drag, rolling resistance and surface drag.
     let fxTotal = fx;
     let fyTotal = fy;
     if (speed > 1e-3) {
-      const drag = p.dragCoef * this.dragFactor * (1 + 0.3 * this.damage) * v2;
+      const drag = p.dragCoef * this.dragFactor * (1 + 0.35 * sides + 0.1 * dmg.frontWing) * v2;
       const surfaceDrag = surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed;
       const rolling = p.rollingResistance * m * G + (m * surfaceDrag) / 2;
       const resist = Math.min(drag + rolling, (m * speed) / dt);
@@ -227,20 +259,38 @@ export class Car {
       this.vy += jt * ty * invM;
       this.yawRate += rt * jt * invI;
 
-      this.impact(-vn);
+      this.impact(-vn, lx, ly);
     }
   }
 
-  /** Take damage from a hit at this speed (m/s along the contact normal); a big one retires the car. */
-  impact(impactSpeed: number): void {
+  /**
+   * Take damage from a hit at this speed (m/s along the contact normal), at a point in the
+   * car's own frame (x forward, y right). Where it hits decides which parts break.
+   * A big enough hit retires the car.
+   */
+  impact(impactSpeed: number, localX: number, localY: number): void {
     const p = this.params;
     this.lastImpact = impactSpeed;
     if (this.retired) return;
     if (impactSpeed > p.crashSpeed) {
       this.retired = true;
-      this.damage = 1;
+      this.parts = { frontWing: 1, rearWing: 1, left: 1, right: 1 };
     } else if (impactSpeed > p.damageThreshold) {
-      this.damage = Math.min(p.maxDamage, this.damage + (impactSpeed - p.damageThreshold) * p.damagePerSpeed);
+      const amount = (impactSpeed - p.damageThreshold) * p.damagePerSpeed;
+      const along = localX / (p.length / 2);
+      const side: keyof CarParts = localY >= 0 ? 'right' : 'left';
+      const add = (part: keyof CarParts, share: number) => {
+        this.parts[part] = Math.min(p.maxDamage, this.parts[part] + amount * share);
+      };
+      if (along > 0.5) {
+        add('frontWing', 1);
+        add(side, 0.3);
+      } else if (along < -0.5) {
+        add('rearWing', 1);
+        add(side, 0.3);
+      } else {
+        add(side, 1);
+      }
     }
   }
 }
