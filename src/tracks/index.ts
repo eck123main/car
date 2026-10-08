@@ -1,5 +1,6 @@
 import { parseTrackDef } from '../track/io';
 import type { TrackDef } from '../track/types';
+import albertPark from './albert-park.json';
 import bahrain from './bahrain.json';
 import silverstone from './silverstone.json';
 import testCircuit from './test-circuit.json';
@@ -8,6 +9,7 @@ import testCircuit from './test-circuit.json';
 export const TRACKS: Record<string, TrackDef> = {
   silverstone: parseTrackDef(silverstone),
   bahrain: parseTrackDef(bahrain),
+  'albert-park': parseTrackDef(albertPark),
   test: parseTrackDef(testCircuit),
 };
 
