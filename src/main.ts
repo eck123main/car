@@ -26,7 +26,8 @@ const camera = new Camera();
 
 let dpr = 1;
 function resize(): void {
-  dpr = window.devicePixelRatio || 1;
+  // Cap the resolution: drawing at 3x on high-DPI screens costs a lot for little gain.
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(window.innerWidth * dpr);
   canvas.height = Math.round(window.innerHeight * dpr);
 }
@@ -41,7 +42,7 @@ function resetCar(atStart: boolean): void {
   const s = ss[i];
   car.place(s.x, s.y, Math.atan2(s.ty, s.tx));
   car.repair();
-  camera.snap(s.x, s.y, Math.atan2(s.ty, s.tx));
+  camera.snap(s.x, s.y);
 }
 resetCar(true);
 
@@ -54,7 +55,6 @@ function frame(now: number): void {
   acc += elapsed;
 
   if (keyboard.wasPressed('KeyR')) resetCar(false);
-  if (keyboard.wasPressed('KeyC')) camera.mode = camera.mode === 'chase' ? 'north' : 'chase';
   const input = keyboard.driverInput();
   while (acc >= DT) {
     car.step(input, DT, track);
@@ -69,14 +69,14 @@ function render(alpha: number, dt: number): void {
   const x = car.prevX + (car.x - car.prevX) * alpha;
   const y = car.prevY + (car.y - car.prevY) * alpha;
   const heading = car.prevHeading + (car.heading - car.prevHeading) * alpha;
-  camera.follow(x, y, car.vx, car.vy, heading, dt);
+  camera.follow(x, y, car.vx, car.vy, dt);
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = TrackGraphics.backgroundColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   camera.apply(ctx, canvas.width, canvas.height, dpr);
-  trackGfx.draw(ctx);
+  trackGfx.draw(ctx, camera.bounds(canvas.width, canvas.height, dpr));
   drawCar(ctx, car.params, x, y, heading, car.steer * car.params.wheelAngleVisual, car.color);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

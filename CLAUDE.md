@@ -72,8 +72,8 @@ Top-down 2D car physics that feels like an F1 car:
   (collision).
 - **Track scale**: keep tracks compact. Laps should be roughly 30–60 s, so real circuits
   are scaled down rather than built at full size.
-- **Camera**: chase mode (rotates so the car points up; default) or north-up, toggled
-  with **C**.
+- **Camera**: fixed north-up, following the car and zooming out a little with speed.
+  It must **never rotate** with the car (tried it: disorienting, can cause motion sickness).
 - **Tyres**: compounds **Soft / Medium / Hard** (and **Intermediate / Wet** if rain is
   added). Softs are faster but wear quickly, hards are slower but last. Grip drops as
   tyres wear.

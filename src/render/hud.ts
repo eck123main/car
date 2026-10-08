@@ -53,7 +53,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: stri
   ctx.textAlign = 'left';
   ctx.font = '13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillText(`${trackName}    WASD / Arrows: drive    R: reset to track    C: camera mode`, 20, 28);
+  ctx.fillText(`${trackName}    WASD / Arrows: drive    R: reset to track`, 20, 28);
 }
 
 /** Small track map in the top-right corner. */
