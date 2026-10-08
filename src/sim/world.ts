@@ -59,6 +59,8 @@ export interface Racer {
   /** Every compound this car has raced on (for the two-compound rule). */
   compoundsUsed: Compound[];
   penalties: Penalty[];
+  /** Held in place (waiting to be released in qualifying, on the grid). Timing stops too. */
+  frozen: boolean;
 }
 
 export interface Penalty {
@@ -76,6 +78,8 @@ export interface WorldOptions {
   drsRule: 'free' | 'race';
   /** 0 = dry, 1 = soaked. */
   wetness: number;
+  /** Off in qualifying, where cars are ghosts. */
+  slipstream?: boolean;
 }
 
 export type WorldEvent = (
@@ -120,6 +124,7 @@ export class RaceWorld {
       pit: newPitState(this.racers.length),
       compoundsUsed: [compound],
       penalties: [],
+      frozen: false,
     };
     this.racers.push(racer);
     return racer;
@@ -140,6 +145,21 @@ export class RaceWorld {
     return events;
   }
 
+  /** Put a car at a spot as if new: repaired, fresh tyres, full ERS, timing and penalties cleared. */
+  resetRacer(r: Racer, x: number, y: number, heading: number, compound: Compound): void {
+    r.car.place(x, y, heading);
+    r.car.repair();
+    r.timer = new LapTimer(this.track);
+    r.tyres = new Tyres(compound);
+    r.ers = 1;
+    r.ersActive = r.drsOpen = r.drsEligible = false;
+    r.drsZoneEligible = this.track.drsZones.map(() => false);
+    r.slipstream = 0;
+    r.pit = newPitState(r.pit.box);
+    r.compoundsUsed = [compound];
+    r.penalties = [];
+  }
+
   addPenalty(r: Racer, seconds: number, reason: string, events: WorldEvent[]): void {
     const penalty = { seconds, reason };
     r.penalties.push(penalty);
@@ -149,6 +169,10 @@ export class RaceWorld {
   private stepRacer(r: Racer, dt: number, events: WorldEvent[]): void {
     const { car } = r;
     const prevS = r.timer.lapDistance;
+    if (r.frozen) {
+      car.place(car.x, car.y, car.heading);
+      return;
+    }
 
     const pitEvents: PitEvent[] = [];
     const pitInput = updatePit(this.track, r.pit, car, r.input, this.time, r.id, pitEvents);
@@ -228,6 +252,7 @@ export class RaceWorld {
   private updateSlipstream(): void {
     for (const a of this.racers) {
       a.slipstream = 0;
+      if (this.options.slipstream === false) continue;
       const ca = a.car;
       const fx = Math.cos(ca.heading);
       const fy = Math.sin(ca.heading);

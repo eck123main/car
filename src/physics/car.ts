@@ -49,6 +49,8 @@ export class Car {
   extraPower = 0;
   /** Pit limiter speed (m/s), or null when off. */
   speedLimit: number | null = null;
+  /** Holding the brake at a standstill reverses the car, except on the grid. */
+  allowReverse = true;
 
   /** For the HUD. */
   latG = 0;
@@ -124,7 +126,7 @@ export class Car {
     const grip = p.mu * gripMul * (surfF.grip * loadF + surfR.grip * loadR);
 
     // --- Longitudinal: engine, brakes, reverse. Limited by grip (no wheelspin or lockups).
-    const reversing = input.brake > 0 && input.throttle === 0 && vx < 1.5 && !this.retired;
+    const reversing = this.allowReverse && input.brake > 0 && input.throttle === 0 && vx < 1.5 && !this.retired;
     let fx = 0;
     if (reversing) {
       if (vx > -p.maxReverseSpeed) fx -= p.reverseForce;
