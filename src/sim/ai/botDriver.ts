@@ -168,6 +168,9 @@ export class BotDriver {
     const aheadIdx = (q.index + Math.round(look / 2)) % n;
     const ahead = this.track.samples[aheadIdx];
     let aheadLateral = this.line.offset[aheadIdx] + this.deviation;
+    // Heading for (or in) the pit lane: aim at the lane itself, not relative to the racing
+    // line, which may swing across the track right where the pit entry is.
+    if (pitting) aheadLateral = wanted;
     if (me.pit.phase === 'out' && !pitting) aheadLateral = Math.max(-edge, Math.min(edge, aheadLateral));
     const tx = ahead.x + ahead.nx * aheadLateral;
     const ty = ahead.y + ahead.ny * aheadLateral;
