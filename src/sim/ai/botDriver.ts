@@ -136,10 +136,11 @@ export class BotDriver {
         if (me.pit.phase === 'leaving' && Math.abs(q.d - wanted) > 1.2) speedCap = Math.min(speedCap, 7);
         if (me.pit.phase === 'out') speedCap = Math.min(speedCap, PIT_SPEED_LIMIT - 3);
       }
-      else if (toEntry < 250) {
-        // Line up on the pit side and slow down for the entry.
-        wanted = lane.side * (q.sample.halfWidth - 1.5);
-        speedCap = Math.min(speedCap, 16 + toEntry * 0.25);
+      else if (toEntry < 60) {
+        // Line up on the pit side and slow down for the entry (late, so we never run wide out
+        // of a corner that comes just before the pit entry).
+        wanted = lane.side * (q.sample.halfWidth - 2.5);
+        speedCap = Math.min(speedCap, 16 + toEntry * 0.4);
       }
     }
     const collisionsOn = world.options.collisions !== false;
