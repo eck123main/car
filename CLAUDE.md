@@ -102,8 +102,12 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 ## Rules to enforce
 
 - Start lights and jump-start detection.
-- Track limits (cutting corners / going fully off track gives a warning, then a time
-  penalty).
+- **Track limits** (F1 rule): off track = all four wheels beyond the white lines. Each
+  excursion is a warning and deletes the current lap time (done). In races, repeated
+  warnings will turn into a time penalty (later). Grass/gravel also slow the car hard, so
+  cutting never pays.
+- **Timing**: three equal sectors; a lap only counts if the car passes every sector line
+  in order (no faking laps by reversing). Uses simulation time, not wall-clock time.
 - Pit lane speed limit.
 - DRS rules (as above).
 - **Mandatory pit stop**: every car must pit at least once and use at least two
@@ -229,6 +233,11 @@ minimap/timing tower, and penalty notices.
 - Detailed graphics, animations, 3D, car liveries, cinematic cameras.
 - Full simulation-level physics (tyre temperature, setups, etc.) unless added later.
 - Career mode, championships, accounts. Possible later additions.
+
+## Testing
+
+- `npm test` runs Vitest. Keep game rules (timing, physics behaviour) covered by tests,
+  especially anything the host will rely on in multiplayer.
 
 ## Git workflow
 
