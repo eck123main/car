@@ -34,8 +34,9 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 
 ## Race weekend flow
 
-1. **Lobby**: players join, pick a team/colour, the host picks the track and settings
-   (laps, weather, etc.).
+1. **Welcome → lobby**: opening an invite link shows a welcome screen; the player enters a
+   name, gets a colour assigned automatically and joins the lobby. The lobby owner (host)
+   picks track, laps, weather, qualifying on/off + release gap, mandatory stop, then starts.
 2. **Qualifying**: each player gets **one timed flying lap**. Fastest time takes pole.
    - All players are on track together but **ghosted (no car-to-car collisions)**.
    - Players are released **one at a time, 10–15 s apart** (configurable). Each player
@@ -92,9 +93,11 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | DRS | **Space** | Only works in a DRS zone when within 1 s at detection; closes on braking |
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
-| Pit request / tyre choice | **1 / 2 / 3** (Soft / Medium / Hard) | Pre-select the next tyres while driving; fitted at the next stop |
-| Timing tower / standings | **Tab** (hold) | |
-| Pause menu / settings | **Esc** | No real pause online; just opens the menu |
+| Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
+| Reset to track | **R** | Practice only |
+| Menu | **Esc** | No real pause online; just opens the menu |
+
+The timing tower is always shown (no Tab needed).
 
 - Keys should be **rebindable** later.
 - Note: the 2026 F1 rules replaced DRS with active aero plus a manual-override boost. We
@@ -102,19 +105,23 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 
 ## Rules to enforce
 
-- Start lights and jump-start detection.
+- **Start**: 4 s on the grid (held still), then 5 red lights 1 s apart, then lights out
+  after 0.5-2.5 s. Moving forwards more than 1 m before lights out = **+5 s jump start**.
+  No reversing on the grid.
 - **Track limits**: off track = all four wheels beyond the track edge. Kerbs count as
   track (friendlier than the strict F1 white-line rule, which flagged nearly every corner). Each
-  excursion is a warning and deletes the current lap time (done). In races, repeated
-  warnings will turn into a time penalty (later). Grass/gravel also slow the car hard, so
+  excursion is a warning and deletes the current lap time. In races, the 4th and every
+  later warning is **+5 s**. Grass/gravel also slow the car hard, so
   cutting never pays.
 - **Timing**: three equal sectors; a lap only counts if the car passes every sector line
   in order (no faking laps by reversing). Uses simulation time, not wall-clock time.
 - Pit lane speed limit.
 - DRS rules (as above).
 - **Mandatory pit stop**: every car must pit at least once and use at least two
-  different dry compounds (as in real F1 dry races). A car that doesn't gets a time
-  penalty added to its result.
+  different dry compounds (as in real F1 dry races). A car that doesn't gets **+30 s**
+  at the finish. Only in dry races, and only when the host enables it.
+- **Finish**: when the leader completes the laps, everyone else finishes on their next
+  line crossing (or 60 s later). Results order = race time + penalties.
 - **Collision penalties, fairly assigned.** Only the driver **at fault** gets penalised,
   never the victim. The game decides fault with simple checks:
   - Who hit whom: the car whose front hits the other car's rear or side is the likely
@@ -127,13 +134,18 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
     penalty**. When unsure, don't penalise.
   - Penalties are time penalties (e.g. +5 s / +10 s) shown to everyone with a short
     reason.
+  - **Implemented** in `src/sim/collisions.ts` (`judge`): wrong-way driver is at fault;
+    nose into gearbox = car behind; nose into side while closing >2 m/s faster = the
+    hitter; everything else (side-by-side, nose-to-nose) = racing incident. Only hits
+    over 5 m/s are judged; +10 s if over 10 m/s or the victim retired, else +5 s. A pair
+    is judged at most once every 3 s.
 - **[LATER]** Safety car (and maybe VSC) after big incidents.
 - **[OPEN]** Blue flags?
 
 ## Collisions
 
-- Cars collide with each other and with walls/barriers using simple physics (bounce,
-  lose speed, maybe spin).
+- Cars collide with each other (oriented-box SAT + impulses with spin) and with walls.
+  Car-to-car hits count 60% as hard as wall hits for damage. Off in qualifying (ghosts).
 - **Carrying too much speed into a corner should end badly**: the car runs wide,
   off the track onto grass/gravel (which slows it hard and has little grip), and can
   end up in the wall.
@@ -161,10 +173,12 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
   car is past the lane.
 - Logic: `src/sim/pit.ts`; lane geometry: `buildPitLane` in `src/track/track.ts`.
 
-## Weather (later)
+## Weather
 
-- Rain events: grip drops, players need to pit for inters/wets, and DRS is disabled.
-- Could start dry and turn wet mid-race (or the other way round) to force strategy calls.
+- Host setting: **Dry**, **Wet**, **Rain later** (dry, then wet over 60 s starting ~45% into
+  the session) or **Drying** (wet, dries from ~35%). Track wetness 0-1.
+- Wetness changes tyre grip (slicks are poor in the wet, inters/wets good), disables DRS
+  at 30%+, and draws a rain overlay.
 
 ## Tracks
 
@@ -205,28 +219,35 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
   - **Host-authoritative peer-to-peer**: the lobby creator's browser is the host. It
     runs the real simulation (physics, collisions, lap timing, penalties) and sends
     state to the others. Other players send only their inputs.
-  - Transport: **WebRTC data channels**. Use a free public signalling service for the
-    initial connection, e.g. **PeerJS** (public PeerServer) or **Trystero** (uses public
-    relays). Nothing to deploy ourselves.
+  - Transport: **WebRTC data channels via PeerJS** (free public PeerServer for the
+    introduction only). Invite link = `?join=<6-char code>`. Nothing to deploy ourselves.
   - Clients use **prediction + interpolation** so their own car feels instant even with
     latency to the host.
   - Caveat: some strict networks block P2P without a TURN relay. Acceptable for a
     friends game; could add a free TURN option later if needed.
 - The game itself is static files, deployable free to **GitHub Pages** (or similar).
-- If the host leaves, the race ends (host migration is out of scope for now).
-- **Max 10 players** per race. **No bots** for now.
+- If the host leaves, the race ends (host migration is out of scope for now). A client
+  who disconnects mid-race is retired (DNF). Joining mid-race is refused.
+- **Max 10 players** per race. **No bots** for now (`src/sim/bot.ts` is a test driver).
+- Code: `src/net/` — `host.ts` (lobby + authoritative session, snapshots 20 Hz,
+  timing/standings 4 Hz), `client.ts` (mirror world, own-car prediction + reconciliation,
+  interpolation 100 ms behind for other cars), `protocol.ts`, `peer.ts` (PeerJS),
+  `transport.ts` (interfaces + in-memory `LoopbackNetwork` used by tests).
+- The game loop keeps simulating in background tabs (a worker timer), because the host's
+  browser runs the race for everyone.
+- Session flow (qualifying → grid → lights → race → finished): `src/sim/session.ts`.
+- **Deploy**: `.github/workflows/deploy.yml` builds and publishes to GitHub Pages on
+  every push to main, once Pages is enabled (Settings → Pages → Source: GitHub Actions).
 
 ## Tech stack
 
 - **TypeScript**, running in the browser.
 - **HTML5 Canvas 2D** for rendering (flat shapes; no game engine needed).
 - **Vite** for dev server + build.
-- **Custom top-down car physics** (our own tyre/grip model). Car-to-car and wall
-  collisions can be hand-rolled (oriented boxes) or use a small 2D physics lib such as
-  planck.js if that's simpler. Decide when we get there.
-- Networking: WebRTC via PeerJS or Trystero (see Multiplayer).
-- **Fixed-timestep simulation** (e.g. 60 Hz), kept separate from rendering, so the host
-  simulation stays deterministic-ish and easy to sync.
+- **Custom top-down car physics** (our own grip model), hand-rolled collisions.
+- Networking: WebRTC via PeerJS (see Multiplayer).
+- **Fixed-timestep simulation at 120 Hz**, kept separate from rendering, so the host
+  simulation stays deterministic and clients can predict their own car.
 - Godot was considered and rejected: the visuals don't need an engine, and a browser
   invite link is easiest with plain web tech.
 
@@ -259,13 +280,16 @@ minimap/timing tower, and penalty notices.
 - Keep `node_modules/`, build output (`dist/`) and editor files out of git via
   `.gitignore`.
 
-## Suggested build order
+## Build order (status)
 
-1. Single-player car driving on a simple hard-coded track (get the handling right).
-2. Track JSON format + loader, and a simple track editor; make one real circuit.
-3. Lap timing, sectors, track limits.
-4. Tyres, wear, grip levels, DRS, slipstream.
-5. Pit lane + pit stops + tyre choice.
-6. Multiplayer networking (lobby, synced race, collisions between players).
-7. Qualifying → grid → start lights → race → results flow.
-8. Weather, penalties, damage, extras.
+1. ✅ Single-player car driving.
+2. ✅ Track JSON format + loader, track editor, Silverstone.
+3. ✅ Lap timing, sectors, track limits.
+4. ✅ Tyres, wear, ERS, DRS, slipstream.
+5. ✅ Pit lane + pit stops + tyre choice.
+6. ✅ Multiplayer: welcome screen, lobby, host settings, synced race.
+7. ✅ Qualifying → grid → start lights → race → results.
+8. ✅ Weather, collision penalties, car-to-car damage.
+
+Possible next: more real circuits, safety car, per-part/visual damage, bots, rebindable
+keys, TURN relay for strict networks, tuning top speed vs. the half-size tracks.
