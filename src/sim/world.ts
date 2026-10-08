@@ -197,7 +197,8 @@ export class RaceWorld {
     }
 
     const pitEvents: PitEvent[] = [];
-    const pitInput = updatePit(this.track, r.pit, car, r.input, this.time, r.id, pitEvents);
+    const others = this.racers.filter((o) => o !== r && !o.frozen).map((o) => o.car);
+    const pitInput = updatePit(this.track, r.pit, car, r.input, this.time, r.id, pitEvents, others);
     for (const e of pitEvents) this.handlePitEvent(r, e, events);
     if (pitInput === 'hold') {
       // Sitting in the box: the car doesn't move, the clock keeps running.

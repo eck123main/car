@@ -11,6 +11,8 @@ export const PIT_LANE_INNER = 2;
 export const PIT_LANE_WIDTH = 8;
 /** Open gap in the pit wall at the pit entry and exit (m). */
 const PIT_OPENING = 35;
+/** The lane surface tapers into the track over this distance before the entry and after the exit (m). */
+const PIT_TAPER = 50;
 
 export interface PitLane {
   /** +1 = right of the track, -1 = left. */
@@ -53,6 +55,8 @@ export interface TrackSample {
   maxWallL: number;
   /** Pit lane alongside (on the pit side). */
   pit: boolean;
+  /** How far the pit lane surface reaches beyond the track edge (m): full in the lane, tapering at each end. */
+  pitWidth: number;
   /** Pit wall between the track and the pit lane. */
   pitWall: boolean;
 }
@@ -171,7 +175,7 @@ export class Track {
     const right = d >= 0;
     const off = Math.abs(d);
     if (off <= sample.halfWidth) return SURFACES.asphalt;
-    if (this.onPitSide(sample, d) && off <= sample.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH) return SURFACES.pit;
+    if (this.onPitSide(sample, d) && off <= sample.halfWidth + sample.pitWidth) return SURFACES.pit;
     if (off <= sample.halfWidth + KERB_WIDTH && (right ? sample.kerbR : sample.kerbL)) return SURFACES.kerb;
     if (off <= (right ? sample.wallR : sample.wallL)) return SURFACES[right ? sample.surfR : sample.surfL];
     return SURFACES.wall;
@@ -198,9 +202,9 @@ export class Track {
     return null;
   }
 
-  /** Is lateral offset d on the pit lane side of a sample that has a pit lane? */
+  /** Is lateral offset d on the pit lane side of a sample with pit lane surface (lane or taper)? */
   onPitSide(sample: TrackSample, d: number): boolean {
-    return sample.pit && this.pit !== null && d * this.pit.side > 0;
+    return sample.pitWidth > 0 && this.pit !== null && d * this.pit.side > 0;
   }
 
   private buildGrid(): void {
@@ -260,8 +264,10 @@ function buildPitLane(samples: TrackSample[], length: number, def: PitDef | unde
 
   const wrap = (v: number) => ((v % length) + length) % length;
   const laneLength = range.length * SAMPLE_SPACING;
+  const full = PIT_LANE_INNER + PIT_LANE_WIDTH;
   range.forEach((s, k) => {
     s.pit = true;
+    s.pitWidth = full;
     const along = k * SAMPLE_SPACING;
     s.pitWall = along >= PIT_OPENING && along <= laneLength - PIT_OPENING;
     if (side > 0) {
@@ -272,6 +278,23 @@ function buildPitLane(samples: TrackSample[], length: number, def: PitDef | unde
       s.kerbL = false;
     }
   });
+
+  // Taper the lane surface into the track at both ends, so cars can merge without leaving it.
+  const taperSamples = Math.round(PIT_TAPER / SAMPLE_SPACING);
+  for (let k = 1; k <= taperSamples; k++) {
+    const width = full * (1 - k / (taperSamples + 1));
+    for (const s of [at(first - k), at(last + k)]) {
+      if (s.pit) continue;
+      s.pitWidth = Math.max(s.pitWidth, width);
+      if (side > 0) {
+        s.wallR = Math.max(s.wallR, s.halfWidth + width + 1);
+        s.kerbR = false;
+      } else {
+        s.wallL = Math.max(s.wallL, s.halfWidth + width + 1);
+        s.kerbL = false;
+      }
+    }
+  }
 
   const entry = wrap(first * SAMPLE_SPACING);
   const exit = wrap(last * SAMPLE_SPACING);
@@ -425,6 +448,7 @@ function buildSamples(pts: Pt[], halfWidth: number): TrackSample[] {
       maxWallR: Infinity,
       maxWallL: Infinity,
       pit: false,
+      pitWidth: 0,
       pitWall: false,
     });
   }

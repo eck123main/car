@@ -36,10 +36,25 @@ export type PitEvent =
   | { kind: 'pitStopStarted'; duration: number }
   | { kind: 'pitStopDone' };
 
-/** Lateral offset of the pit lane's centre from the track centreline (positive, on the pit side). */
+/** Lateral offset of the pit lane's centre from the track centreline (on the pit side). */
 export function laneCentre(track: Track, halfWidth: number): number {
   return (halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH / 2) * (track.pit?.side ?? 1);
 }
+
+/**
+ * The pit lane has a fast lane next to the pit wall for driving through, and a box lane on
+ * the outside where cars stop, so a car in its box never blocks the others.
+ */
+export function fastLane(track: Track, halfWidth: number): number {
+  return (halfWidth + PIT_LANE_INNER + 2.2) * (track.pit?.side ?? 1);
+}
+
+export function boxLane(track: Track, halfWidth: number): number {
+  return (halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH - 2) * (track.pit?.side ?? 1);
+}
+
+/** Start moving over to the box lane this far before the box (m). */
+const BOX_TURN_IN = 22;
 
 /**
  * Advance a car's pit state. Returns the input to use this step (the autopilot's while
@@ -53,6 +68,8 @@ export function updatePit(
   time: number,
   seed: string,
   events: PitEvent[],
+  /** Other cars, so the autopilot doesn't drive into them. */
+  others: readonly Car[] = [],
 ): PlayerInput | 'hold' {
   const lane = track.pit;
   if (!lane || car.retired) return input;
@@ -66,7 +83,7 @@ export function updatePit(
       if (inLane && track.inRange(hit.s, lane.entry, lane.wallStart) && car.forwardSpeed > 0) {
         pit.phase = 'in';
         events.push({ kind: 'pitEntry', speeding: car.speed > PIT_SPEED_LIMIT + PIT_ENTRY_TOLERANCE });
-        return autopilot(track, pit, car, hit.s, input, time, seed, events);
+        return autopilot(track, pit, car, hit.s, input, time, seed, events, others);
       }
       return input;
     case 'in':
@@ -74,7 +91,7 @@ export function updatePit(
         pit.phase = 'out';
         return input;
       }
-      return autopilot(track, pit, car, hit.s, input, time, seed, events);
+      return autopilot(track, pit, car, hit.s, input, time, seed, events, others);
     case 'stopped':
       if (time < pit.stopEnds) return 'hold';
       pit.phase = 'leaving';
@@ -98,6 +115,7 @@ function autopilot(
   time: number,
   seed: string,
   events: PitEvent[],
+  others: readonly Car[],
 ): PlayerInput {
   const lane = track.pit!;
   const boxS = lane.boxes[pit.box % lane.boxes.length];
@@ -114,13 +132,29 @@ function autopilot(
   }
 
   const n = track.samples.length;
-  const aim = track.samples[Math.floor((s + Math.min(12, Math.max(toBox, 4))) / 2) % n];
-  const offset = laneCentre(track, aim.halfWidth);
+  const aimS = s + Math.min(12, Math.max(toBox, 4));
+  const aim = track.samples[Math.floor(aimS / 2) % n];
+  // Fast lane until close to the box, then over into the box lane.
+  const toBoxFromAim = toBox - Math.min(12, Math.max(toBox, 4));
+  const blend = Math.max(0, Math.min(1, 1 - toBoxFromAim / BOX_TURN_IN));
+  const offset = fastLane(track, aim.halfWidth) + (boxLane(track, aim.halfWidth) - fastLane(track, aim.halfWidth)) * blend;
   const ax = aim.x + aim.nx * offset;
   const ay = aim.y + aim.ny * offset;
   let err = Math.atan2(ay - car.y, ax - car.x) - car.heading;
   err = Math.atan2(Math.sin(err), Math.cos(err));
-  const target = Math.min(PIT_SPEED_LIMIT - 0.5, Math.sqrt(2 * 5 * Math.max(0, toBox - 0.8)));
+  let target = Math.min(PIT_SPEED_LIMIT - 0.5, Math.sqrt(2 * 5 * Math.max(0, toBox - 0.8)));
+  // Keep a safe gap to any car ahead in our lane.
+  const fx = Math.cos(car.heading);
+  const fy = Math.sin(car.heading);
+  for (const o of others) {
+    const dx = o.x - car.x;
+    const dy = o.y - car.y;
+    const ahead = dx * fx + dy * fy;
+    const side = Math.abs(-dx * fy + dy * fx);
+    if (ahead <= 0 || ahead > 40 || side > 2.6) continue;
+    const safe = 7 + car.speed * 0.3;
+    target = Math.min(target, Math.max(0, o.speed + (ahead - safe) * 0.5));
+  }
   return {
     ...input,
     throttle: car.speed < target - 0.3 ? 1 : 0,

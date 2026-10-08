@@ -1,5 +1,5 @@
 import type { Car } from '../physics/car';
-import { KERB_WIDTH, PIT_LANE_INNER, PIT_LANE_WIDTH, type Track, type TrackSample } from '../track/track';
+import { KERB_WIDTH, type Track, type TrackSample } from '../track/track';
 
 export const SECTOR_COUNT = 3;
 /** Back on track for this long before another excursion counts as a new warning. */
@@ -242,7 +242,7 @@ export class LapTimer {
 
 /** Where the track ends on the side of offset d: the white line, a kerb's outer edge, or the pit lane. */
 function trackEdge(track: Track, sample: TrackSample, d: number): number {
-  if (track.onPitSide(sample, d)) return sample.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH;
+  if (track.onPitSide(sample, d)) return sample.halfWidth + sample.pitWidth;
   const kerb = d >= 0 ? sample.kerbR : sample.kerbL;
   return sample.halfWidth + (kerb ? KERB_WIDTH : 0);
 }

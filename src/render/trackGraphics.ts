@@ -259,8 +259,8 @@ function buildChunk(part: TrackSample[], pitSide: 1 | -1): Chunk {
   const pitWall = new Path2D();
   const pitLine = new Path2D();
   const pitEdge = (t: TrackSample, off: number): Pt => edge(t, pitSide > 0 ? 'R' : 'L', off);
-  for (const run of runs(part, (t) => t.pit)) {
-    strip(pitLane, run, (t) => pitEdge(t, t.halfWidth), (t) => pitEdge(t, t.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH));
+  for (const run of runs(part, (t) => t.pitWidth > 0)) {
+    strip(pitLane, run, (t) => pitEdge(t, t.halfWidth), (t) => pitEdge(t, t.halfWidth + t.pitWidth));
   }
   for (const run of runs(part, (t) => t.pitWall)) {
     polyline(pitWall, run, (t) => pitEdge(t, t.halfWidth + PIT_WALL_OFFSET));

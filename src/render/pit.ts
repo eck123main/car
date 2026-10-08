@@ -1,5 +1,5 @@
 import type { SessionSnap } from '../net/protocol';
-import { laneCentre } from '../sim/pit';
+import { boxLane } from '../sim/pit';
 import { pitAdvice, type PitAdvice } from '../sim/strategy';
 import type { RaceWorld, Racer } from '../sim/world';
 
@@ -10,7 +10,7 @@ export function drawPitBoxes(ctx: CanvasRenderingContext2D, world: RaceWorld): v
   const ss = world.track.samples;
   for (const r of world.racers) {
     const t = ss[Math.floor(lane.boxes[r.pit.box % lane.boxes.length] / 2) % ss.length];
-    const off = laneCentre(world.track, t.halfWidth);
+    const off = boxLane(world.track, t.halfWidth);
     ctx.save();
     ctx.translate(t.x + t.nx * off, t.y + t.ny * off);
     ctx.rotate(Math.atan2(t.ty, t.tx));
