@@ -5,6 +5,9 @@ import { COMPOUNDS } from '../sim/tyres';
 import type { PitAdvice } from '../sim/strategy';
 import type { Racer } from '../sim/world';
 
+/** Side of the minimap square (CSS px); the damage panel sits under it. */
+export const MINIMAP_SIZE = 260;
+
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
 /** Draws in CSS pixels; expects ctx already scaled by devicePixelRatio. */
@@ -82,7 +85,7 @@ export class Minimap {
   private readonly scale: number;
   private readonly minX: number;
   private readonly minY: number;
-  readonly size = 200;
+  readonly size = MINIMAP_SIZE;
 
   constructor(track: Track) {
     const xs = track.samples.map((s) => s.x);
