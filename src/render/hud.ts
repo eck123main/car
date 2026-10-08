@@ -4,7 +4,7 @@ import type { Track } from '../track/track';
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
 /** Draws in CSS pixels; expects ctx already scaled by devicePixelRatio. */
-export function drawHud(ctx: CanvasRenderingContext2D, car: Car, width: number, height: number): void {
+export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: string, width: number, height: number): void {
   const kmh = car.speed * 3.6;
   const gear = car.forwardSpeed < -0.5 ? 'R' : String(gearFor(kmh));
 
@@ -53,7 +53,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, car: Car, width: number, 
   ctx.textAlign = 'left';
   ctx.font = '13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillText('WASD / Arrows: drive    R: reset to track    C: camera mode', 20, 28);
+  ctx.fillText(`${trackName}    WASD / Arrows: drive    R: reset to track    C: camera mode`, 20, 28);
 }
 
 /** Small track map in the top-right corner. */

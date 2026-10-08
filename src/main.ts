@@ -6,8 +6,7 @@ import { drawCar } from './render/drawCar';
 import { drawHud, Minimap } from './render/hud';
 import { TrackGraphics } from './render/trackGraphics';
 import { Track } from './track/track';
-import testCircuit from './tracks/test-circuit.json';
-import type { TrackDef } from './track/types';
+import { DEFAULT_TRACK, loadCustomTrack, TRACKS } from './tracks';
 
 /** Fixed physics step. Rendering interpolates between steps. */
 const DT = 1 / 120;
@@ -15,7 +14,10 @@ const DT = 1 / 120;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
-const track = new Track(testCircuit as TrackDef);
+// ?track=<id> picks a built-in track; ?track=custom loads the one saved by the editor.
+const trackId = new URLSearchParams(location.search).get('track') ?? DEFAULT_TRACK;
+const trackDef = (trackId === 'custom' ? loadCustomTrack() : TRACKS[trackId]) ?? TRACKS[DEFAULT_TRACK];
+const track = new Track(trackDef);
 const trackGfx = new TrackGraphics(track);
 const minimap = new Minimap(track);
 const car = new Car(F1_CAR, '#e10600');
@@ -81,7 +83,7 @@ function render(alpha: number, dt: number): void {
   const w = canvas.width / dpr;
   const h = canvas.height / dpr;
   minimap.draw(ctx, w, [car]);
-  drawHud(ctx, car, w, h);
+  drawHud(ctx, car, track.name, w, h);
 }
 
 requestAnimationFrame(frame);
