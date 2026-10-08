@@ -9,6 +9,8 @@ export function drawCar(
   heading: number,
   steer: number,
   color: string,
+  /** DRS flap open: the rear wing is drawn as two thin elements with a green gap. */
+  drsOpen = false,
 ): void {
   const hl = p.length / 2;
   const hw = p.width / 2;
@@ -48,7 +50,14 @@ export function drawCar(
   // Wings.
   ctx.fillRect(hl - 0.45, -hw + 0.05, 0.35, p.width - 0.1);
   ctx.fillStyle = '#222';
-  ctx.fillRect(-hl, -0.75, 0.45, 1.5);
+  if (drsOpen) {
+    ctx.fillRect(-hl, -0.75, 0.15, 1.5);
+    ctx.fillRect(-hl + 0.32, -0.75, 0.13, 1.5);
+    ctx.fillStyle = '#2ecc40';
+    ctx.fillRect(-hl + 0.15, -0.75, 0.17, 1.5);
+  } else {
+    ctx.fillRect(-hl, -0.75, 0.45, 1.5);
+  }
 
   // Cockpit.
   ctx.fillStyle = '#111';

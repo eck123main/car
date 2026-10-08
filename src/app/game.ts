@@ -326,7 +326,7 @@ export class GameScreen {
       // Ghosts: everyone in qualifying, and cars parked after finishing (others pass through them).
       const parked = r.frozen && (session?.phase === 'race' || session?.phase === 'finished');
       ctx.globalAlpha = (ghosts || parked) && r !== me ? 0.45 : 1;
-      drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, r.color);
+      drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, r.color, r.drsOpen);
       ctx.globalAlpha = 1;
       if (r !== me) drawNameTag(ctx, r.name, p.x, p.y, r.color);
     }

@@ -37,7 +37,7 @@ export const IDLE_INPUT: PlayerInput = {
 /** ERS: extra power while deploying, seconds of deployment in a full battery. */
 const ERS_POWER = 120_000;
 const ERS_DEPLOY_TIME = 7;
-const DRS_DRAG = 0.72;
+const DRS_DRAG = 0.65;
 const DRS_GAP = 1;
 const SLIPSTREAM_RANGE = 45;
 const SLIPSTREAM_MAX = 0.35;
