@@ -1,11 +1,13 @@
 import { parseTrackDef } from '../track/io';
 import type { TrackDef } from '../track/types';
+import bahrain from './bahrain.json';
 import silverstone from './silverstone.json';
 import testCircuit from './test-circuit.json';
 
 /** Built-in tracks, by id. */
 export const TRACKS: Record<string, TrackDef> = {
   silverstone: parseTrackDef(silverstone),
+  bahrain: parseTrackDef(bahrain),
   test: parseTrackDef(testCircuit),
 };
 

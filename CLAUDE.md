@@ -205,7 +205,8 @@ The timing tower is always shown (no Tab needed).
   points, set the start point/direction, export JSON into `src/tracks/` and register it in
   `src/tracks/index.ts`. "Test drive" opens the game with `?track=custom`.
 - Real circuit layouts come from **bacinger/f1-circuits** (MIT) GeoJSON, scaled to about
-  0.5 (0.4 made slow corners too tight to drive). Silverstone is the first one.
+  0.5 (0.4 made slow corners too tight to drive). Tracks: Silverstone, Bahrain (3 DRS
+  zones like the real one; pits on the right).
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
   start/finish line, DRS zone markers and pit lane drawn plainly.
 
