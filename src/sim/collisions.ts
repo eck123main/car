@@ -4,9 +4,10 @@ import type { Racer } from './world';
 
 const RESTITUTION = 0.2;
 const FRICTION = 0.3;
-/** Closing speed (m/s) below which contact is just rubbing: no penalty considered. */
-const PENALTY_MIN_IMPACT = 5;
-const BIG_HIT = 10;
+/** Closing speed (m/s) below which contact is just racing: never judged (~29 km/h). */
+const PENALTY_MIN_IMPACT = 8;
+/** A hit this hard (~50 km/h closing) is penalised even the first time. */
+const BIG_HIT = 14;
 const CAR_IMPACT_SCALE = 0.6;
 /** The same two cars can only be judged once in this many seconds. */
 const PAIR_COOLDOWN = 3;
@@ -24,6 +25,8 @@ export interface Contact {
   atFault: Racer | null;
   /** 5 or 10 s, when someone is at fault. */
   penalty: number;
+  /** A big hit, or one that wrecked the other car: no warning first. */
+  serious: boolean;
 }
 
 interface Box {
@@ -206,8 +209,9 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
       if (judged) {
         cooldowns.set(key, time);
         const victim = atFault === a ? b : a;
-        const penalty = atFault ? (impact >= BIG_HIT || victim.car.retired ? 10 : 5) : 0;
-        contacts.push({ a, b, impact, atFault, penalty });
+        const serious = impact >= BIG_HIT || victim.car.retired;
+        const penalty = atFault ? (serious ? 10 : 5) : 0;
+        contacts.push({ a, b, impact, atFault, penalty, serious });
       }
     }
   }

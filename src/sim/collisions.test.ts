@@ -30,19 +30,43 @@ function pair(collisions = true) {
 const CRUISE = { ...IDLE_INPUT, throttle: 0.4 };
 
 describe('Car collisions', () => {
-  it('blames and penalises the car that runs into the back of another', () => {
+  it('warns, then penalises, the car that runs into the back of another', () => {
     const { world, a, b } = pair();
     put(a, 30, 0, 35);
     put(b, 20, 0, 45);
     const events = run(world, 1, { a: CRUISE, b: CRUISE });
-    expect(penaltyTime(b)).toBeGreaterThan(0);
-    expect(penaltyTime(a)).toBe(0);
-    expect(b.penalties[0].reason).toMatch(/collision with A/);
+    // First minor offence: a warning, no time.
+    expect(penaltyTime(b)).toBe(0);
+    expect(b.collisionWarnings).toBe(1);
     const verdicts = events.flatMap((e) => (e.kind === 'contact' ? [`${e.racerId}:${e.verdict}`] : []));
     expect(verdicts).toEqual(['a:theirFault', 'b:yourFault']);
-    // Both cars are damaged; the hit pushes the front car forwards.
+    // Both cars are damaged.
     expect(a.car.damage).toBeGreaterThan(0);
     expect(b.car.damage).toBeGreaterThan(0);
+    // Doing it again (after the 3 s judging cooldown) costs 5 s.
+    run(world, 3, { a: CRUISE, b: CRUISE });
+    put(a, 120, 0, 35);
+    put(b, 110, 0, 45);
+    run(world, 1, { a: CRUISE, b: CRUISE });
+    expect(penaltyTime(b)).toBe(5);
+    expect(b.penalties[0].reason).toMatch(/collision with A/);
+    expect(penaltyTime(a)).toBe(0);
+  });
+
+  it('penalises a big hit straight away', () => {
+    const { world, a, b } = pair();
+    put(a, 30, 0, 20);
+    put(b, 15, 0, 40);
+    run(world, 1, { a: CRUISE, b: CRUISE });
+    expect(penaltyTime(b)).toBe(10);
+  });
+
+  it('ignores light contact', () => {
+    const { world, a, b } = pair();
+    put(a, 30, 0, 38);
+    put(b, 20, 0, 43);
+    run(world, 1, { a: CRUISE, b: CRUISE });
+    expect(penaltyTime(b) + b.collisionWarnings).toBe(0);
   });
 
   it('treats side-by-side rubbing as a racing incident', () => {

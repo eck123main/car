@@ -2,6 +2,8 @@ import type { Car } from '../physics/car';
 import { KERB_WIDTH, type Track, type TrackSample } from '../track/track';
 
 export const SECTOR_COUNT = 3;
+/** Wheels may go this far past the track edge before it counts as off track (m). */
+const LIMITS_TOLERANCE = 1;
 /** Back on track for this long before another excursion counts as a new warning. */
 const REARM_TIME = 0.5;
 /** Progress jumps bigger than this (m) in one step are resets, not driving. */
@@ -221,7 +223,7 @@ export class LapTimer {
     for (const lx of [p.cgToFront, -p.cgToRear]) {
       for (const ly of [-half, half]) {
         const hit = this.track.query(car.x + c * lx - s * ly, car.y + s * lx + c * ly);
-        if (hit && Math.abs(hit.d) <= trackEdge(this.track, hit.sample, hit.d)) anyWheelOn = true;
+        if (hit && Math.abs(hit.d) <= trackEdge(this.track, hit.sample, hit.d) + LIMITS_TOLERANCE) anyWheelOn = true;
       }
     }
     this.offTrack = !anyWheelOn;

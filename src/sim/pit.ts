@@ -4,7 +4,7 @@ import type { PlayerInput } from './world';
 
 export const PIT_SPEED_LIMIT = 80 / 3.6;
 /** Entering the pit lane faster than this (m/s) is a speeding penalty. */
-const PIT_ENTRY_TOLERANCE = 5 / 3.6;
+const PIT_ENTRY_TOLERANCE = 20 / 3.6;
 export const PIT_SPEEDING_PENALTY = 5;
 /** Base stationary time, plus up to a second of crew variation, plus repair time per unit of damage. */
 const STOP_BASE = 3;

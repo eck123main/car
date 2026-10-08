@@ -64,6 +64,8 @@ export interface Racer {
   penalties: Penalty[];
   /** Held in place (waiting to be released in qualifying, on the grid). Timing stops too. */
   frozen: boolean;
+  /** At-fault contacts let off with a warning so far. */
+  collisionWarnings: number;
 }
 
 export interface Penalty {
@@ -93,7 +95,7 @@ export type WorldEvent = (
   | { kind: 'pitStop'; duration: number; compound: Compound }
   | { kind: 'penalty'; penalty: Penalty }
   /** A significant hit with another car, and who (if anyone) was blamed. */
-  | { kind: 'contact'; other: string; verdict: 'incident' | 'yourFault' | 'theirFault' }
+  | { kind: 'contact'; other: string; verdict: 'incident' | 'yourFault' | 'theirFault'; warning?: boolean }
 ) & { racerId: string };
 
 /**
@@ -133,6 +135,7 @@ export class RaceWorld {
       compoundsUsed: [compound],
       penalties: [],
       frozen: false,
+      collisionWarnings: 0,
     };
     this.racers.push(racer);
     return racer;
@@ -156,13 +159,16 @@ export class RaceWorld {
 
   private handleContacts(events: WorldEvent[]): void {
     for (const c of resolveCollisions(this.track, this.racers, this.time, this.contactCooldowns)) {
+      // A first, minor at-fault hit is a warning; repeats or big hits are penalised.
+      const warning = c.atFault !== null && !c.serious && c.atFault.collisionWarnings === 0;
       const tell = (r: Racer, other: Racer) => {
         const verdict = c.atFault === null ? 'incident' : c.atFault === r ? 'yourFault' : 'theirFault';
-        events.push({ kind: 'contact', other: other.name, verdict, racerId: r.id });
+        events.push({ kind: 'contact', other: other.name, verdict, warning, racerId: r.id });
       };
       tell(c.a, c.b);
       tell(c.b, c.a);
-      if (c.atFault) {
+      if (c.atFault && warning) c.atFault.collisionWarnings++;
+      else if (c.atFault) {
         const victim = c.atFault === c.a ? c.b : c.a;
         this.addPenalty(c.atFault, c.penalty, `Causing a collision with ${victim.name}`, events);
       }
@@ -182,6 +188,7 @@ export class RaceWorld {
     r.pit = newPitState(r.pit.box);
     r.compoundsUsed = [compound];
     r.penalties = [];
+    r.collisionWarnings = 0;
   }
 
   addPenalty(r: Racer, seconds: number, reason: string, events: WorldEvent[]): void {

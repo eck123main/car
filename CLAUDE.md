@@ -96,7 +96,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
-| Reset to track | **R** | Practice: free. Race: +10 s. Qualifying: back to pit exit |
+| Reset to track | **R** | 5 s wait (instant in practice), no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 
 The timing tower is always shown (no Tab needed).
@@ -112,8 +112,8 @@ The timing tower is always shown (no Tab needed).
   No reversing on the grid.
 - **Track limits**: off track = all four wheels beyond the track edge. Kerbs count as
   track (friendlier than the strict F1 white-line rule, which flagged nearly every corner). Each
-  excursion is a warning and deletes the current lap time. In races, the 4th and every
-  later warning is **+5 s**. Grass/gravel also slow the car hard, so
+  excursion is a warning and deletes the current lap time. Wheels may go 1 m past the edge
+  before it counts. In races, the 6th and every later warning is **+5 s**. Grass/gravel also slow the car hard, so
   cutting never pays.
 - **Timing**: three equal sectors; a lap only counts if the car passes every sector line
   in order (no faking laps by reversing). Uses simulation time, not wall-clock time.
@@ -139,8 +139,9 @@ The timing tower is always shown (no Tab needed).
   - **Implemented** in `src/sim/collisions.ts` (`judge`): wrong-way driver is at fault;
     nose into gearbox = car behind; nose into side while closing >2 m/s faster = the
     hitter; everything else (side-by-side, nose-to-nose) = racing incident. Only hits
-    over 5 m/s are judged; +10 s if over 10 m/s or the victim retired, else +5 s. A pair
-    is judged at most once every 3 s.
+    over 8 m/s (~29 km/h closing) are judged. A driver's first minor at-fault hit is a
+    **warning**; after that +5 s. Hits over 14 m/s or that wreck the victim: +10 s at once.
+    A pair is judged at most once every 3 s.
 - **[LATER]** Safety car (and maybe VSC) after big incidents.
 - **[OPEN]** Blue flags?
 
@@ -160,8 +161,9 @@ The timing tower is always shown (no Tab needed).
   pits**. Normal damage has a cap and never stops the car. Repairs happen at a pit stop
   (and add time to the stop).
 - **Big crashes wreck the car** (above a set impact speed). Then **R** (for every player,
-  online too): in a race, back on track where you are, repaired, **+10 s**; in qualifying,
-  back to the pit exit (a timed lap in progress is lost). 3 s cooldown. Bots reset
+  online too): in a race, back on track where you crashed, repaired; in qualifying,
+  back to the pit exit (a timed lap in progress is lost). Always a **5 s wait** as a ghost,
+  never a penalty. Bots reset
   themselves 2 s after wrecking. Leaving the race counts as DNF.
 
 ## Pit stops
@@ -170,8 +172,8 @@ The timing tower is always shown (no Tab needed).
   like real circuits. Track files can set the real side: `"pit": {"side": "right"}`
   (Silverstone: right). Without it, the side with more room is used.
 - A pit wall separates the lane from the track, with openings at the entry and exit.
-- **Entering**: drive into the lane through the entry opening. Over 80 km/h (+5 km/h
-  tolerance) at entry = **+5 s penalty**. From then on the car **drives itself** to the
+- **Entering**: drive into the lane through the entry opening. Over 100 km/h at entry
+  = **+5 s penalty** (the autopilot brakes you to 80 anyway). From then on the car **drives itself** to the
   driver's own box (one box per car, 10 boxes), with the limiter on.
 - **The stop**: 3-4 s stationary (3 s + up to 1 s crew variation, deterministic), plus
   5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted.
