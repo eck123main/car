@@ -30,7 +30,11 @@ export function parseTrackDef(data: unknown): TrackDef {
   }
   if (typeof d.pit === 'object' && d.pit !== null) {
     const side = (d.pit as Record<string, unknown>).side;
-    if (side === 'left' || side === 'right') def.pit = { side };
+    const p = d.pit as Record<string, unknown>;
+    if (side === 'left' || side === 'right') {
+      def.pit = { side };
+      if (typeof p.from === 'number' && typeof p.to === 'number') Object.assign(def.pit, { from: p.from, to: p.to });
+    }
   }
   return def;
 }

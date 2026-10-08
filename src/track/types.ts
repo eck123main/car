@@ -13,6 +13,13 @@ export interface TrackDef {
 
 export interface PitDef {
   side: 'left' | 'right';
+  /**
+   * Optional lap distances (m, negative = before the start line) where the lane starts and
+   * ends. Without them the lane follows the start/finish straight. Needed for circuits like
+   * Monaco whose pit lane runs round corners.
+   */
+  from?: number;
+  to?: number;
 }
 
 /** Distances along the lap (m) from the start line. */

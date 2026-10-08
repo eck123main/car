@@ -244,8 +244,9 @@ function buildPitLane(samples: TrackSample[], length: number, def: PitDef | unde
   while (back < n / 3 && straight(-back - 1)) back++;
   let fwd = 0;
   while (fwd < n / 3 && straight(fwd + 1)) fwd++;
-  const first = -back + 5;
-  const last = fwd - 10;
+  const explicit = def?.from !== undefined && def?.to !== undefined;
+  const first = explicit ? Math.round(def!.from! / SAMPLE_SPACING) : -back + 5;
+  const last = explicit ? Math.round(def!.to! / SAMPLE_SPACING) : fwd - 10;
   if ((last - first) * SAMPLE_SPACING < 2 * PIT_OPENING + 80) return null;
 
   const range: TrackSample[] = [];
