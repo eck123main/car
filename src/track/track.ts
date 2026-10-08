@@ -60,6 +60,25 @@ export class Track {
     this.length = pts.length * SAMPLE_SPACING;
     this.samples = buildSamples(pts, def.width / 2);
     this.buildGrid();
+    this.fixWallOwnership();
+  }
+
+  /**
+   * Shrink any wall whose far side is closer to a different part of the track, so
+   * collision checks against the nearest centreline always see the right wall.
+   */
+  private fixWallOwnership(): void {
+    const owned = (s: TrackSample, offset: number) => {
+      const hit = this.query(s.x + s.nx * offset, s.y + s.ny * offset);
+      if (!hit) return true;
+      const ds = Math.abs(hit.s - s.s);
+      return Math.min(ds, this.length - ds) < 30;
+    };
+    for (const s of this.samples) {
+      const floor = s.halfWidth + 0.3;
+      while (s.wallR > floor && !owned(s, s.wallR + 1)) s.wallR -= 0.5;
+      while (s.wallL > floor && !owned(s, -(s.wallL + 1))) s.wallL -= 0.5;
+    }
   }
 
   /** Nearest centreline segment to a point, or null if far away from the track. */
@@ -265,7 +284,74 @@ function buildSamples(pts: Pt[], halfWidth: number): TrackSample[] {
       surfL: cornering && turningRight ? 'gravel' : 'grass',
     });
   }
+  limitWallsByClearance(samples);
   return samples;
+}
+
+/**
+ * Where two parts of the track run close together, pull both walls back to just short
+ * of the halfway line between them. Otherwise one section's run-off overlaps the other
+ * and cars slip through the walls.
+ */
+function limitWallsByClearance(samples: TrackSample[]): void {
+  const n = samples.length;
+  const total = n * SAMPLE_SPACING;
+  let reach = 0;
+  for (const s of samples) reach = Math.max(reach, s.wallR, s.wallL);
+  const searchR = reach * 2 + SAMPLE_SPACING;
+  const clearR = new Array<number>(n).fill(Infinity);
+  const clearL = new Array<number>(n).fill(Infinity);
+
+  for (let i = 0; i < n; i++) {
+    const a = samples[i];
+    for (let j = 0; j < n; j++) {
+      const b = samples[j];
+      const c = samples[(j + 1) % n];
+      if (Math.abs(b.x - a.x) > searchR || Math.abs(b.y - a.y) > searchR) continue;
+      const t = rayHitsSegment(a.x, a.y, a.nx, a.ny, b, c);
+      if (t === null) continue;
+      // Ignore the bit of track we're on: a genuinely different section is much
+      // further away along the lap than it is in a straight line.
+      let ds = Math.abs(b.s - a.s);
+      ds = Math.min(ds, total - ds);
+      if (ds < 1.3 * Math.abs(t) + 4) continue;
+      if (t > 0) clearR[i] = Math.min(clearR[i], t);
+      else clearL[i] = Math.min(clearL[i], -t);
+    }
+  }
+
+  const minR = windowMin(clearR, 3);
+  const minL = windowMin(clearL, 3);
+  for (let i = 0; i < n; i++) {
+    const s = samples[i];
+    const floor = s.halfWidth + 0.3;
+    s.wallR = Math.max(floor, Math.min(s.wallR, minR[i] / 2 - 1));
+    s.wallL = Math.max(floor, Math.min(s.wallL, minL[i] / 2 - 1));
+  }
+}
+
+/** Signed distance along the line (ox, oy) + t * (dx, dy) to segment b-c, or null if it misses. */
+function rayHitsSegment(ox: number, oy: number, dx: number, dy: number, b: TrackSample, c: TrackSample): number | null {
+  const ex = c.x - b.x;
+  const ey = c.y - b.y;
+  const denom = dx * ey - dy * ex;
+  if (Math.abs(denom) < 1e-9) return null;
+  const wx = b.x - ox;
+  const wy = b.y - oy;
+  const t = (wx * ey - wy * ex) / denom;
+  const u = (wx * dy - wy * dx) / denom;
+  return u >= 0 && u <= 1 ? t : null;
+}
+
+function windowMin(values: number[], radius: number): number[] {
+  const n = values.length;
+  const out = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    let m = Infinity;
+    for (let j = -radius; j <= radius; j++) m = Math.min(m, values[(((i + j) % n) + n) % n]);
+    out[i] = m;
+  }
+  return out;
 }
 
 function smoothClosed(values: number[], radius: number): number[] {
