@@ -38,7 +38,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, car: Car, trackName: stri
     ctx.font = 'bold 22px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = off === 'gravel' ? '#e8c77a' : '#7fd36b';
-    ctx.fillText(off.toUpperCase(), width / 2, 50);
+    ctx.fillText(off.toUpperCase(), width / 2, 108);
   }
 
   if (car.retired) {
@@ -85,7 +85,7 @@ export class Minimap {
     return [10 + (x - this.minX) * this.scale, 10 + (y - this.minY) * this.scale];
   }
 
-  draw(ctx: CanvasRenderingContext2D, width: number, cars: Car[]): void {
+  draw(ctx: CanvasRenderingContext2D, width: number, cars: { x: number; y: number; color: string }[]): void {
     const ox = width - this.size - 20;
     const oy = 20;
     panel(ctx, ox, oy, this.size, this.size);
@@ -143,8 +143,8 @@ export function formatLapTime(seconds: number): string {
 
 const SECTOR_COLORS = { best: '#b84dff', slower: '#ffd400', pending: 'rgba(255,255,255,0.15)' };
 
-/** Lap / sector timing panel, top left. */
-export function drawTiming(ctx: CanvasRenderingContext2D, timer: LapTimer, now: number): void {
+/** Lap / sector timing panel, top left. `delta` is the live gap to the best lap, if known. */
+export function drawTiming(ctx: CanvasRenderingContext2D, timer: LapTimer, now: number, delta: number | null): void {
   const x = 20;
   const y = 44;
   const w = 250;
@@ -164,12 +164,12 @@ export function drawTiming(ctx: CanvasRenderingContext2D, timer: LapTimer, now: 
   ctx.fillStyle = current !== null && !timer.valid ? '#888' : '#fff';
   ctx.fillText(current === null ? '-:--.---' : formatLapTime(current), x + 14, y + 54);
 
-  const delta = timer.valid ? timer.delta(now) : null;
-  if (delta !== null) {
+  const shownDelta = timer.valid ? delta : null;
+  if (shownDelta !== null) {
     ctx.font = 'bold 16px ui-monospace, monospace';
-    ctx.fillStyle = delta <= 0 ? '#2ecc40' : '#ff4136';
+    ctx.fillStyle = shownDelta <= 0 ? '#2ecc40' : '#ff4136';
     ctx.textAlign = 'right';
-    ctx.fillText(`${delta <= 0 ? '-' : '+'}${Math.abs(delta).toFixed(3)}`, x + w - 14, y + 54);
+    ctx.fillText(`${shownDelta <= 0 ? '-' : '+'}${Math.abs(shownDelta).toFixed(3)}`, x + w - 14, y + 54);
     ctx.textAlign = 'left';
   }
 
@@ -209,7 +209,7 @@ export interface Toast {
 
 /** Short messages in the top middle (lap times, track limits). */
 export function drawToasts(ctx: CanvasRenderingContext2D, toasts: Toast[], now: number, width: number): void {
-  let y = 120;
+  let y = 150;
   ctx.textAlign = 'center';
   ctx.font = 'bold 20px system-ui, sans-serif';
   for (const t of toasts) {

@@ -51,8 +51,8 @@ export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(10,10,14,0.7)';
   const w = ctx.measureText(text).width + 24;
-  ctx.fillRect(width / 2 - w / 2, 60, w, 26);
+  ctx.fillRect(width / 2 - w / 2, 52, w, 26);
   ctx.fillStyle = color;
-  ctx.fillText(text, width / 2, 78);
+  ctx.fillText(text, width / 2, 70);
   ctx.textAlign = 'left';
 }

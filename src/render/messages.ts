@@ -1,9 +1,9 @@
 import { COMPOUNDS } from '../sim/tyres';
-import type { WorldEvent } from '../sim/world';
+import type { SessionEvent } from '../sim/session';
 import { formatLapTime, type Toast } from './hud';
 
 /** Turn a race event for the local driver into a short on-screen message. */
-export function eventToast(e: WorldEvent, now: number): Toast | null {
+export function eventToast(e: SessionEvent, now: number): Toast | null {
   const until = now + 3;
   switch (e.kind) {
     case 'lap': {
@@ -22,6 +22,12 @@ export function eventToast(e: WorldEvent, now: number): Toast | null {
         color: COMPOUNDS[e.compound].color,
         until: now + 4,
       };
+    case 'phase':
+      if (e.phase === 'race') return { text: 'LIGHTS OUT!', color: '#2ecc40', until: now + 2.5 };
+      if (e.phase === 'grid') return { text: 'TO THE GRID', color: '#ffffff', until };
+      return null;
+    case 'finished':
+      return { text: `FINISHED · P${e.position}`, color: '#ffffff', until: now + 6 };
     case 'penalty':
       return { text: `+${e.penalty.seconds}s PENALTY: ${e.penalty.reason}`, color: '#ff4136', until: now + 5 };
   }
