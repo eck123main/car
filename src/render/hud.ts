@@ -2,6 +2,7 @@ import type { Car } from '../physics/car';
 import type { Track } from '../track/track';
 import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
 import { COMPOUNDS } from '../sim/tyres';
+import type { PitAdvice } from '../sim/strategy';
 import type { Racer } from '../sim/world';
 
 const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
@@ -224,7 +225,7 @@ export function drawToasts(ctx: CanvasRenderingContext2D, toasts: Toast[], now: 
 }
 
 /** Tyres, ERS, DRS, limiter and slipstream for the local car, bottom left. */
-export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width: number, height: number): void {
+export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width: number, height: number, advice?: PitAdvice): void {
   const x = 260;
   const y = height - 150;
   const w = 210;
@@ -255,6 +256,19 @@ export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width:
     ctx.fillStyle = next.color;
     ctx.textAlign = 'right';
     ctx.fillText(`Next: ${next.letter}`, x + w - 14, y + 28);
+    ctx.textAlign = 'left';
+  }
+  // Pit window for the compulsory stop, or a tick once it's done.
+  if (advice?.window) {
+    const [a, b] = advice.window;
+    ctx.fillStyle = advice.boxNow ? '#ffd400' : '#aaa';
+    ctx.textAlign = 'right';
+    ctx.fillText(a === b ? `Pit: lap ${a}` : `Pit: laps ${a}-${b}`, x + w - 14, y + 45);
+    ctx.textAlign = 'left';
+  } else if (r.pit.stops > 0) {
+    ctx.fillStyle = '#2ecc40';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${r.pit.stops} stop${r.pit.stops > 1 ? 's' : ''} ✓`, x + w - 14, y + 45);
     ctx.textAlign = 'left';
   }
 

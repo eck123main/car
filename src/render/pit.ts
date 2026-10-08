@@ -1,4 +1,6 @@
+import type { SessionSnap } from '../net/protocol';
 import { laneCentre } from '../sim/pit';
+import { pitAdvice, type PitAdvice } from '../sim/strategy';
 import type { RaceWorld, Racer } from '../sim/world';
 
 /** Each car's pit box, outlined in its colour. Drawn in world metres. */
@@ -21,8 +23,25 @@ export function drawPitBoxes(ctx: CanvasRenderingContext2D, world: RaceWorld): v
   }
 }
 
+/** What the race engineer says for this car right now. */
+export function adviceFor(world: RaceWorld, r: Racer, session: SessionSnap | null): PitAdvice {
+  const racing = session?.phase === 'race';
+  return pitAdvice({
+    laps: racing ? session.laps : null,
+    currentLap: r.timer.lapsCompleted + 1,
+    mandatoryStop: racing && session.mandatoryStop,
+    stops: r.pit.stops,
+    compoundsUsed: r.compoundsUsed,
+    compound: r.tyres.compound,
+    nextTyre: r.input.nextTyre,
+    wear: r.tyres.wear,
+    damage: r.car.damage,
+    wetness: world.options.wetness,
+  });
+}
+
 /** Pit messages for the local driver, top centre (CSS pixels). */
-export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r: Racer, width: number): void {
+export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r: Racer, width: number, advice: PitAdvice): void {
   const lane = world.track.pit;
   if (!lane) return;
   let text = '';
@@ -40,10 +59,13 @@ export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r
       text = 'PIT EXIT: limiter on until the end of the lane';
       break;
     case 'out':
-      if (s !== null) {
+      // Only when the engineer actually wants you in; otherwise the pit lane stays quiet.
+      if (s !== null && advice.boxNow) {
         const toEntry = world.track.forwardDistance(s, lane.entry);
-        if (toEntry < 250) text = `PIT ENTRY ${Math.round(toEntry)} m on the ${lane.side > 0 ? 'right' : 'left'} · slow to 80`;
-        color = '#cccccc';
+        if (toEntry < 400) {
+          text = `BOX THIS LAP · ${advice.reason} · pit entry ${Math.round(toEntry)} m, ${lane.side > 0 ? 'right' : 'left'}, slow to 80`;
+          color = '#ffd400';
+        }
       }
   }
   if (!text) return;

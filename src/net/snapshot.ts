@@ -99,6 +99,7 @@ export function sessionSnap(session: Session): SessionSnap {
     lights: session.lights,
     raceStart: session.raceStart,
     laps: session.settings.laps,
+    mandatoryStop: session.settings.mandatoryStop && session.settings.weather === 'dry',
     wetness: session.world.options.wetness,
     standings: session.standings(),
     quali: [...session.quali.entries()],

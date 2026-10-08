@@ -7,7 +7,7 @@ import { Camera } from '../render/camera';
 import { drawCar } from '../render/drawCar';
 import { drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
-import { drawPitBoxes, drawPitStatus } from '../render/pit';
+import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawRain } from '../render/rain';
 import { drawLights, drawNameTag, drawSessionBanner, drawTower } from '../render/sessionHud';
 import { TrackGraphics } from '../render/trackGraphics';
@@ -306,14 +306,16 @@ export class GameScreen {
       }),
     );
     drawHud(ctx, me.car, world.track.name, w, h);
-    drawRacerStatus(ctx, me, w, h);
+    const session2 = this.driver.session();
+    const advice = adviceFor(world, me, session2);
+    drawRacerStatus(ctx, me, w, h, advice);
     drawTiming(ctx, me.timer, now, this.driver.delta());
     if (session) {
       drawSessionBanner(ctx, session, me, now, w);
       drawTower(ctx, session, world, me.id);
       if (session.phase === 'lights' || session.phase === 'grid') drawLights(ctx, session.lights, w);
     }
-    drawPitStatus(ctx, world, me, w);
+    drawPitStatus(ctx, world, me, w, advice);
     drawToasts(ctx, this.toasts, now, w);
   }
 }

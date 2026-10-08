@@ -67,6 +67,8 @@ export interface SessionSnap {
   lights: number;
   raceStart: number;
   laps: number;
+  /** The one-stop / two-compound rule applies this race. */
+  mandatoryStop: boolean;
   wetness: number;
   standings: Standing[];
   quali: [string, QualiEntry][];

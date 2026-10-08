@@ -173,6 +173,10 @@ The timing tower is always shown (no Tab needed).
   5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted.
 - **Leaving**: the driver drives off; the pit limiter (80 km/h) stays forced on until the
   car is past the lane.
+- **Race engineer** (`src/sim/strategy.ts`): the HUD shows a pit window for the mandatory
+  stop (from tyre life and laps left) and a "BOX THIS LAP" banner near the pit entry
+  only when it makes sense: middle-to-end of the window, tyres >70% worn, damage >30%, or
+  the wrong tyres for the weather. Never every lap.
 - Logic: `src/sim/pit.ts`; lane geometry: `buildPitLane` in `src/track/track.ts`.
 
 ## Weather
