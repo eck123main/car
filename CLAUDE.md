@@ -76,8 +76,10 @@ Top-down 2D car physics that feels like an F1 car:
   steering, narrower tracks made track limits too easy to hit.
 - **Track scale**: keep tracks compact. Laps should be roughly 30–60 s, so real circuits
   are scaled down rather than built at full size.
-- **Camera**: fixed north-up, following the car and zooming out a little with speed.
-  It must **never rotate** with the car (tried it: disorienting, can cause motion sickness).
+- **Camera**: follows the car and zooms out a little with speed. **Default: fixed north-up
+  map.** Press **C** for the optional rotating view (the map turns so you always drive up),
+  remembered between games. The rotating view must stay opt-in: a turning map is
+  disorienting for some players and can cause motion sickness.
 - **Tyres**: **Soft / Medium / Hard / Intermediate / Wet** (`src/sim/tyres.ts`). Life in
   laps (S 4, M 7, H 11, I 8, W 10, scaled to track length). Grip drops slowly with wear,
   then sharply past 75% (the cliff). Rain tyres wear double on a dry track.
@@ -97,6 +99,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
+| Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 

@@ -41,6 +41,7 @@ const CONTROLS: [string, string][] = [
   ['Shift (hold)', 'ERS boost'],
   ['P', 'Pit limiter'],
   ['1-5', 'Tyres for your next stop (S, M, H, Inter, Wet)'],
+  ['C', 'Camera: fixed map or rotating (you always drive up)'],
   ['Esc', 'Menu'],
 ];
 

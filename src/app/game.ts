@@ -16,6 +16,9 @@ import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import type { Track } from '../track/track';
 
+/** Remembers the camera view (C) between games. */
+const CAMERA_KEY = 'f1td.camera';
+
 /** Fixed physics step, the same on every machine. Rendering interpolates between steps. */
 export const DT = 1 / 120;
 
@@ -225,6 +228,11 @@ export class GameScreen {
 
   start(): void {
     this.running = true;
+    try {
+      if (localStorage.getItem(CAMERA_KEY) === 'rotate') this.camera.mode = 'rotate';
+    } catch {
+      // Storage blocked: stay on the default fixed view.
+    }
     this.last = performance.now();
     window.addEventListener('resize', this.resize);
     this.resize();
@@ -248,6 +256,18 @@ export class GameScreen {
     this.paused = paused;
   }
 
+  /** C: switch between the fixed map and a map that turns so you always drive up. */
+  private toggleCamera(): void {
+    this.camera.mode = this.camera.mode === 'fixed' ? 'rotate' : 'fixed';
+    try {
+      localStorage.setItem(CAMERA_KEY, this.camera.mode);
+    } catch {
+      // Remembering the choice is a convenience only.
+    }
+    const text = this.camera.mode === 'rotate' ? 'CAMERA: ROTATING (you always drive up)' : 'CAMERA: FIXED MAP';
+    this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 2 });
+  }
+
   private resize = (): void => {
     // Cap the resolution: drawing at 3x on high-DPI screens costs a lot for little gain.
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -269,6 +289,7 @@ export class GameScreen {
     this.acc += elapsed;
 
     if (this.keyboard.wasPressed('Escape')) this.onMenu();
+    if (this.keyboard.wasPressed('KeyC')) this.toggleCamera();
     let input = this.controls.read();
     const idle = { ...input, throttle: 0, brake: 0, steer: 0, drs: false, ers: false, reset: false };
     while (this.acc >= DT) {
@@ -310,10 +331,10 @@ export class GameScreen {
     const poses = new Map(world.racers.map((r) => [r.id, this.driver.pose(r, alpha, dt)]));
     const myPose = poses.get(me.id)!;
     if (!this.snapped) {
-      this.camera.snap(myPose.x, myPose.y);
+      this.camera.snap(myPose.x, myPose.y, myPose.heading);
       this.snapped = true;
     }
-    this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, dt);
+    this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, myPose.heading, dt);
 
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
     this.gfx.graphics.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr));
