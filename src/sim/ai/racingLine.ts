@@ -37,19 +37,25 @@ export function racingLine(track: Track): RacingLine {
   };
   // Coarse to fine: wide stencils straighten long sections fast, narrow ones smooth details.
   for (const [k, iterations] of [
-    [24, 60],
-    [12, 80],
-    [6, 120],
-    [3, 160],
-    [1, 120],
+    [24, 40],
+    [12, 60],
+    [6, 150],
+    [3, 400],
+    [2, 600],
+    [1, 800],
   ] as const) {
     for (let it = 0; it < iterations; it++) {
       place();
       for (let i = 0; i < n; i++) {
+        // Minimum curvature, not minimum length: aim for the point that keeps the bend
+        // equal to its neighbours' (a 4th-order stencil). Pulling towards the plain midpoint
+        // would make a taut string that hugs the inside and kinks at the apex.
+        const a2 = at(i - 2 * k);
         const a = at(i - k);
         const b = at(i + k);
-        const mx = (px[a] + px[b]) / 2;
-        const my = (py[a] + py[b]) / 2;
+        const b2 = at(i + 2 * k);
+        const mx = (-px[a2] + 4 * px[a] + 4 * px[b] - px[b2]) / 6;
+        const my = (-py[a2] + 4 * py[a] + 4 * py[b] - py[b2]) / 6;
         const s = ss[i];
         const want = (mx - s.x) * s.nx + (my - s.y) * s.ny;
         offset[i] = clamp(offset[i] + (want - offset[i]) * 0.5, -limit[i], limit[i]);
