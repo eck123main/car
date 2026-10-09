@@ -2,11 +2,13 @@ import { parseTrackDef } from '../track/io';
 import type { TrackDef } from '../track/types';
 import albertPark from './albert-park.json';
 import bahrain from './bahrain.json';
+import baku from './baku.json';
 import cota from './cota.json';
 import monaco from './monaco.json';
 import silverstone from './silverstone.json';
 import spa from './spa.json';
 import testCircuit from './test-circuit.json';
+import yasMarina from './yas-marina.json';
 
 /** Built-in tracks, by id. */
 export const TRACKS: Record<string, TrackDef> = {
@@ -16,6 +18,8 @@ export const TRACKS: Record<string, TrackDef> = {
   monaco: parseTrackDef(monaco),
   cota: parseTrackDef(cota),
   spa: parseTrackDef(spa),
+  baku: parseTrackDef(baku),
+  'yas-marina': parseTrackDef(yasMarina),
   test: parseTrackDef(testCircuit),
 };
 

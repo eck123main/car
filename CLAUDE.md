@@ -63,6 +63,10 @@ Top-down 2D car physics that feels like an F1 car:
   tyres can hold at the current speed. Too fast for a corner = the car runs wide (onto
   grass/gravel, maybe into the wall); it does **not** spin. This was chosen after a
   slip-angle tyre model proved too hard to control on a keyboard.
+- **Racing line matters**: corner speed depends on the radius actually driven, so the classic
+  wide-in, apex, wide-out line is faster than the middle of the road, and hugging the
+  inside is slowest (tested in `src/sim/ai/lines.test.ts`). The bots' line minimises
+  curvature (4th-order smoothing), not length.
 - **Downforce**: more grip at high speed and less in slow corners, so fast corners and
   hairpins feel different.
 - **Slipstream**: following closely behind another car on a straight lowers drag.
@@ -215,7 +219,8 @@ The timing tower is always shown (no Tab needed).
 - Real circuit layouts come from **bacinger/f1-circuits** (MIT) GeoJSON, scaled to about
   0.5 (0.4 made slow corners too tight to drive). Tracks: Silverstone, Bahrain (3 DRS
   zones like the real one), Albert Park (4 DRS zones), Monaco (full scale, 13 m wide, 1 DRS zone,
-  pits left), COTA (2 zones, pits left), Spa (2 zones, pits left). Import new circuits with
+  pits left), COTA (2 zones, pits left), Spa (2 zones, pits left), Baku (0.8 scale, 13 m wide for the
+  castle section, 2 zones, pits left), Yas Marina (2 zones, pits right; no exit tunnel). Import new circuits with
   `scripts/import-track.ts` (see its header).
   For DRS zones on new tracks, use the flat-out sections of the bots' speed profile.
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
