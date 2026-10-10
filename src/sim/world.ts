@@ -41,6 +41,16 @@ const DRS_DRAG = 0.65;
 const DRS_GAP = 1;
 const SLIPSTREAM_RANGE = 45;
 const SLIPSTREAM_MAX = 0.35;
+/** Track positions are kept this long (s), sampled this often, to judge who moved before a collision. */
+const TRAIL_TIME = 1.5;
+const TRAIL_STEP = 1 / 30;
+
+/** Where a car was on the track at a moment (host only). */
+export interface TrailPoint {
+  t: number;
+  s: number;
+  d: number;
+}
 
 export interface Racer {
   id: string;
@@ -68,6 +78,8 @@ export interface Racer {
   frozen: boolean;
   /** At-fault contacts let off with a warning so far. */
   collisionWarnings: number;
+  /** Recent track positions, oldest first (host only). */
+  trail: TrailPoint[];
 }
 
 export interface Penalty {
@@ -97,7 +109,7 @@ export type WorldEvent = (
   | { kind: 'pitStop'; duration: number; compound: Compound }
   | { kind: 'penalty'; penalty: Penalty }
   /** A significant hit with another car, and who (if anyone) was blamed. */
-  | { kind: 'contact'; other: string; verdict: 'incident' | 'yourFault' | 'theirFault'; warning?: boolean }
+  | { kind: 'contact'; other: string; verdict: 'incident' | 'yourFault' | 'theirFault'; warning?: boolean; reason?: string }
 ) & { racerId: string };
 
 /**
@@ -110,6 +122,7 @@ export class RaceWorld {
   /** Last time any car crossed each DRS detection line, and which car. */
   private readonly detections: { time: number; id: string }[];
   private readonly contactCooldowns = new Map<string, number>();
+  private nextTrail = 0;
 
   constructor(
     readonly track: Track,
@@ -138,6 +151,7 @@ export class RaceWorld {
       penalties: [],
       frozen: false,
       collisionWarnings: 0,
+      trail: [],
     };
     this.racers.push(racer);
     return racer;
@@ -155,8 +169,22 @@ export class RaceWorld {
       r.input = inputs.get(r.id) ?? r.input;
       this.stepRacer(r, dt, events);
     }
-    if (this.options.collisions !== false) this.handleContacts(events);
+    if (this.options.collisions !== false) {
+      this.recordTrails();
+      this.handleContacts(events);
+    }
     return events;
+  }
+
+  private recordTrails(): void {
+    if (this.time < this.nextTrail) return;
+    this.nextTrail = this.time + TRAIL_STEP;
+    for (const r of this.racers) {
+      const q = this.track.query(r.car.x, r.car.y);
+      if (!q) continue;
+      r.trail.push({ t: this.time, s: q.s, d: q.d });
+      while (r.trail.length > 0 && r.trail[0].t < this.time - TRAIL_TIME) r.trail.shift();
+    }
   }
 
   private handleContacts(events: WorldEvent[]): void {
@@ -165,14 +193,14 @@ export class RaceWorld {
       const warning = c.atFault !== null && !c.serious && c.atFault.collisionWarnings === 0;
       const tell = (r: Racer, other: Racer) => {
         const verdict = c.atFault === null ? 'incident' : c.atFault === r ? 'yourFault' : 'theirFault';
-        events.push({ kind: 'contact', other: other.name, verdict, warning, racerId: r.id });
+        events.push({ kind: 'contact', other: other.name, verdict, warning, reason: c.reason || undefined, racerId: r.id });
       };
       tell(c.a, c.b);
       tell(c.b, c.a);
       if (c.atFault && warning) c.atFault.collisionWarnings++;
       else if (c.atFault) {
         const victim = c.atFault === c.a ? c.b : c.a;
-        this.addPenalty(c.atFault, c.penalty, `Causing a collision with ${victim.name}`, events);
+        this.addPenalty(c.atFault, c.penalty, `Causing a collision with ${victim.name} (${c.reason})`, events);
       }
     }
   }
@@ -191,6 +219,7 @@ export class RaceWorld {
     r.compoundsUsed = [compound];
     r.penalties = [];
     r.collisionWarnings = 0;
+    r.trail = [];
   }
 
   addPenalty(r: Racer, seconds: number, reason: string, events: WorldEvent[]): void {

@@ -13,6 +13,14 @@ const CAR_IMPACT_SCALE = 0.6;
 const PAIR_COOLDOWN = 3;
 /** How far from each end of the car counts as its nose or gearbox (m). */
 const END_ZONE = 1.2;
+/** Cars this far apart sideways (centre to centre, m) are clear of each other: a car's width plus a little. */
+const LATERAL_CLEAR = 2.3;
+/** Sideways move (m) towards the other car that counts as moving across. */
+const MOVE_MIN = 1;
+/** Less time than this (s) between a car moving across in front and the hit: the car behind couldn't avoid it. */
+const REACTION_TIME = 0.8;
+/** Track curvature (1/m) below which a section counts as a straight. */
+const STRAIGHT_CURVATURE = 1 / 200;
 
 export type HitPart = 'front' | 'rear' | 'side';
 
@@ -23,6 +31,8 @@ export interface Contact {
   impact: number;
   /** The driver judged to have caused it, if anyone. */
   atFault: Racer | null;
+  /** Why, in a few words. */
+  reason: string;
   /** 5 or 10 s, when someone is at fault. */
   penalty: number;
   /** A big hit, or one that wrecked the other car: no warning first. */
@@ -106,9 +116,59 @@ function wrongWay(track: Track, c: Car): boolean {
   return Math.cos(c.heading) * q.sample.tx + Math.sin(c.heading) * q.sample.ty < -0.3;
 }
 
+export interface Verdict {
+  atFault: Racer | null;
+  /** Short reason shown with the penalty. */
+  reason: string;
+}
+
+/**
+ * Who moved across into whom, from the cars' recent track positions. Finds the last moment
+ * the two cars were side by side with room between them, and which of them closed that
+ * gap. Null if they were in line the whole time, or both moved.
+ */
+function lateralMove(track: Track, a: Racer, b: Racer, now: number): { mover: Racer; other: Racer; since: number } | null {
+  const ta = a.trail;
+  const tb = b.trail;
+  const da = track.query(a.car.x, a.car.y);
+  const db = track.query(b.car.x, b.car.y);
+  if (!da || !db) return null;
+  let j = tb.length - 1;
+  for (let i = ta.length - 1; i >= 0; i--) {
+    const pa = ta[i];
+    while (j > 0 && tb[j].t > pa.t) j--;
+    const pb = tb[j];
+    if (pb.t !== pa.t) continue;
+    if (Math.abs(pa.d - pb.d) <= LATERAL_CLEAR) continue;
+    // Clear of each other at this moment. How far did each car move towards the other since?
+    const towardsB = Math.sign(pb.d - pa.d);
+    const moveA = (da.d - pa.d) * towardsB;
+    const moveB = (db.d - pb.d) * -towardsB;
+    if (moveA >= MOVE_MIN && moveA > 2 * Math.max(0, moveB)) return { mover: a, other: b, since: now - pa.t };
+    if (moveB >= MOVE_MIN && moveB > 2 * Math.max(0, moveA)) return { mover: b, other: a, since: now - pa.t };
+    return null;
+  }
+  return null;
+}
+
+/** Signed distance (m) along the lap from b forward to a, allowing for the start-line wrap. */
+function along(track: Track, a: Racer, b: Racer): number {
+  const pa = track.query(a.car.x, a.car.y);
+  const pb = track.query(b.car.x, b.car.y);
+  if (!pa || !pb) return 0;
+  let ds = track.forwardDistance(pb.s, pa.s);
+  if (ds > track.length / 2) ds -= track.length;
+  return ds;
+}
+
 /**
  * Decide who caused a contact. Only clear cases get a penalty; anything ambiguous is a
- * racing incident. The driver who was hit is never penalised.
+ * racing incident. The driver who was hit is never penalised:
+ * - driving the wrong way: always at fault;
+ * - moving across into the path of a car right behind (too late for it to react), or
+ *   into a car that is alongside: the car that moved;
+ * - otherwise nose into a gearbox: the car behind;
+ * - nose into a side, clearly the faster one into the contact: a dive-bomb.
  */
 export function judge(
   track: Track,
@@ -118,7 +178,8 @@ export function judge(
   ny: number,
   px: number,
   py: number,
-): Racer | null {
+  now: number,
+): Verdict {
   const partA = partHit(a.car, px, py);
   const partB = partHit(b.car, px, py);
   // How fast each car was moving into the other.
@@ -127,18 +188,34 @@ export function judge(
 
   const wrongA = wrongWay(track, a.car);
   const wrongB = wrongWay(track, b.car);
-  if (wrongA !== wrongB) return wrongA ? a : b;
+  if (wrongA !== wrongB) return { atFault: wrongA ? a : b, reason: 'driving the wrong way' };
+
+  const rearEnd = (partA === 'front' && partB === 'rear') || (partB === 'front' && partA === 'rear');
+  const move = lateralMove(track, a, b, now);
+  if (move) {
+    const { mover, other } = move;
+    const moverAhead = along(track, mover, other) > 0;
+    // On a straight, moving across is a choice; in a corner it is just the line into it.
+    const straight = Math.abs(track.query(px, py)?.sample.curvature ?? 1) < STRAIGHT_CURVATURE;
+    if (rearEnd && moverAhead && straight && move.since < REACTION_TIME) {
+      // Cut across right in front of someone: they had no time to avoid it.
+      return { atFault: mover, reason: 'moved across in front' };
+    }
+    // Squeezed a car that was alongside (its front wheels at least level with our middle).
+    const otherLevel = along(track, other, mover) + other.car.params.cgToFront > -0.5;
+    if (!rearEnd && otherLevel) return { atFault: mover, reason: 'moved into a car alongside' };
+  }
 
   // Nose into someone's gearbox: the car behind.
-  if (partA === 'front' && partB === 'rear') return a;
-  if (partB === 'front' && partA === 'rear') return b;
+  if (partA === 'front' && partB === 'rear') return { atFault: a, reason: 'hit from behind' };
+  if (partB === 'front' && partA === 'rear') return { atFault: b, reason: 'hit from behind' };
 
   // Nose into someone's side, clearly the faster one into the contact: a dive-bomb or T-bone.
-  if (partA === 'front' && partB === 'side' && closingA > closingB + 2) return a;
-  if (partB === 'front' && partA === 'side' && closingB > closingA + 2) return b;
+  if (partA === 'front' && partB === 'side' && closingA > closingB + 2) return { atFault: a, reason: 'dive-bomb' };
+  if (partB === 'front' && partA === 'side' && closingB > closingA + 2) return { atFault: b, reason: 'dive-bomb' };
 
   // Side by side, nose to nose, or unclear: racing incident.
-  return null;
+  return { atFault: null, reason: '' };
 }
 
 /**
@@ -186,7 +263,8 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
       const impact = -vn;
       const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
       const judged = impact >= PENALTY_MIN_IMPACT && time - (cooldowns.get(key) ?? -Infinity) > PAIR_COOLDOWN;
-      const atFault = judged ? judge(track, a, b, nx, ny, px, py) : null;
+      const verdict = judged ? judge(track, a, b, nx, ny, px, py, time) : null;
+      const atFault = verdict?.atFault ?? null;
 
       applyImpulse(ca, -jn * nx, -jn * ny, rax, ray);
       applyImpulse(cb, jn * nx, jn * ny, rbx, rby);
@@ -211,7 +289,7 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
         const victim = atFault === a ? b : a;
         const serious = impact >= BIG_HIT || victim.car.retired;
         const penalty = atFault ? (serious ? 10 : 5) : 0;
-        contacts.push({ a, b, impact, atFault, penalty, serious });
+        contacts.push({ a, b, impact, atFault, reason: verdict!.reason, penalty, serious });
       }
     }
   }

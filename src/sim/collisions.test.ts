@@ -90,6 +90,40 @@ describe('Car collisions', () => {
     expect(penaltyTime(a)).toBe(0);
   });
 
+  it('blames a car that moves across right in front of another, not the car that hits it', () => {
+    const { world, a, b } = pair();
+    // a is just to the left of b's line and swerves right across b's nose; b is faster.
+    put(a, 30, -1.4, 30, 0.08);
+    put(b, 16.6, 1.2, 42);
+    const events = run(world, 1, { a: CRUISE, b: CRUISE });
+    const verdicts = events.flatMap((e) => (e.kind === 'contact' ? [`${e.racerId}:${e.verdict}`] : []));
+    expect(verdicts).toEqual(['a:yourFault', 'b:theirFault']);
+    expect(b.collisionWarnings + penaltyTime(b)).toBe(0);
+    expect(a.collisionWarnings).toBe(1);
+  });
+
+  it('still blames the car behind when the car ahead moved over in good time', () => {
+    const { world, a, b } = pair();
+    // a drives in the left lane, then moves into b's lane over a second before b reaches it.
+    put(a, 30, -3, 30);
+    put(b, 0, 1.2, 30);
+    run(world, 0.5, { a: CRUISE, b: CRUISE });
+    put(a, 60, 1.2, 30);
+    put(b, 60 - 5.6 - 13, 1.2, 42);
+    const events = run(world, 2, { a: CRUISE, b: CRUISE });
+    const verdicts = events.flatMap((e) => (e.kind === 'contact' ? [`${e.racerId}:${e.verdict}`] : []));
+    expect(verdicts).toEqual(['a:theirFault', 'b:yourFault']);
+  });
+
+  it('blames a car that moves sideways into a car alongside', () => {
+    const { world, a, b } = pair();
+    put(a, 29, -3, 40, 0.25);
+    put(b, 30.5, 1.5, 40);
+    const events = run(world, 0.5, { a: CRUISE, b: CRUISE });
+    const verdicts = events.flatMap((e) => (e.kind === 'contact' ? [`${e.racerId}:${e.verdict}`] : []));
+    expect(verdicts).toEqual(['a:yourFault', 'b:theirFault']);
+  });
+
   it('keeps cars from passing through each other', () => {
     const { world, a, b } = pair();
     put(a, 30, 0, 20);

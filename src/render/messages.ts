@@ -32,8 +32,14 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
       return { text: `FINISHED · P${e.position}`, color: '#ffffff', until: now + 6 };
     case 'contact':
       if (e.verdict === 'incident') return { text: `Contact with ${e.other}: racing incident`, color: '#cccccc', until };
-      if (e.verdict === 'theirFault') return { text: `${e.other} hit you${e.warning ? ': they get a warning' : ": they're penalised"}`, color: '#cccccc', until };
-      if (e.warning) return { text: `WARNING: careful with ${e.other} (next time is a penalty)`, color: '#ffb347', until: now + 4 };
+      if (e.verdict === 'theirFault') {
+        const why = e.reason ? ` (${e.reason})` : '';
+        return { text: `Contact with ${e.other}: their fault${why}${e.warning ? ', warning' : ', penalised'}`, color: '#cccccc', until };
+      }
+      if (e.warning) {
+        const why = e.reason ? `${e.reason}, ` : '';
+        return { text: `WARNING: contact with ${e.other} (${why}next time is a penalty)`, color: '#ffb347', until: now + 4 };
+      }
       return null;
     case 'reset':
       return { text: e.note.toUpperCase(), color: '#ffffff', until };
