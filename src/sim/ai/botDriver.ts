@@ -11,6 +11,8 @@ export type Difficulty = 'easy' | 'medium' | 'hard';
 export const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
 
 interface Skill {
+  /** Makes one defensive move per straight when a car behind is attacking. */
+  defends: boolean;
   /** Share of the car's grip used in corners and under braking. */
   pace: number;
   /** Seconds to react to lights out. */
@@ -20,9 +22,9 @@ interface Skill {
 }
 
 const SKILL: Record<Difficulty, Skill> = {
-  easy: { pace: 0.74, reaction: [0.45, 0.7], ers: false },
-  medium: { pace: 0.86, reaction: [0.28, 0.42], ers: true },
-  hard: { pace: 0.95, reaction: [0.17, 0.26], ers: true },
+  easy: { defends: false, pace: 0.74, reaction: [0.45, 0.7], ers: false },
+  medium: { defends: true, pace: 0.86, reaction: [0.28, 0.42], ers: true },
+  hard: { defends: true, pace: 0.95, reaction: [0.17, 0.26], ers: true },
 };
 
 /** What the bot needs to know about the session. */
@@ -40,6 +42,10 @@ const PASS_OFFSET = 3.2;
 const LATERAL_SPEED = 4;
 /** Seconds after lights out that bots stay in their grid column. */
 const START_COLUMN_TIME = 4;
+/** A car behind closer than this many seconds (at the closing speed) is too close to move across in front of. */
+const CHOP_TIME = 1;
+/** Corners tighter than this (curvature, 1/m) end a straight: the defensive move is used up until the next one. */
+const CORNER_CURVATURE = 1 / 120;
 
 /**
  * A computer driver: follows a racing line at its difficulty's pace, brakes to a planned
@@ -61,6 +67,10 @@ export class BotDriver {
   private nextTyre: Compound = 'medium';
   /** Close behind someone: worth spending ERS. */
   private attacking = false;
+  /** Where we moved to defend (lateral offset), held until the braking zone. */
+  private defenceLateral: number | null = null;
+  /** The one defensive move allowed on this straight has been made. */
+  private defended = false;
 
   constructor(
     private readonly track: Track,
@@ -150,10 +160,22 @@ export class BotDriver {
       this.startLateral ??= q.d;
       wanted = this.startLateral;
     }
+    const lookIdx = Math.round((speed * 0.25) / 2);
+    const braking = Math.min(this.profile[q.index], this.profile[(q.index + lookIdx) % n]) < speed - 1;
+    if (Math.abs(this.line.curvature[q.index]) > CORNER_CURVATURE) this.defended = false;
+    if (braking || pitting || !collisionsOn || ctx.phase !== 'race') this.defenceLateral = null;
+    else if (sinceStart > START_COLUMN_TIME && this.skill.defends) this.defend(world, me, q.s, q.index, speed);
+    if (this.defenceLateral !== null) wanted = this.defenceLateral;
+    let minLateral = -Infinity;
+    let maxLateral = Infinity;
     if (collisionsOn && me.pit.phase !== 'in' && me.pit.phase !== 'stopped') {
       const traffic = this.traffic(world, me, q.s, q.d, wanted, sinceStart < 8);
       // In the pit lane we only slow for traffic; the lane decides where we drive.
-      if (!pitting) wanted = traffic.lateral;
+      if (!pitting) {
+        wanted = traffic.lateral;
+        minLateral = traffic.minLateral;
+        maxLateral = traffic.maxLateral;
+      }
       speedCap = Math.min(speedCap, traffic.speedCap);
     }
     const edge = q.sample.halfWidth - 1.4;
@@ -162,6 +184,9 @@ export class BotDriver {
     const lineHere = this.line.offset[q.index];
     const wantedDeviation = wanted - lineHere;
     this.deviation += Math.max(-LATERAL_SPEED * dt, Math.min(LATERAL_SPEED * dt, wantedDeviation - this.deviation));
+    // Never let the racing line pull us towards a car we must keep clear of.
+    if (lineHere + this.deviation > maxLateral) this.deviation = Math.max(maxLateral, q.d) - lineHere;
+    if (lineHere + this.deviation < minLateral) this.deviation = Math.min(minLateral, q.d) - lineHere;
 
     // Steering: pure pursuit towards a point ahead at the target lateral position.
     const look = 7 + speed * 0.32;
@@ -172,6 +197,9 @@ export class BotDriver {
     // line, which may swing across the track right where the pit entry is.
     if (pitting) aheadLateral = wanted;
     if (me.pit.phase === 'out' && !pitting) aheadLateral = Math.max(-edge, Math.min(edge, aheadLateral));
+    // Aim clear of cars alongside, even where the racing line ahead swings towards them.
+    if (aheadLateral > maxLateral) aheadLateral = Math.max(maxLateral, q.d);
+    if (aheadLateral < minLateral) aheadLateral = Math.min(minLateral, q.d);
     const tx = ahead.x + ahead.nx * aheadLateral;
     const ty = ahead.y + ahead.ny * aheadLateral;
     let alpha = Math.atan2(ty - car.y, tx - car.x) - car.heading;
@@ -184,7 +212,6 @@ export class BotDriver {
     const steer = Math.max(-1, Math.min(1, (curvature * Math.max(speed, 3)) / Math.max(maxYaw, 0.05)));
 
     // Speed: the planned speed here and a little ahead, scaled for grip (tyres, rain, damage).
-    const lookIdx = Math.round((speed * 0.25) / 2);
     let target = Math.min(this.profile[q.index], this.profile[(q.index + lookIdx) % n]);
     const gripScale = car.gripFactor * (1 - 0.4 * car.parts.frontWing) * (1 - 0.15 * (car.parts.left + car.parts.right) / 2);
     target *= Math.sqrt(Math.max(0.2, gripScale));
@@ -217,7 +244,7 @@ export class BotDriver {
     d: number,
     wanted: number,
     startCaution: boolean,
-  ): { lateral: number; speedCap: number } {
+  ): { lateral: number; speedCap: number; minLateral: number; maxLateral: number } {
     const L = this.track.length;
     const speed = me.car.speed;
     let lateral = wanted;
@@ -242,6 +269,16 @@ export class BotDriver {
         if (Math.abs(side) < 4.5) {
           if (side > 0) maxLateral = Math.min(maxLateral, q.d - SAFE_LATERAL);
           else minLateral = Math.max(minLateral, q.d + SAFE_LATERAL);
+        }
+        continue;
+      }
+      // Behind us in another lane and closing: moving across in front of them now would
+      // leave them no time to react (and is a penalty). Hold our line, don't move towards them.
+      if (gap < 0 && Math.abs(side) > 1.5) {
+        const closing = Math.max(0, other.car.speed - speed);
+        if (-gap < CAR_LENGTH + 4 + closing * CHOP_TIME * 2) {
+          if (side > 0) maxLateral = Math.min(maxLateral, Math.max(d, q.d - SAFE_LATERAL));
+          else minLateral = Math.max(minLateral, Math.min(d, q.d + SAFE_LATERAL));
         }
         continue;
       }
@@ -276,9 +313,52 @@ export class BotDriver {
         speedCap = Math.min(speedCap, cap);
       }
     }
-    if (minLateral > maxLateral) lateral = d; // squeezed: hold our position
-    else lateral = Math.max(minLateral, Math.min(maxLateral, lateral));
-    return { lateral, speedCap: Math.max(0, speedCap) };
+    if (minLateral > maxLateral) {
+      // Squeezed: hold our position.
+      lateral = d;
+      minLateral = maxLateral = d;
+    } else lateral = Math.max(minLateral, Math.min(maxLateral, lateral));
+    return { lateral, speedCap: Math.max(0, speedCap), minLateral, maxLateral };
+  }
+
+  /**
+   * Defending, by the rules: one move per straight, made early (while the attacker is still
+   * well behind), to cover the inside of the next corner. The move is then held until the
+   * braking zone; no weaving.
+   */
+  private defend(world: RaceWorld, me: Racer, s: number, index: number, speed: number): void {
+    if (this.defended) return;
+    const L = this.track.length;
+    let attacker: Racer | null = null;
+    let attackerGap = Infinity;
+    for (const other of world.racers) {
+      if (other === me || other.frozen || other.car.retired || other.pit.phase !== 'out') continue;
+      const q = this.track.query(other.car.x, other.car.y);
+      if (!q) continue;
+      const behind = this.track.forwardDistance(q.s, s);
+      if (behind > L / 2 || behind < CAR_LENGTH + 1) continue;
+      const closing = other.car.speed - speed;
+      // Close enough to be a threat, not so close that a move now would chop them.
+      const threat = behind < 30 || (closing > 1 && behind < 45);
+      const tooLate = behind < CAR_LENGTH + 4 + Math.max(0, closing) * CHOP_TIME * 2;
+      if (threat && !tooLate && behind < attackerGap) {
+        attacker = other;
+        attackerGap = behind;
+      }
+    }
+    if (!attacker) return;
+    // Cover the inside of the next proper corner.
+    const n = this.track.samples.length;
+    for (let k = 1; k < 150; k++) {
+      const i = (index + k) % n;
+      const curv = this.line.curvature[i];
+      if (Math.abs(curv) > CORNER_CURVATURE) {
+        const sample = this.track.samples[index];
+        this.defenceLateral = Math.sign(curv) * (sample.halfWidth - 2.6);
+        this.defended = true;
+        return;
+      }
+    }
   }
 
   /** Tyres for the next stop (and the start). */

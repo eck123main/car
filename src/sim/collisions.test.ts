@@ -124,6 +124,26 @@ describe('Car collisions', () => {
     expect(verdicts).toEqual(['a:yourFault', 'b:theirFault']);
   });
 
+  it('blames a dive-bomb even when the car ahead was turning in', () => {
+    const { world, a, b } = pair();
+    // a turns in towards the left; b arrives from well back on the left, far faster.
+    put(a, 30, 2, 25, -0.4);
+    put(b, 18, -3, 45);
+    const events = run(world, 1, { a: CRUISE, b: CRUISE });
+    const verdicts = events.flatMap((e) => (e.kind === 'contact' ? [`${e.racerId}:${e.verdict}`] : []));
+    expect(verdicts).toEqual(['a:theirFault', 'b:yourFault']);
+  });
+
+  it('calls it a racing incident when a car runs wide into one that is not alongside', () => {
+    const { world, a, b } = pair();
+    // a drifts right; b is on the right, slightly behind and barely faster.
+    put(a, 30, -1.5, 30, 0.35);
+    put(b, 26, 3, 31);
+    const events = run(world, 1, { a: CRUISE, b: CRUISE });
+    const verdicts = events.flatMap((e) => (e.kind === 'contact' ? [`${e.racerId}:${e.verdict}`] : []));
+    expect(verdicts).toEqual(['a:incident', 'b:incident']);
+  });
+
   it('keeps cars from passing through each other', () => {
     const { world, a, b } = pair();
     put(a, 30, 0, 20);

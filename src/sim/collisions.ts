@@ -1,6 +1,6 @@
 import type { Car } from '../physics/car';
 import type { Track } from '../track/track';
-import type { Racer } from './world';
+import type { Racer, TrailPoint } from './world';
 
 const RESTITUTION = 0.2;
 const FRICTION = 0.3;
@@ -17,8 +17,12 @@ const END_ZONE = 1.2;
 const LATERAL_CLEAR = 2.3;
 /** Sideways move (m) towards the other car that counts as moving across. */
 const MOVE_MIN = 1;
+/** How far back (s) from the last moment two cars were clear to look for who moved. */
+const MOVE_WINDOW = 0.6;
 /** Less time than this (s) between a car moving across in front and the hit: the car behind couldn't avoid it. */
 const REACTION_TIME = 0.8;
+/** Coming up the inside this much faster (m/s) than the car turning in is a dive-bomb. */
+const DIVE_BOMB_SPEED = 6;
 /** Track curvature (1/m) below which a section counts as a straight. */
 const STRAIGHT_CURVATURE = 1 / 200;
 
@@ -140,12 +144,16 @@ function lateralMove(track: Track, a: Racer, b: Racer, now: number): { mover: Ra
     const pb = tb[j];
     if (pb.t !== pa.t) continue;
     if (Math.abs(pa.d - pb.d) <= LATERAL_CLEAR) continue;
-    // Clear of each other at this moment. How far did each car move towards the other since?
-    const towardsB = Math.sign(pb.d - pa.d);
-    const moveA = (da.d - pa.d) * towardsB;
-    const moveB = (db.d - pb.d) * -towardsB;
-    if (moveA >= MOVE_MIN && moveA > 2 * Math.max(0, moveB)) return { mover: a, other: b, since: now - pa.t };
-    if (moveB >= MOVE_MIN && moveB > 2 * Math.max(0, moveA)) return { mover: b, other: a, since: now - pa.t };
+    // Clear of each other at this moment. Who closed the gap, over this moment and a little before it?
+    const since = now - pa.t;
+    const ref = (trail: TrailPoint[]) => trail.find((p) => p.t >= pa.t - MOVE_WINDOW) ?? trail[0];
+    const ra = ref(ta);
+    const rb = ref(tb);
+    const towardsB = Math.sign(rb.d - ra.d);
+    const moveA = (da.d - ra.d) * towardsB;
+    const moveB = (db.d - rb.d) * -towardsB;
+    if (moveA >= MOVE_MIN && moveA > 2 * Math.max(0, moveB)) return { mover: a, other: b, since };
+    if (moveB >= MOVE_MIN && moveB > 2 * Math.max(0, moveA)) return { mover: b, other: a, since };
     return null;
   }
   return null;
@@ -201,9 +209,15 @@ export function judge(
       // Cut across right in front of someone: they had no time to avoid it.
       return { atFault: mover, reason: 'moved across in front' };
     }
-    // Squeezed a car that was alongside (its front wheels at least level with our middle).
-    const otherLevel = along(track, other, mover) + other.car.params.cgToFront > -0.5;
-    if (!rearEnd && otherLevel) return { atFault: mover, reason: 'moved into a car alongside' };
+    if (!rearEnd) {
+      // Squeezed a car that was alongside (its front wheels at least level with our middle).
+      const otherLevel = along(track, other, mover) + other.car.params.cgToFront > -0.5;
+      if (otherLevel) return { atFault: mover, reason: 'moved into a car alongside' };
+      // Not alongside: the mover was entitled to the line, unless the other came flying in
+      // far too fast to stop (a dive-bomb).
+      const faster = other.car.speed - mover.car.speed;
+      return faster > DIVE_BOMB_SPEED ? { atFault: other, reason: 'dive-bomb' } : { atFault: null, reason: '' };
+    }
   }
 
   // Nose into someone's gearbox: the car behind.
