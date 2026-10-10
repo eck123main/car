@@ -45,6 +45,63 @@ describe('Bots on their own', () => {
   }, 30_000);
 });
 
+describe('Bot racecraft', () => {
+  /** Separate sideways moves of at least `min` metres (a move in one direction, then the other...). */
+  function countMoves(positions: number[], min = 1): number {
+    let moves = 0;
+    let anchor = positions[0];
+    let dir = 0;
+    for (const p of positions) {
+      if (dir !== 0 && Math.sign(p - anchor) === dir) anchor = p; // still going the same way
+      else if (Math.abs(p - anchor) >= min) {
+        moves++;
+        dir = Math.sign(p - anchor);
+        anchor = p;
+      }
+    }
+    return moves;
+  }
+
+  it.each(['medium', 'hard'] as const)('a %s bot defends with one move down a straight, never into the attacker', (diff) => {
+    const track = new Track(TRACKS.baku);
+    const line = racingLine(track);
+    const world = new RaceWorld(track, { drsRule: 'race', wetness: 0 });
+    const defender = world.addRacer('d', 'D', 'red');
+    const attacker = world.addRacer('a', 'A', 'blue');
+    const place = (r: typeof defender, s: number, speed: number) => {
+      const i = Math.floor(s / 2) % track.samples.length;
+      const t = track.samples[i];
+      const h = Math.atan2(t.ty, t.tx);
+      r.car.place(t.x + t.nx * line.offset[i], t.y + t.ny * line.offset[i], h);
+      r.car.vx = Math.cos(h) * speed;
+      r.car.vy = Math.sin(h) * speed;
+    };
+    // Baku's long, dead straight run to the line: the defender ahead, a faster car closing.
+    const straight = { from: 4090, to: 4620 };
+    place(defender, straight.from - 150, 70);
+    place(attacker, straight.from - 200, 78);
+    defender.timer.lapsCompleted = attacker.timer.lapsCompleted = 1;
+    const bots = { d: new BotDriver(track, 'd', diff), a: new BotDriver(track, 'a', 'hard') };
+    const ctx = { phase: 'race' as const, raceStart: -100, laps: 10, mandatoryStop: false };
+    const positions: number[] = [];
+    let contact = false;
+    for (let t = 0; t < 12; t += DT) {
+      const inputs = new Map<string, PlayerInput>([
+        ['d', bots.d.drive(world, ctx, DT)],
+        ['a', { ...bots.a.drive(world, ctx, DT), ers: true }],
+      ]);
+      for (const e of world.step(DT, inputs)) if (e.kind === 'contact') contact = true;
+      const q = track.query(defender.car.x, defender.car.y)!;
+      if (!track.inRange(q.s, straight.from, straight.to)) continue;
+      if (defender.car.brake > 0.1) break;
+      positions.push(q.d);
+    }
+    expect(positions.length).toBeGreaterThan(400);
+    expect(countMoves(positions)).toBe(1);
+    expect(contact).toBe(false);
+  });
+});
+
 function race(id: string, grid: Difficulty[], laps: number, qualifying: boolean) {
   const track = new Track(TRACKS[id]);
   const players = grid.map((d, i) => ({ id: `b${i}`, name: `${d} ${i}`, color: 'red' }));

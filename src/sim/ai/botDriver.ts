@@ -44,8 +44,6 @@ const LATERAL_SPEED = 4;
 const START_COLUMN_TIME = 4;
 /** A car behind closer than this many seconds (at the closing speed) is too close to move across in front of. */
 const CHOP_TIME = 1;
-/** Corners tighter than this (curvature, 1/m) end a straight: the defensive move is used up until the next one. */
-const CORNER_CURVATURE = 1 / 120;
 
 /**
  * A computer driver: follows a racing line at its difficulty's pace, brakes to a planned
@@ -162,7 +160,8 @@ export class BotDriver {
     }
     const lookIdx = Math.round((speed * 0.25) / 2);
     const braking = Math.min(this.profile[q.index], this.profile[(q.index + lookIdx) % n]) < speed - 1;
-    if (Math.abs(this.line.curvature[q.index]) > CORNER_CURVATURE) this.defended = false;
+    // Braking for a corner ends the straight: the next straight allows another move.
+    if (braking) this.defended = false;
     if (braking || pitting || !collisionsOn || ctx.phase !== 'race') this.defenceLateral = null;
     else if (sinceStart > START_COLUMN_TIME && this.skill.defends) this.defend(world, me, q.s, q.index, speed);
     if (this.defenceLateral !== null) wanted = this.defenceLateral;
@@ -378,14 +377,14 @@ export class BotDriver {
       }
     }
     if (!attacker) return;
-    // Cover the inside of the next proper corner.
+    // Cover the inside of the next corner we'll brake for (flat-out kinks don't count).
     const n = this.track.samples.length;
-    for (let k = 1; k < 150; k++) {
+    for (let k = 1; k < 300; k++) {
       const i = (index + k) % n;
-      const curv = this.line.curvature[i];
-      if (Math.abs(curv) > CORNER_CURVATURE) {
+      const next = (i + 1) % n;
+      if (this.profile[i] < speed * 0.85 && this.profile[i] <= this.profile[next]) {
         const sample = this.track.samples[index];
-        this.defenceLateral = Math.sign(curv) * (sample.halfWidth - 2.6);
+        this.defenceLateral = Math.sign(this.line.curvature[i]) * (sample.halfWidth - 2.6);
         this.defended = true;
         return;
       }
