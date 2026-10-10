@@ -51,10 +51,11 @@ export function drawCar(
   ctx.fillRect(hl - 0.45, -hw + 0.05, 0.35, p.width - 0.1);
   ctx.fillStyle = '#222';
   if (drsOpen) {
-    ctx.fillRect(-hl, -0.75, 0.15, 1.5);
-    ctx.fillRect(-hl + 0.32, -0.75, 0.13, 1.5);
-    ctx.fillStyle = '#2ecc40';
-    ctx.fillRect(-hl + 0.15, -0.75, 0.17, 1.5);
+    // The whole rear wing lights up green, with a short glow behind it, so it reads at any zoom.
+    ctx.fillStyle = 'rgba(46, 204, 64, 0.35)';
+    ctx.fillRect(-hl - 0.9, -0.85, 0.9, 1.7);
+    ctx.fillStyle = '#39ff5a';
+    ctx.fillRect(-hl - 0.1, -0.95, 0.6, 1.9);
   } else {
     ctx.fillRect(-hl, -0.75, 0.45, 1.5);
   }
