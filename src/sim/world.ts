@@ -39,7 +39,7 @@ const ERS_POWER = 120_000;
 const ERS_DEPLOY_TIME = 7;
 const DRS_DRAG = 0.65;
 const DRS_GAP = 1;
-const SLIPSTREAM_RANGE = 45;
+const SLIPSTREAM_RANGE = 60;
 const SLIPSTREAM_MAX = 0.35;
 /** Track positions are kept this long (s), sampled this often, to judge who moved before a collision. */
 const TRAIL_TIME = 1.5;
@@ -330,7 +330,7 @@ export class RaceWorld {
         const ahead = dx * fx + dy * fy;
         const side = Math.abs(-dx * fy + dy * fx);
         const sameWay = Math.cos(b.car.heading - ca.heading) > 0.9;
-        if (ahead > 4 && ahead < SLIPSTREAM_RANGE && side < 3 && sameWay) {
+        if (ahead > 4 && ahead < SLIPSTREAM_RANGE && side < 4 && sameWay) {
           a.slipstream = Math.max(a.slipstream, 1 - ahead / SLIPSTREAM_RANGE);
         }
       }
