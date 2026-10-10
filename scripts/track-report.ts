@@ -26,17 +26,22 @@ function testLap(track: Track, drs: boolean) {
   const speed = new Array<number>(n).fill(0);
   const throttle = new Array<boolean>(n).fill(false);
   let drsTime = 0;
+  let fullTime = 0;
+  let lapTime = 0;
   for (let t = 0; t < 400 && laps.length < 2; t += DT) {
     const input = { ...bot.drive(world, PRACTICE, DT), drs };
     for (const e of world.step(DT, new Map([['bot', input]]))) if (e.kind === 'lap') laps.push(e.lap.time);
     if (laps.length === 1) {
       const s = r.timer.lapDistance;
+      const full = r.car.throttle > 0.95 && r.car.brake === 0;
       if (s !== null) speed[Math.floor(s / 2) % n] = r.car.speed;
-      if (s !== null) throttle[Math.floor(s / 2) % n] = r.car.throttle > 0.95 && r.car.brake === 0;
+      if (s !== null) throttle[Math.floor(s / 2) % n] = full;
       if (r.drsOpen) drsTime += DT;
+      if (full) fullTime += DT;
+      lapTime += DT;
     }
   }
-  return { lap: laps[1] ?? NaN, speed, throttle, drsTime };
+  return { lap: laps[1] ?? NaN, speed, throttle, drsTime, fullThrottle: fullTime / lapTime };
 }
 
 const only = process.argv[2];
@@ -71,7 +76,7 @@ for (const [id, def] of Object.entries(TRACKS)) {
   const kmh = (s: number) => (speed[Math.floor((((s % track.length) + track.length) % track.length) / 2) % n] * 3.6).toFixed(0);
   console.log(
     `\n${def.name} (${id}): ${track.length} m, width ${def.width} m, lap ${withDrs.lap.toFixed(1)} s, ` +
-      `top ${(Math.max(...speed) * 3.6).toFixed(0)} km/h, ${corners} slow corners, ` +
+      `top ${(Math.max(...speed) * 3.6).toFixed(0)} km/h, full throttle ${(withDrs.fullThrottle * 100).toFixed(0)}%, ${corners} slow corners, ` +
       `${track.drsZones.length} DRS zones open ${withDrs.drsTime.toFixed(1)} s/lap, worth ${(noDrs.lap - withDrs.lap).toFixed(2)} s/lap`,
   );
   // Full throttle as actually driven, from corner exit to the braking point.
