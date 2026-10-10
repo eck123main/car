@@ -247,12 +247,18 @@ export class BotDriver {
   ): { lateral: number; speedCap: number; minLateral: number; maxLateral: number } {
     const L = this.track.length;
     const speed = me.car.speed;
+    const here = this.track.query(me.car.x, me.car.y);
+    /** Sideways speed across the track (m/s, positive = right). */
+    const sideways = (c: Racer['car']) => (here ? c.vx * here.nx + c.vy * here.ny : 0);
+    const mySideways = sideways(me.car);
     let lateral = wanted;
     let speedCap = Infinity;
     let minLateral = -Infinity;
     let maxLateral = Infinity;
     let closest = Infinity;
     this.attacking = false;
+    /** Cars right in front of our nose, and the speed that keeps us off their gearbox. */
+    const nose: { d: number; room: number; cap: number }[] = [];
     for (const other of world.racers) {
       if (other === me || other.frozen) continue;
       const q = this.track.query(other.car.x, other.car.y);
@@ -261,14 +267,32 @@ export class BotDriver {
       if (gap > L / 2) gap -= L;
       const side = q.d - d;
 
+      // Straight in front of our nose, measured directly (in a hairpin the distance along the
+      // track says little about how close a car on another line really is).
+      const fx = Math.cos(me.car.heading);
+      const fy = Math.sin(me.car.heading);
+      const dx = other.car.x - me.car.x;
+      const dy = other.car.y - me.car.y;
+      const ahead = dx * fx + dy * fy;
+      const across = -dx * fy + dy * fx;
+      if (ahead > CAR_LENGTH && ahead < 25 && Math.abs(across) < 2.4) {
+        const along = other.car.vx * fx + other.car.vy * fy;
+        const room = ahead - CAR_LENGTH - 1.5 - speed * 0.1;
+        // Too close (or touching): drop back rather than push them along.
+        nose.push({ d: q.d, room: Math.max(0, room), cap: Math.max(0, along) + room * 0.5 });
+      }
+
       // Beside us (overlapping), or just behind with their nose alongside: keep a car's
       // width away. A car directly behind us is their problem, not ours.
-      const overlapping = gap > -(CAR_LENGTH + 1) && gap < CAR_LENGTH + 1.5;
+      const overlapping = (gap > -(CAR_LENGTH + 1) && gap < CAR_LENGTH + 1.5) || (Math.abs(ahead) < CAR_LENGTH + 1 && Math.abs(across) < 6);
       const noseIn = gap <= -(CAR_LENGTH + 1) && gap > -12 && Math.abs(side) > 1.5;
       if (overlapping || noseIn) {
-        if (Math.abs(side) < 4.5) {
-          if (side > 0) maxLateral = Math.min(maxLateral, q.d - SAFE_LATERAL);
-          else minLateral = Math.max(minLateral, q.d + SAFE_LATERAL);
+        // We can't stop sliding sideways at once: keep more room the faster we close on them.
+        const closingSideways = (mySideways - sideways(other.car)) * Math.sign(side);
+        const room = SAFE_LATERAL + Math.min(2.5, Math.max(0, closingSideways) * 0.35);
+        if (Math.abs(side) < room + 2) {
+          if (side > 0) maxLateral = Math.min(maxLateral, q.d - room);
+          else minLateral = Math.max(minLateral, q.d + room);
         }
         continue;
       }
@@ -303,8 +327,10 @@ export class BotDriver {
           lateral = canRight && (!canLeft || Math.abs(passRight - d) <= Math.abs(passLeft - d)) ? passRight : passLeft;
         }
       }
-      // Until we're actually beside them, don't run into the back of them.
-      if (Math.abs(side) < SAFE_LATERAL) {
+      // Until we're actually beside them, don't run into the back of them: also when our
+      // line is about to take us into their lane and we aren't going round them.
+      const inPath = Math.abs(side) < SAFE_LATERAL || (lateral === wanted && Math.abs(q.d - ourLineThere) < SAFE_LATERAL);
+      if (inPath) {
         const safeGap = CAR_LENGTH + 3 + speed * 0.22 + Math.max(0, closing) * 1.1 + (startCaution && other.car.speed >= 2 ? 6 : 0);
         const braking = other.car.brake > 0.3 ? 4 : 0;
         let cap = other.car.speed - braking + (gap - safeGap) * 0.4;
@@ -318,6 +344,11 @@ export class BotDriver {
       lateral = d;
       minLateral = maxLateral = d;
     } else lateral = Math.max(minLateral, Math.min(maxLateral, lateral));
+    // Unless we're already steering out of their lane to go round them: then just creep on.
+    for (const c of nose) {
+      const goingRound = Math.abs(c.d - lateral) >= SAFE_LATERAL && Math.abs(lateral - d) >= 0.5;
+      speedCap = Math.min(speedCap, goingRound ? Math.max(c.cap, Math.min(6, 2 + c.room)) : c.cap);
+    }
     return { lateral, speedCap: Math.max(0, speedCap), minLateral, maxLateral };
   }
 
