@@ -69,10 +69,14 @@ Top-down 2D car physics that feels like an F1 car:
   curvature (4th-order smoothing), not length.
 - **Downforce**: more grip at high speed and less in slow corners, so fast corners and
   hairpins feel different.
-- **Slipstream**: following closely behind another car on a straight lowers drag.
+- **Slipstream**: following within 60 m behind another car (and up to 4 m to the side,
+  so it holds while pulling out to pass) lowers drag, up to 35%.
 - **DRS**: in marked DRS zones, a player within ~1 second of the car ahead (at the
   detection point) can open DRS for a top-speed boost. DRS closes on braking. Disabled
-  on lap 1 and in the wet (real rules).
+  on lap 1 and in the wet (real rules). Cars in the pit lane or wrecked don't count at
+  detection and can't open DRS. When open, the whole rear wing is drawn bright green.
+  **Fairness**: every track's zones are worth 0.4-1.2 s a lap to a Hard bot (tested in
+  `src/sim/drs.test.ts`; currently 0.54-1.01 s).
 - **Surfaces**: track (full grip), kerbs (slightly less), grass/gravel/dirt (drivable
   but slower with less grip; you can always drive back onto the track), walls/barriers
   (collision).
@@ -144,9 +148,14 @@ The timing tower is always shown (no Tab needed).
     penalty**. When unsure, don't penalise.
   - Penalties are time penalties (e.g. +5 s / +10 s) shown to everyone with a short
     reason.
-  - **Implemented** in `src/sim/collisions.ts` (`judge`): wrong-way driver is at fault;
-    nose into gearbox = car behind; nose into side while closing >2 m/s faster = the
-    hitter; everything else (side-by-side, nose-to-nose) = racing incident. Only hits
+  - **Implemented** in `src/sim/collisions.ts` (`judge`), using each car's track position
+    over the last 1.5 s: wrong-way driver is at fault; on a straight, a car that **moved
+    across in front** of another less than 0.8 s before being hit is at fault (not the car
+    that hit it); a car that **moved sideways into a car alongside** (front wheels level
+    with its middle) is at fault; a car turning in on one that is *not* alongside is only
+    blamed on the other car if it came >6 m/s faster (a dive-bomb), else racing incident;
+    otherwise nose into gearbox = car behind; nose into side while closing >2 m/s faster =
+    the hitter; everything else = racing incident. The penalty reason says which. Only hits
     over 8 m/s (~29 km/h closing) are judged. A driver's first minor at-fault hit is a
     **warning**; after that +5 s. Hits over 14 m/s or that wreck the victim: +10 s at once.
     A pair is judged at most once every 3 s.
@@ -222,7 +231,13 @@ The timing tower is always shown (no Tab needed).
   pits left), COTA (2 zones, pits left), Spa (2 zones, pits left), Baku (0.8 scale, 13 m wide for the
   castle section, 2 zones, pits left), Yas Marina (2 zones, pits right; no exit tunnel). Import new circuits with
   `scripts/import-track.ts` (see its header).
-  For DRS zones on new tracks, use the flat-out sections of the bots' speed profile.
+  For DRS zones on new tracks, use the full-throttle sections from
+  `npx tsx scripts/track-report.ts <id>` (start ~40 m in, end at the braking point), and
+  check the "worth" figure stays in the fair band. Zones mostly follow the real circuits;
+  game-only extras: Silverstone's Hamilton Straight, and Monaco's tunnel and Beau Rivage
+  (its real main-straight zone alone was worth nothing).
+- **Track review (Oct 2026)**: shapes match the real circuits; at half scale the share of
+  the lap at full throttle (58-71%) is close to real F1, so straights were not stretched.
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
   start/finish line, DRS zone markers and pit lane drawn plainly.
 
@@ -257,7 +272,11 @@ The timing tower is always shown (no Tab needed).
 - **Bots** (`src/sim/ai/`): the host adds them in the lobby (Easy / Medium / Hard), or uses
   "Race against bots" on the welcome screen (offline, starts with 5 bots). They follow a
   minimum-curvature racing line with a planned speed profile (pace: Easy 74%, Medium 86%,
-  Hard 95% of grip), keep safe gaps, overtake when there is room, hold their grid column
+  Hard 95% of grip), keep safe gaps (measured directly, not just along the track, so hairpins work), overtake
+  when there is room, never steer towards a car alongside (more room the faster they're
+  closing sideways) or move across in front of a car close behind, defend with **one move
+  per straight** (Medium/Hard only, made early, covering the inside of the next braking
+  corner, held until braking), hold their grid column
   for 4 s at the start, use DRS/ERS, pit using the race engineer, change to wets in the
   rain, and reverse out if stuck. Bots run only on the host. `src/sim/bot.ts` is a
   simpler driver used by older tests.
