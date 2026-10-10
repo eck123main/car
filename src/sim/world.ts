@@ -286,11 +286,14 @@ export class RaceWorld {
     const zones = this.track.drsZones;
     const eligible = r.drsZoneEligible;
     const wet = this.options.wetness >= 0.3;
+    // Cars in the pit lane (or wrecked) are not racing on track: they neither set the gap at
+    // a detection line nor use DRS.
+    const racing = r.pit.phase === 'out' && !r.car.retired;
     let inZone = false;
     let canOpen = false;
     zones.forEach((zone, i) => {
       if (s === null) return;
-      if (prevS !== null && crossed(this.track, prevS, s, zone.detect)) {
+      if (racing && prevS !== null && crossed(this.track, prevS, s, zone.detect)) {
         const last = this.detections[i];
         // Race rule: within a second of the car ahead at the detection line, from lap 2.
         eligible[i] =
@@ -309,7 +312,7 @@ export class RaceWorld {
     });
     r.drsEligible = canOpen || eligible.some((e) => e);
     // DRS closes as soon as the driver brakes.
-    r.drsOpen = inZone && canOpen && r.input.drs && r.car.brake < 0.05 && !r.car.retired;
+    r.drsOpen = racing && inZone && canOpen && r.input.drs && r.car.brake < 0.05;
   }
 
   /** A car gets a tow when it's right behind another car going the same way. */
