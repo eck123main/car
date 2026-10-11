@@ -257,7 +257,16 @@ The timing tower is always shown (no Tab needed).
   0.5 (0.4 made slow corners too tight to drive). Tracks: Silverstone (3 DRS zones), Bahrain (3 DRS
   zones like the real one), Albert Park (4 DRS zones), Monaco (full scale, 13 m wide, 3 DRS zones,
   pits left), COTA (2 zones, pits left), Spa (2 zones, pits left), Baku (0.8 scale, 13 m wide for the
-  castle section, 2 zones, pits left), Yas Marina (2 zones, pits right; no exit tunnel). Import new circuits with
+  castle section, 2 zones, pits left), Yas Marina (2 zones, pits right; no exit tunnel).
+  **All 24 circuits of the 2026 calendar** are in (`src/tracks/index.ts`, calendar order;
+  tests run on every one via `REAL_TRACK_IDS`). Exceptions to 0.5 scale / 19 m: Miami and
+  Montreal 0.6 scale, 15 m (their close sections would overlap); Hungaroring 0.6 (DRS was
+  worth too little on its short straights); Jeddah 15 m; Zandvoort and Suzuka 17 m. Where
+  the real pit side had no room, the other side is used. Suzuka is a figure of eight: the
+  two roads cross at the bridge, so each car tracks which stretch it's on
+  (`Car.trackIndex`, `Track.query` hint). **[TODO]** A car dropped exactly on the crossing
+  (reset there) can still pick the wrong road.
+  Import new circuits with
   `scripts/import-track.ts` (see its header).
   For DRS zones on new tracks, use the full-throttle sections from
   `npx tsx scripts/track-report.ts <id>` (start ~40 m in, end at the braking point), and
