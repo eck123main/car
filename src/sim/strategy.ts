@@ -4,6 +4,8 @@ import { COMPOUNDS, DRY_COMPOUNDS, type Compound } from './tyres';
 const USABLE_LIFE = 0.75;
 const WORN = 0.7;
 const DAMAGED = 0.3;
+/** Under the safety car, tyres this worn are worth changing. */
+const SAFETY_CAR_WEAR = 0.4;
 
 export interface StrategyInput {
   /** Race length, or null outside a race (practice / qualifying). */
@@ -19,6 +21,8 @@ export interface StrategyInput {
   wear: number;
   damage: number;
   wetness: number;
+  /** The safety car is out: a stop costs far less time. */
+  safetyCar?: boolean;
 }
 
 export interface PitAdvice {
@@ -37,6 +41,13 @@ export function pitAdvice(s: StrategyInput): PitAdvice {
   const urgent = urgentReason(s);
   // No point stopping on the last lap, unless the rule still needs it.
   if (urgent && !finalLap) return { window, boxNow: true, reason: urgent };
+
+  // Under the safety car the field is slow, so a stop costs much less: take the chance if the
+  // rule still needs one, or the tyres are well used (not on the last two laps).
+  const lapsLeft = s.laps === null ? Infinity : s.laps - s.currentLap;
+  if (s.safetyCar && lapsLeft >= 1 && (window || s.wear > SAFETY_CAR_WEAR)) {
+    return { window, boxNow: true, reason: 'Safety car: box for a cheap stop' };
+  }
 
   if (window) {
     const [first, last] = window;

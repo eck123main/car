@@ -1,4 +1,4 @@
-import { BotDriver, type Difficulty } from '../sim/ai/botDriver';
+import { botContext, BotDriver, type Difficulty } from '../sim/ai/botDriver';
 import { DEFAULT_SETTINGS, Session, type RaceSettings, type SessionEvent } from '../sim/session';
 import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { Track } from '../track/track';
@@ -129,12 +129,7 @@ export class HostGame {
       }
       inputs.set(id, r.last);
     }
-    const ctx = {
-      phase: session.phase,
-      raceStart: session.raceStart,
-      laps: session.settings.laps,
-      mandatoryStop: session.settings.mandatoryStop && session.settings.weather === 'dry',
-    };
+    const ctx = botContext(session);
     for (const [id, b] of this.bots) if (b.driver) inputs.set(id, b.driver.drive(session.world, ctx, dt));
     const events = session.step(dt, inputs);
     this.steps++;
