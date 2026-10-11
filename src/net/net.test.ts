@@ -98,6 +98,36 @@ describe('Online race', () => {
     expect(c.session?.phase).toBe('race');
   });
 
+  it("a client's DRS works: the host opens it, and the client sees it and drives with it", () => {
+    const { host, join, tick } = setup(0.05);
+    const c = join('Alice');
+    for (let i = 0; i < 20; i++) tick();
+    host.updateSettings({ trackId: 'test', qualifying: false, laps: 4 });
+    host.start();
+    for (let i = 0; i < 20; i++) tick();
+    let hostSawOpen = false;
+    let clientSawOpen = false;
+    let clientDrag = 1;
+    for (let t = 0; t < 90 && host.session!.phase !== 'finished'; t += DT) {
+      const session = host.session!;
+      const waiting = session.phase === 'grid' || session.phase === 'lights';
+      host.step(DT, { ...botInput(session.track, session.world.racer(HostGame.HOST_ID)!, { hold: waiting }), ready: true });
+      const me = c.me;
+      const cWaiting = c.session?.phase !== 'race';
+      // The client follows the host round, holding DRS the whole time.
+      c.step(DT, me && c.track ? { ...botInput(c.track, me, { hold: cWaiting }), drs: true, ready: true } : READY);
+      c.flush();
+      tick();
+      hostSawOpen ||= session.world.racer(c.id!)!.drsOpen;
+      clientSawOpen ||= !!c.me?.drsOpen;
+      if (c.me) clientDrag = Math.min(clientDrag, c.me.car.dragFactor);
+    }
+    expect(hostSawOpen).toBe(true);
+    expect(clientSawOpen).toBe(true);
+    // The client's own (predicted) car gets the lower drag too.
+    expect(clientDrag).toBeLessThan(0.7);
+  });
+
   it('retires a driver who disconnects mid-race', () => {
     const { host, join, tick } = setup();
     const c = join('Alice');
