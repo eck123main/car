@@ -218,6 +218,7 @@ export function showLobby(v: LobbyView): void {
     for (const [id, label] of Object.entries(WEATHER)) weather.add(new Option(label, id, false, id === s.weather));
     const quali = el('input', { type: 'checkbox', checked: s.qualifying, onchange: () => v.onSettings({ qualifying: quali.checked }) });
     const stop = el('input', { type: 'checkbox', checked: s.mandatoryStop, onchange: () => v.onSettings({ mandatoryStop: stop.checked }) });
+    const sc = el('input', { type: 'checkbox', checked: s.safetyCar, onchange: () => v.onSettings({ safetyCar: sc.checked }) });
     const gap = el('select', { onchange: () => v.onSettings({ releaseGap: Number(gap.value) }) });
     for (const g of [10, 15]) gap.add(new Option(`${g} s`, String(g), false, g === s.releaseGap));
     row('Track', track);
@@ -226,12 +227,14 @@ export function showLobby(v: LobbyView): void {
     row('Qualifying (1 timed lap)', quali);
     row('Qualifying gap between cars', gap);
     row('Mandatory pit stop (dry)', stop);
+    row('Safety car (after big crashes)', sc);
   } else {
     row('Track', trackName);
     row('Laps', String(s.laps));
     row('Weather', WEATHER[s.weather]);
     row('Qualifying', s.qualifying ? `Yes, ${s.releaseGap} s apart` : 'No (grid in join order)');
     row('Mandatory pit stop', s.mandatoryStop ? 'Yes' : 'No');
+    row('Safety car', s.safetyCar ? 'Yes' : 'No');
   }
 
   const start = el('button', { class: 'primary', onclick: v.onStart }, 'Start');

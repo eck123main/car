@@ -139,7 +139,7 @@ export class HostGame {
     }
     if (this.steps % SNAP_EVERY === 0) {
       const cars = session.world.racers.map((r) => carSnap(r, this.remotes.get(r.id)?.ack ?? 0));
-      this.broadcast({ t: 'snap', time: session.world.time, cars });
+      this.broadcast({ t: 'snap', time: session.world.time, cars, sc: session.safetyCar?.snap() });
     }
     if (this.steps % STATE_EVERY === 0 || events.some((e) => e.kind === 'phase')) this.sendState();
   }

@@ -10,6 +10,7 @@ import { drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast }
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawRain } from '../render/rain';
+import { drawSafetyCar } from '../render/safetyCar';
 import { drawLights, drawNameTag, drawSessionBanner, drawTower } from '../render/sessionHud';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
@@ -38,6 +39,8 @@ export interface GameDriver {
   readonly resetHint: string;
   /** When our car goes back on track after a reset, if it is waiting. */
   recoverAt(): number | null;
+  /** Where to draw the safety car this frame, if it is out. */
+  safetyCar(alpha: number): Pose | null;
 }
 
 function lerpPose(r: Racer, alpha: number): Pose {
@@ -95,6 +98,9 @@ export class PracticeDriver implements GameDriver {
   recoverAt() {
     return this.recovering;
   }
+  safetyCar() {
+    return null;
+  }
   endFrame() {}
   pose(r: Racer, alpha: number) {
     return lerpPose(r, alpha);
@@ -126,6 +132,12 @@ export class HostDriver implements GameDriver {
   }
   recoverAt() {
     return this.host.session?.recovering.get(this.meId) ?? null;
+  }
+  safetyCar(alpha: number) {
+    const sc = this.host.session?.safetyCar;
+    if (!sc) return null;
+    const dh = Math.atan2(Math.sin(sc.heading - sc.prevHeading), Math.cos(sc.heading - sc.prevHeading));
+    return { x: sc.prevX + (sc.x - sc.prevX) * alpha, y: sc.prevY + (sc.y - sc.prevY) * alpha, heading: sc.prevHeading + dh * alpha };
   }
   constructor(private readonly host: HostGame) {}
   world() {
@@ -164,6 +176,9 @@ export class ClientDriver implements GameDriver {
   }
   recoverAt() {
     return this.client.session?.recovering.find(([id]) => id === this.meId)?.[1] ?? null;
+  }
+  safetyCar() {
+    return this.client.session?.safetyCar ? this.client.safetyCarPose() : null;
   }
   world() {
     return this.client.world;
@@ -356,6 +371,11 @@ export class GameScreen {
       ctx.globalAlpha = 1;
       if (r !== me) drawNameTag(ctx, r.name, p.x, p.y, r.color);
     }
+    const sc = this.driver.safetyCar(alpha);
+    if (sc) {
+      drawSafetyCar(ctx, sc.x, sc.y, sc.heading, session?.safetyCar === 'deployed', this.driver.now());
+      drawNameTag(ctx, 'SAFETY CAR', sc.x, sc.y, '#ffb000');
+    }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const w = canvas.width / dpr;
@@ -365,10 +385,13 @@ export class GameScreen {
     this.gfx.minimap.draw(
       ctx,
       w,
-      world.racers.map((r) => {
-        const p = poses.get(r.id)!;
-        return { x: p.x, y: p.y, color: r.color };
-      }),
+      [
+        ...world.racers.map((r) => {
+          const p = poses.get(r.id)!;
+          return { x: p.x, y: p.y, color: r.color };
+        }),
+        ...(sc ? [{ x: sc.x, y: sc.y, color: '#ffb000' }] : []),
+      ],
     );
     const recoverAt = this.driver.recoverAt();
     drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint, recoverAt !== null ? recoverAt - now : null);

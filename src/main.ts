@@ -124,6 +124,8 @@ async function host(name: string, offline: boolean): Promise<void> {
     hostGame = new HostGame(transport, name, trackDef);
     // A bots race starts with a few opponents ready to go.
     if (offline) for (const d of ['hard', 'medium', 'medium', 'easy', 'easy'] as const) hostGame.addBot(d);
+    // Dev server only: the race is reachable from the browser console, for testing.
+    if (import.meta.env.DEV) (window as unknown as { f1host: HostGame }).f1host = hostGame;
   } catch (err) {
     showMessage("Couldn't create a lobby", (err as Error).message, { label: 'Back', onClick: home });
     return;
