@@ -76,7 +76,9 @@ Top-down 2D car physics that feels like an F1 car:
   on lap 1 and in the wet (real rules). Cars in the pit lane or wrecked don't count at
   detection and can't open DRS. When open, the whole rear wing is drawn bright green.
   **Fairness**: every track's zones are worth 0.4-1.2 s a lap to a Hard bot (tested in
-  `src/sim/drs.test.ts`; currently 0.54-1.01 s).
+  `src/sim/drs.test.ts`; currently 0.54-1.01 s). Full bot races on every map check that
+  each car crossing a detection line gets DRS exactly when it is within 1 s and past lap
+  1, and a network test checks a client's DRS reaches the host and back.
 - **Surfaces**: track (full grip), kerbs (slightly less), grass/gravel/dirt (drivable
   but slower with less grip; you can always drive back onto the track), walls/barriers
   (collision).
@@ -249,6 +251,13 @@ The timing tower is always shown (no Tab needed).
 - Players can pick a **team** (real F1 team colours) or a **custom colour**.
   **[OPEN]** Teams, free colours, or both.
 - **All cars have identical performance** (for now). Team choice is only cosmetic.
+- **Liveries** (`src/render/livery.ts`): each of the 10 lobby colours is painted as a
+  team-inspired scheme (e.g. papaya with anthracite sidepods, silver/black with teal),
+  colours and shapes only, no names/logos/sponsors. The colour stays the player's
+  identity on the minimap and name tags. Every car also has a floor edge, two-element
+  front wing with endplates, sidepod inlets, halo + helmet, mirrors, tyre sidewalls in
+  the compound colour, a green rear wing with DRS open and a blinking rain light in the
+  wet (`src/render/drawCar.ts`). A car is only ~35 px long, so details stay bold.
 - Show a name/number label above each car.
 
 ## Multiplayer
@@ -272,7 +281,8 @@ The timing tower is always shown (no Tab needed).
 - **Bots** (`src/sim/ai/`): the host adds them in the lobby (Easy / Medium / Hard), or uses
   "Race against bots" on the welcome screen (offline, starts with 5 bots). They follow a
   minimum-curvature racing line with a planned speed profile (pace: Easy 74%, Medium 86%,
-  Hard 95% of grip), keep safe gaps (measured directly, not just along the track, so hairpins work), overtake
+  Hard 95% of grip), follow by braking distance (as close as they could still stop from, so equal cars race
+  within DRS range), keep safe gaps (measured directly, not just along the track, so hairpins work), overtake
   when there is room, never steer towards a car alongside (more room the faster they're
   closing sideways) or move across in front of a car close behind, defend with **one move
   per straight** (Medium/Hard only, made early, covering the inside of the next braking
@@ -310,7 +320,7 @@ minimap/timing tower, and penalty notices.
 
 ## Out of scope (for now)
 
-- Detailed graphics, animations, 3D, car liveries, cinematic cameras.
+- Detailed graphics, animations, 3D, cinematic cameras. (Simple flat liveries are in.)
 - Full simulation-level physics (tyre temperature, setups, etc.) unless added later.
 - Career mode, championships, accounts. Possible later additions.
 
