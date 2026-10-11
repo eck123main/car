@@ -9,6 +9,10 @@ const GRID_CELL = 16;
 const OTHER_SECTION = 30;
 /** When a car's corner strays near another part of the track, look this many samples either side of the car for its own. */
 const OWN_SECTION_SAMPLES = 12;
+/** A car's position is looked up this many samples either side of where it was last. */
+const HINT_SAMPLES = 15;
+/** Stretches of track this close (m) to the nearest one count as a tie, settled by heading. */
+const HEADING_TIE = 2;
 /** Pit lane layout, measured out from the track edge on the pit side (m). */
 export const PIT_WALL_OFFSET = 1;
 export const PIT_LANE_INNER = 2;
@@ -136,10 +140,27 @@ export class Track {
   }
 
   /** Nearest centreline segment to a point, or null if far away from the track. */
-  query(x: number, y: number): TrackHit | null {
+  query(x: number, y: number, hint: number | null = null, heading: number | null = null): TrackHit | null {
+    // From where a car was last: stay on that stretch of track. Where the track passes close
+    // to itself (or crosses, like Suzuka), the nearest centreline can belong to another part.
+    if (hint !== null) {
+      const near = this.queryNear(x, y, hint, HINT_SAMPLES);
+      const n = this.samples.length;
+      const moved = Math.abs(((near?.index ?? hint) - hint + n + n / 2) % n - n / 2);
+      if (near && moved < HINT_SAMPLES - 1 && Math.abs(near.d) < Math.max(near.sample.wallR, near.sample.wallL) + 5) return near;
+    }
     const list = this.grid.get(cellKey(Math.floor(x / GRID_CELL), Math.floor(y / GRID_CELL)));
     if (!list) return null;
-    return this.nearest(x, y, list);
+    return this.nearest(x, y, list, heading);
+  }
+
+  /**
+   * The sample index nearest a point, starting from a hint (see query). Without a hint, a
+   * heading picks the stretch of track pointing the same way where two are about as near
+   * (on Suzuka's crossover, say).
+   */
+  locate(x: number, y: number, hint: number | null = null, heading: number | null = null): number | null {
+    return this.query(x, y, hint, heading)?.index ?? null;
   }
 
   /** Nearest point on the stretch of centreline within `radius` samples of `index`. */
@@ -150,27 +171,45 @@ export class Track {
     return this.nearest(x, y, list);
   }
 
-  private nearest(x: number, y: number, list: Iterable<number>): TrackHit | null {
+  private nearest(x: number, y: number, list: readonly number[], heading: number | null = null): TrackHit | null {
     const n = this.samples.length;
-    let best = -1;
-    let bestD2 = Infinity;
-    let bestT = 0;
-    for (const i of list) {
+    const project = (i: number) => {
       const a = this.samples[i];
       const b = this.samples[(i + 1) % n];
       const ex = b.x - a.x;
       const ey = b.y - a.y;
       const t = clamp(((x - a.x) * ex + (y - a.y) * ey) / (ex * ex + ey * ey), 0, 1);
-      const dx = x - (a.x + ex * t);
-      const dy = y - (a.y + ey * t);
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
+      return { t, dist: Math.hypot(x - (a.x + ex * t), y - (a.y + ey * t)), ex, ey };
+    };
+    let best = -1;
+    let bestDist = Infinity;
+    let bestT = 0;
+    for (const i of list) {
+      const p = project(i);
+      if (p.dist < bestDist) {
+        bestDist = p.dist;
         best = i;
-        bestT = t;
+        bestT = p.t;
       }
     }
     if (best < 0) return null;
+    // Where two stretches of track are about as near (Suzuka's crossover), a heading picks the
+    // one the car is driving along.
+    if (heading !== null) {
+      const hx = Math.cos(heading);
+      const hy = Math.sin(heading);
+      let bestAlign = -Infinity;
+      for (const i of list) {
+        const p = project(i);
+        if (p.dist > bestDist + HEADING_TIE) continue;
+        const align = (hx * p.ex + hy * p.ey) / (Math.hypot(p.ex, p.ey) || 1);
+        if (align > bestAlign + 1e-6) {
+          bestAlign = align;
+          best = i;
+          bestT = p.t;
+        }
+      }
+    }
     const a = this.samples[best];
     const b = this.samples[(best + 1) % n];
     const ex = b.x - a.x;
@@ -190,8 +229,8 @@ export class Track {
     };
   }
 
-  surfaceAt(x: number, y: number): Surface {
-    const hit = this.query(x, y);
+  surfaceAt(x: number, y: number, hint: number | null = null): Surface {
+    const hit = this.query(x, y, hint);
     if (!hit) return SURFACES.wall;
     const { d, sample } = hit;
     const right = d >= 0;
@@ -207,12 +246,12 @@ export class Track {
    * Wall penetration at a point (e.g. a car corner). The car's centre decides which side
    * of the pit wall it is on, since the pit wall can be hit from both sides.
    */
-  wallContact(x: number, y: number, carX = x, carY = y): WallContact | null {
-    let hit = this.query(x, y);
+  wallContact(x: number, y: number, carX = x, carY = y, hint: number | null = null): WallContact | null {
+    let hit = this.query(x, y, hint);
     // A car only meets the walls of the stretch of track it is on. Where two parts of the
     // track run close together, a corner of the car can be nearer the other one; measured
     // against that, the car would be pushed through to it.
-    const home = carX === x && carY === y ? hit : this.query(carX, carY);
+    const home = hint !== null ? null : carX === x && carY === y ? hit : this.query(carX, carY);
     if (hit && home && this.lapGap(hit.s, home.s) > OTHER_SECTION) {
       hit = this.queryNear(x, y, home.index, OWN_SECTION_SAMPLES);
     }

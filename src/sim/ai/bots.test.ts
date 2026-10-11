@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Track } from '../../track/track';
-import { TRACKS } from '../../tracks';
+import { REAL_TRACK_IDS, TRACKS } from '../../tracks';
 import { DEFAULT_SETTINGS, Session, type SessionEvent } from '../session';
 import { RaceWorld, type PlayerInput } from '../world';
 import { BotDriver, DIFFICULTIES, type Difficulty } from './botDriver';
 import { racingLine } from './racingLine';
 
 const DT = 1 / 120;
-const REAL_TRACKS = ['silverstone', 'bahrain', 'albert-park', 'monaco', 'cota', 'spa', 'baku', 'yas-marina'] as const;
+const REAL_TRACKS = REAL_TRACK_IDS;
 
 describe('Racing line', () => {
   it.each(REAL_TRACKS)('stays inside the track on %s', (id) => {
