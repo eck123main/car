@@ -130,7 +130,7 @@ export class BotDriver {
     // Reacting to lights out: no pedals (holding the brake at a standstill would reverse).
     if (ctx.phase === 'race' && world.time - ctx.raceStart < this.reaction) return base;
 
-    const q = this.track.query(car.x, car.y);
+    const q = this.track.query(car.x, car.y, car.trackIndex);
     if (!q) return base;
     const n = this.track.samples.length;
     const speed = car.speed;
@@ -301,7 +301,7 @@ export class BotDriver {
   ): { lateral: number; speedCap: number; minLateral: number; maxLateral: number } {
     const L = this.track.length;
     const speed = me.car.speed;
-    const here = this.track.query(me.car.x, me.car.y);
+    const here = this.track.query(me.car.x, me.car.y, me.car.trackIndex);
     /** Sideways speed across the track (m/s, positive = right). */
     const sideways = (c: Racer['car']) => (here ? c.vx * here.nx + c.vy * here.ny : 0);
     const mySideways = sideways(me.car);
@@ -315,7 +315,7 @@ export class BotDriver {
     const nose: { d: number; room: number; cap: number }[] = [];
     for (const other of world.racers) {
       if (other === me || other.frozen) continue;
-      const q = this.track.query(other.car.x, other.car.y);
+      const q = this.track.query(other.car.x, other.car.y, other.car.trackIndex);
       if (!q) continue;
       let gap = this.track.forwardDistance(s, q.s);
       if (gap > L / 2) gap -= L;
@@ -421,7 +421,7 @@ export class BotDriver {
     let attackerGap = Infinity;
     for (const other of world.racers) {
       if (other === me || other.frozen || other.car.retired || other.pit.phase !== 'out') continue;
-      const q = this.track.query(other.car.x, other.car.y);
+      const q = this.track.query(other.car.x, other.car.y, other.car.trackIndex);
       if (!q) continue;
       const behind = this.track.forwardDistance(q.s, s);
       if (behind > L / 2 || behind < CAR_LENGTH + 1) continue;

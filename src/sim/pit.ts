@@ -75,7 +75,7 @@ export function updatePit(
 ): PlayerInput | 'hold' {
   const lane = track.pit;
   if (!lane || car.retired) return input;
-  const hit = track.query(car.x, car.y);
+  const hit = track.query(car.x, car.y, car.trackIndex);
   if (!hit) return input;
   const inLane = hit.sample.pit && hit.d * lane.side > hit.sample.halfWidth + 0.5;
   // Entering needs a deliberate move: right across into the lane itself, not just a run wide.

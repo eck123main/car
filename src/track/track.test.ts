@@ -4,12 +4,39 @@ import { Car } from '../physics/car';
 import { F1_CAR } from '../physics/carParams';
 import { Track } from './track';
 
+/** Points where the centreline crosses itself (a figure of eight, like Suzuka). */
+function crossovers(track: Track): [number, number][] {
+  const ss = track.samples;
+  const n = ss.length;
+  const out: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const a = ss[i];
+    const b = ss[(i + 1) % n];
+    for (let j = i + 2; j < n; j++) {
+      let ds = Math.abs(ss[j].s - a.s);
+      ds = Math.min(ds, track.length - ds);
+      if (ds < 100) continue;
+      const c = ss[j];
+      const d = ss[(j + 1) % n];
+      const den = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / den;
+      const u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / den;
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) out.push([a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t]);
+    }
+  }
+  return out;
+}
+
 describe.each(Object.entries(TRACKS))('Track %s', (_id, def) => {
   const track = new Track(def);
 
-  it('has walls that never reach into another part of the track', () => {
+  it('has walls that never reach into another part of the track (except at a crossover)', () => {
+    const crossings = crossovers(track);
     let bad = 0;
     for (const s of track.samples) {
+      // Where the track really crosses itself (Suzuka's bridge), the two parts overlap.
+      if (crossings.some(([x, y]) => Math.hypot(s.x - x, s.y - y) < 35)) continue;
       for (const [sign, wall] of [
         [1, s.wallR],
         [-1, s.wallL],
@@ -21,6 +48,10 @@ describe.each(Object.entries(TRACKS))('Track %s', (_id, def) => {
       }
     }
     expect(bad).toBe(0);
+  });
+
+  it('only crosses itself if it is Suzuka', () => {
+    expect(crossovers(track).length > 0).toBe(_id === 'suzuka');
   });
 
   it('has a pit lane on the start/finish straight', () => {

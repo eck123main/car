@@ -202,7 +202,7 @@ export class RaceWorld {
     if (this.time < this.nextTrail) return;
     this.nextTrail = this.time + TRAIL_STEP;
     for (const r of this.racers) {
-      const q = this.track.query(r.car.x, r.car.y);
+      const q = this.track.query(r.car.x, r.car.y, r.car.trackIndex);
       if (!q) continue;
       r.trail.push({ t: this.time, s: q.s, d: q.d });
       while (r.trail.length > 0 && r.trail[0].t < this.time - TRAIL_TIME) r.trail.shift();

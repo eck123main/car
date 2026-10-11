@@ -131,7 +131,7 @@ export class LapTimer {
   /** Call once per physics step, after the car has moved. Returns anything worth telling the driver. */
   update(now: number, dt: number, car: Car): TimingEvent[] {
     const events: TimingEvent[] = [];
-    const hit = this.track.query(car.x, car.y);
+    const hit = this.track.query(car.x, car.y, car.trackIndex);
     if (hit) {
       const s = hit.s;
       if (this.prevS !== null) this.checkCrossings(this.prevS, s, now, dt, events);
@@ -222,7 +222,7 @@ export class LapTimer {
     let anyWheelOn = false;
     for (const lx of [p.cgToFront, -p.cgToRear]) {
       for (const ly of [-half, half]) {
-        const hit = this.track.query(car.x + c * lx - s * ly, car.y + s * lx + c * ly);
+        const hit = this.track.query(car.x + c * lx - s * ly, car.y + s * lx + c * ly, car.trackIndex);
         if (hit && Math.abs(hit.d) <= trackEdge(this.track, hit.sample, hit.d) + LIMITS_TOLERANCE) anyWheelOn = true;
       }
     }

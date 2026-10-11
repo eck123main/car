@@ -115,7 +115,7 @@ function partHit(c: Car, px: number, py: number): HitPart {
 
 /** Is the car pointing the wrong way round the track? */
 function wrongWay(track: Track, c: Car): boolean {
-  const q = track.query(c.x, c.y);
+  const q = track.query(c.x, c.y, c.trackIndex);
   if (!q) return false;
   return Math.cos(c.heading) * q.sample.tx + Math.sin(c.heading) * q.sample.ty < -0.3;
 }
@@ -134,8 +134,8 @@ export interface Verdict {
 function lateralMove(track: Track, a: Racer, b: Racer, now: number): { mover: Racer; other: Racer; since: number } | null {
   const ta = a.trail;
   const tb = b.trail;
-  const da = track.query(a.car.x, a.car.y);
-  const db = track.query(b.car.x, b.car.y);
+  const da = track.query(a.car.x, a.car.y, a.car.trackIndex);
+  const db = track.query(b.car.x, b.car.y, b.car.trackIndex);
   if (!da || !db) return null;
   let j = tb.length - 1;
   for (let i = ta.length - 1; i >= 0; i--) {
@@ -161,8 +161,8 @@ function lateralMove(track: Track, a: Racer, b: Racer, now: number): { mover: Ra
 
 /** Signed distance (m) along the lap from b forward to a, allowing for the start-line wrap. */
 function along(track: Track, a: Racer, b: Racer): number {
-  const pa = track.query(a.car.x, a.car.y);
-  const pb = track.query(b.car.x, b.car.y);
+  const pa = track.query(a.car.x, a.car.y, a.car.trackIndex);
+  const pb = track.query(b.car.x, b.car.y, b.car.trackIndex);
   if (!pa || !pb) return 0;
   let ds = track.forwardDistance(pb.s, pa.s);
   if (ds > track.length / 2) ds -= track.length;

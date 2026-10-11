@@ -23,7 +23,7 @@ export function botInput(track: Track, r: Racer, opts: BotOptions = {}): PlayerI
   const base = { ...IDLE_INPUT, nextTyre: opts.nextTyre ?? r.input.nextTyre };
   if (opts.hold) return { ...base, brake: 1 };
   const car = r.car;
-  const q = track.query(car.x, car.y);
+  const q = track.query(car.x, car.y, car.trackIndex);
   if (!q) return base;
   const ss = track.samples;
   const n = ss.length;

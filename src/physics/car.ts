@@ -11,9 +11,12 @@ export interface DriverInput {
 
 /** What the car needs to know about the world around it. */
 export interface CarWorld {
-  surfaceAt(x: number, y: number): Surface;
+  /** hint: where on the track the car was last (see Car.trackIndex). */
+  surfaceAt(x: number, y: number, hint?: number | null): Surface;
   /** carX/carY: the car centre, so two-sided walls (the pit wall) know which side it is on. */
-  wallContact(x: number, y: number, carX: number, carY: number): WallContact | null;
+  wallContact(x: number, y: number, carX: number, carY: number, hint?: number | null): WallContact | null;
+  /** Which part of the track a point is on (a sample index), starting from a hint. */
+  locate?(x: number, y: number, hint?: number | null, heading?: number | null): number | null;
 }
 
 const G = 9.81;
@@ -89,6 +92,13 @@ export class Car {
   ) {}
 
   /** Overall damage: the worst part. 1 = retired. */
+  /**
+   * Which stretch of track the car is on (a sample index), followed step by step so that
+   * where the track runs close to itself or crosses (Suzuka) it stays on its own road.
+   * Null after a teleport: then it is looked up afresh.
+   */
+  trackIndex: number | null = null;
+
   get damage(): number {
     const d = this.parts;
     return Math.max(d.frontWing, d.rearWing, d.left, d.right);
@@ -104,6 +114,7 @@ export class Car {
   }
 
   place(x: number, y: number, heading: number): void {
+    this.trackIndex = null;
     this.x = this.prevX = x;
     this.y = this.prevY = y;
     this.heading = this.prevHeading = heading;
@@ -151,8 +162,9 @@ export class Car {
     const downforce = p.downforceCoef * v2 * (1 - 0.45 * dmg.rearWing);
     const loadF = (m * G * p.cgToRear) / L + downforce * p.aeroBalanceFront;
     const loadR = (m * G * p.cgToFront) / L + downforce * (1 - p.aeroBalanceFront);
-    const surfF = world.surfaceAt(this.x + c * p.cgToFront, this.y + s * p.cgToFront);
-    const surfR = world.surfaceAt(this.x - c * p.cgToRear, this.y - s * p.cgToRear);
+    if (this.trackIndex === null) this.trackIndex = world.locate?.(this.x, this.y, null, this.heading) ?? null;
+    const surfF = world.surfaceAt(this.x + c * p.cgToFront, this.y + s * p.cgToFront, this.trackIndex);
+    const surfR = world.surfaceAt(this.x - c * p.cgToRear, this.y - s * p.cgToRear, this.trackIndex);
     this.surfaceFront = surfF.type;
     this.surfaceRear = surfR.type;
     const gripMul = (1 - 0.15 * sides) * this.gripFactor;
@@ -224,6 +236,7 @@ export class Car {
     this.heading += this.yawRate * dt;
 
     this.collideWalls(world);
+    this.trackIndex = world.locate?.(this.x, this.y, this.trackIndex) ?? null;
   }
 
   private collideWalls(world: CarWorld): void {
@@ -245,7 +258,7 @@ export class Car {
       const ry = s * lx + c * ly;
       // Which side of a two-sided wall (the pit wall) we are on is decided by where the car
       // was before this step, so a hard hit can never carry it through to the other side.
-      const hit = world.wallContact(this.x + rx, this.y + ry, this.prevX, this.prevY);
+      const hit = world.wallContact(this.x + rx, this.y + ry, this.prevX, this.prevY, this.trackIndex);
       if (!hit) continue;
       this.x += hit.nx * hit.depth;
       this.y += hit.ny * hit.depth;

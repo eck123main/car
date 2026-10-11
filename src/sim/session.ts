@@ -618,7 +618,7 @@ export class Session {
         // A lost timed lap ends qualifying for this driver.
         r.frozen = this.quali.get(id)!.status === 'done';
       } else {
-        const hit = this.track.query(r.car.x, r.car.y);
+        const hit = this.track.query(r.car.x, r.car.y, r.car.trackIndex);
         const t = hit?.sample ?? this.track.samples[0];
         r.car.place(t.x, t.y, Math.atan2(t.ty, t.tx));
         r.frozen = false;
