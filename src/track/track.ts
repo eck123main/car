@@ -5,6 +5,10 @@ export const KERB_WIDTH = 1.2;
 /** Distance between centreline samples (m). */
 const SAMPLE_SPACING = 2;
 const GRID_CELL = 16;
+/** Points this far apart along the lap (m) are on different parts of the track. */
+const OTHER_SECTION = 30;
+/** When a car's corner strays near another part of the track, look this many samples either side of the car for its own. */
+const OWN_SECTION_SAMPLES = 12;
 /** Pit lane layout, measured out from the track edge on the pit side (m). */
 export const PIT_WALL_OFFSET = 1;
 export const PIT_LANE_INNER = 2;
@@ -102,6 +106,12 @@ export class Track {
     return (((b - a) % this.length) + this.length) % this.length;
   }
 
+  /** Distance along the lap between two lap distances, either way round (m). */
+  private lapGap(a: number, b: number): number {
+    const ds = Math.abs(a - b);
+    return Math.min(ds, this.length - ds);
+  }
+
   /** Whether lap distance s lies in [from, to), allowing for the start-line wrap. */
   inRange(s: number, from: number, to: number): boolean {
     return this.forwardDistance(from, s) < this.forwardDistance(from, to);
@@ -129,6 +139,18 @@ export class Track {
   query(x: number, y: number): TrackHit | null {
     const list = this.grid.get(cellKey(Math.floor(x / GRID_CELL), Math.floor(y / GRID_CELL)));
     if (!list) return null;
+    return this.nearest(x, y, list);
+  }
+
+  /** Nearest point on the stretch of centreline within `radius` samples of `index`. */
+  private queryNear(x: number, y: number, index: number, radius: number): TrackHit | null {
+    const n = this.samples.length;
+    const list: number[] = [];
+    for (let k = -radius; k <= radius; k++) list.push((((index + k) % n) + n) % n);
+    return this.nearest(x, y, list);
+  }
+
+  private nearest(x: number, y: number, list: Iterable<number>): TrackHit | null {
     const n = this.samples.length;
     let best = -1;
     let bestD2 = Infinity;
@@ -186,7 +208,14 @@ export class Track {
    * of the pit wall it is on, since the pit wall can be hit from both sides.
    */
   wallContact(x: number, y: number, carX = x, carY = y): WallContact | null {
-    const hit = this.query(x, y);
+    let hit = this.query(x, y);
+    // A car only meets the walls of the stretch of track it is on. Where two parts of the
+    // track run close together, a corner of the car can be nearer the other one; measured
+    // against that, the car would be pushed through to it.
+    const home = carX === x && carY === y ? hit : this.query(carX, carY);
+    if (hit && home && this.lapGap(hit.s, home.s) > OTHER_SECTION) {
+      hit = this.queryNear(x, y, home.index, OWN_SECTION_SAMPLES);
+    }
     if (!hit) return null;
     const { d, sample, nx, ny } = hit;
     if (d > sample.wallR) return { nx: -nx, ny: -ny, depth: d - sample.wallR };
