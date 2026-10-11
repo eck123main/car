@@ -1,4 +1,5 @@
 import type { TimerState } from '../game/lapTimer';
+import type { SafetyCarPhase, SafetyCarSnap } from '../sim/safetyCar';
 import type { Difficulty } from '../sim/ai/botDriver';
 import type { PitPhase } from '../sim/pit';
 import type { PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
@@ -7,7 +8,7 @@ import type { Penalty, PlayerInput } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -80,6 +81,10 @@ export interface SessionSnap {
   /** Grid: who is ready, and when the lights start at the latest. */
   ready: string[];
   gridEndsAt: number;
+  /** The safety car's state, if it is on track. */
+  safetyCar: SafetyCarPhase | null;
+  /** Cars that may not overtake (safety car out, or the restart before the line). */
+  noOvertaking: string[];
 }
 
 export type ClientMessage =
@@ -91,6 +96,6 @@ export type HostMessage =
   | { t: 'reject'; reason: string }
   | { t: 'lobby'; lobby: LobbyState }
   | { t: 'start'; track: TrackDef; settings: RaceSettings; players: PlayerInfo[] }
-  | { t: 'snap'; time: number; cars: CarSnap[] }
+  | { t: 'snap'; time: number; cars: CarSnap[]; sc?: SafetyCarSnap }
   | { t: 'state'; time: number; session: SessionSnap; timing: TimingSnap[] }
   | { t: 'events'; time: number; events: SessionEvent[] };

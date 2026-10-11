@@ -161,7 +161,25 @@ The timing tower is always shown (no Tab needed).
     over 8 m/s (~29 km/h closing) are judged. A driver's first minor at-fault hit is a
     **warning**; after that +5 s. Hits over 14 m/s or that wreck the victim: +10 s at once.
     A pair is judged at most once every 3 s.
-- **[LATER]** Safety car (and maybe VSC) after big incidents.
+- **Safety car** (`src/sim/safetyCar.ts`, rules in `Session.updateSafetyCar`; host setting,
+  on by default). A **wreck** brings it out (max 2 per race, 60 s apart, never once anyone
+  is on the last lap). It appears 150 m ahead of the leader and drives the racing line at
+  an easy pace (70% grip, max 160 km/h), slowing to 80 km/h if the field is far behind
+  (e.g. everyone pitting). It is not a racer: no physics, no collisions.
+  - While out: **no overtaking** (+5 s, except passing a stopped car or anything in the
+    pits), **no passing the SC** (+5 s), **DRS off**. Pit lane open, and the race engineer
+    says box for a **cheap stop** if a stop is still owed or tyres are 40%+ worn.
+  - **"SC in this lap"** after at least 25 s once no car is still wrecked and the whole
+    field has queued up behind it (after 60 s, just the leader; after 90 s, regardless).
+    Lights go out and it turns into the pit entry. **Restart at the line**: each car may
+    overtake once it crosses it. DRS is back a lap after the restart.
+  - Bots queue at the SC's pace (so nobody brakes mid-corner), never overtake under it,
+    and take the cheap stop. Clients get its state in `SessionSnap` and its position in
+    each 20 Hz snapshot. Drawn as a silver road car with a flashing amber light bar.
+  - Why it's worth having even though everyone can reset: it bunches the field (gaps
+    vanish, so restarts are a fight), makes a cheap pit stop a strategy call, and makes a
+    crash matter to everyone.
+- **[LATER]** Virtual safety car.
 - **[OPEN]** Blue flags?
 
 ## Collisions
@@ -179,6 +197,9 @@ The timing tower is always shown (no Tab needed).
 - Below the crash threshold, a damaged car **always stays drivable enough to reach the
   pits**. Normal damage has a cap and never stops the car. Repairs happen at a pit stop
   (and add time to the stop).
+- Pit boxes are spread over the lane (about 13 m apart at Silverstone) and the autopilot
+  only moves over into its box at the last moment, so a car parked in the box before
+  never blocks it (this jammed the lane when the whole field pitted under the SC).
 - **Big crashes wreck the car** (above a set impact speed). Then **R** (for every player,
   online too): in a race, back on track where you crashed, repaired; in qualifying,
   back to the pit exit (a timed lap in progress is lost). Always a **5 s wait** as a ghost,
@@ -288,8 +309,10 @@ The timing tower is always shown (no Tab needed).
   per straight** (Medium/Hard only, made early, covering the inside of the next braking
   corner, held until braking), hold their grid column
   for 4 s at the start, use DRS/ERS, pit using the race engineer, change to wets in the
-  rain, and reverse out if stuck. Bots run only on the host. `src/sim/bot.ts` is a
+  rain, reverse out if stuck, and press R if still stuck after 8 s. Bots run only on the host. `src/sim/bot.ts` is a
   simpler driver used by older tests.
+- Dev server only: the offline/host race is `window.f1host` in the browser console (e.g.
+  `f1host.session.world.racers[2].car.retired = true` to trigger the safety car).
 - Code: `src/net/` — `host.ts` (lobby + authoritative session, snapshots 20 Hz,
   timing/standings 4 Hz), `client.ts` (mirror world, own-car prediction + reconciliation,
   interpolation 100 ms behind for other cars), `protocol.ts`, `peer.ts` (PeerJS),

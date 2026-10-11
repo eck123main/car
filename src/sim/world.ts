@@ -87,6 +87,12 @@ export interface Penalty {
   reason: string;
 }
 
+/** Distance covered since the start (m): laps plus distance into the current lap. */
+export function raceProgress(r: Racer, trackLength: number): number {
+  const s = r.timer.lapDistance ?? 0;
+  return r.timer.lapsCompleted * trackLength + (r.timer.lapStart !== null ? s : s - trackLength);
+}
+
 /** Total time penalties (s). */
 export function penaltyTime(r: Racer): number {
   return r.penalties.reduce((sum, p) => sum + p.seconds, 0);
@@ -101,6 +107,8 @@ export interface WorldOptions {
   slipstream?: boolean;
   /** Car-to-car contact. Off in qualifying, where cars are ghosts. */
   collisions?: boolean;
+  /** DRS off for everyone (safety car, and the lap after the restart). */
+  drsDisabled?: boolean;
 }
 
 export type WorldEvent = (
@@ -285,7 +293,8 @@ export class RaceWorld {
     const s = r.timer.lapDistance;
     const zones = this.track.drsZones;
     const eligible = r.drsZoneEligible;
-    const wet = this.options.wetness >= 0.3;
+    // No DRS in the wet or behind the safety car.
+    const off = this.options.wetness >= 0.3 || this.options.drsDisabled === true;
     // Cars in the pit lane (or wrecked) are not racing on track: they neither set the gap at
     // a detection line nor use DRS.
     const racing = r.pit.phase === 'out' && !r.car.retired;
@@ -297,14 +306,15 @@ export class RaceWorld {
         const last = this.detections[i];
         // Race rule: within a second of the car ahead at the detection line, from lap 2.
         eligible[i] =
-          !wet &&
+          !off &&
           (this.options.drsRule === 'free' ||
             (r.timer.lapsCompleted >= 1 && last.id !== r.id && this.time - last.time < DRS_GAP));
         this.detections[i] = { time: this.time, id: r.id };
       }
       if (this.track.inRange(s, zone.start, zone.end)) {
         inZone = true;
-        if (this.options.drsRule === 'free' && !wet) eligible[i] = true;
+        if (this.options.drsRule === 'free' && !off) eligible[i] = true;
+        if (off) eligible[i] = false;
         if (eligible[i]) canOpen = true;
       } else if (prevS !== null && crossed(this.track, prevS, s, zone.end)) {
         eligible[i] = false;

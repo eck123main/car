@@ -45,5 +45,10 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
       return { text: e.note.toUpperCase(), color: '#ffffff', until };
     case 'penalty':
       return { text: `+${e.penalty.seconds}s PENALTY: ${e.penalty.reason}`, color: '#ff4136', until: now + 5 };
+    case 'safetyCar':
+      if (e.state === 'deployed') return { text: 'SAFETY CAR DEPLOYED · no overtaking · DRS off', color: '#ffb000', until: now + 5 };
+      if (e.state === 'inThisLap') return { text: 'SAFETY CAR IN THIS LAP', color: '#ffb000', until: now + 5 };
+      if (e.state === 'in') return { text: 'RESTART · no overtaking until the line', color: '#ffb000', until: now + 4 };
+      return { text: 'GREEN FLAG · RACE ON!', color: '#2ecc40', until: now + 3 };
   }
 }

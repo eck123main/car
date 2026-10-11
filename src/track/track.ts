@@ -301,8 +301,9 @@ function buildPitLane(samples: TrackSample[], length: number, def: PitDef | unde
   const exit = wrap(last * SAMPLE_SPACING);
   const wallStart = wrap(entry + PIT_OPENING);
   const wallEnd = wrap(exit - PIT_OPENING);
-  // One box per possible car, spread along the pit wall section.
-  const spacing = Math.min(14, (laneLength - 2 * PIT_OPENING - 30) / 10);
+  // One box per possible car, from far enough in to stop from the pit limit, to just short of
+  // the lane's end: spaced out so a car can pull into its box past one parked in the box before.
+  const spacing = Math.min(14, (laneLength - PIT_OPENING - 15 - 10) / 10);
   const boxes = Array.from({ length: 10 }, (_, i) => wrap(wallStart + 15 + i * spacing));
   return { side, entry, exit, wallStart, wallEnd, boxes };
 }

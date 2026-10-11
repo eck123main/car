@@ -106,5 +106,7 @@ export function sessionSnap(session: Session): SessionSnap {
     recovering: [...session.recovering.entries()],
     ready: [...session.ready],
     gridEndsAt: session.phase === 'grid' ? session.phaseStart + GRID_MAX_TIME : 0,
+    safetyCar: session.safetyCar?.phase ?? null,
+    noOvertaking: [...session.noOvertaking],
   };
 }

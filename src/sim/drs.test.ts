@@ -119,7 +119,7 @@ describe('DRS in a real race', () => {
       const grid = ['hard', 'hard', 'medium', 'hard', 'medium', 'easy'] as const;
       const players = grid.map((_, i) => ({ id: `b${i}`, name: `B${i}`, color: 'red' }));
       const laps = 4;
-      const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: id, laps, qualifying: false }, players);
+      const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: id, laps, qualifying: false, safetyCar: false }, players);
       const bots = grid.map((d, i) => new BotDriver(track, `b${i}`, d));
       const world = session.world;
       const lastCross = track.drsZones.map(() => -Infinity);

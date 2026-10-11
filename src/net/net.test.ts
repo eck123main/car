@@ -128,6 +128,39 @@ describe('Online race', () => {
     expect(clientDrag).toBeLessThan(0.7);
   });
 
+  it('shows the safety car and its rules to a client', () => {
+    const { host, join, tick } = setup(0.05);
+    const c = join('Alice');
+    for (let i = 0; i < 20; i++) tick();
+    host.updateSettings({ trackId: 'test', qualifying: false, laps: 5 });
+    host.start();
+    for (let i = 0; i < 20; i++) tick();
+    let wrecked = false;
+    let sawSafetyCar = false;
+    let sawPose = false;
+    let sawRule = false;
+    for (let t = 0; t < 40; t += DT) {
+      const session = host.session!;
+      const waiting = session.phase === 'grid' || session.phase === 'lights';
+      // A few seconds into the race, the host crashes out.
+      if (!wrecked && session.phase === 'race' && session.world.time - session.raceStart > 5) {
+        session.world.racer(HostGame.HOST_ID)!.car.retired = true;
+        wrecked = true;
+      }
+      host.step(DT, { ...botInput(session.track, session.world.racer(HostGame.HOST_ID)!, { hold: waiting }), ready: true });
+      const me = c.me;
+      c.step(DT, me && c.track ? { ...botInput(c.track, me, { hold: c.session?.phase !== 'race' }), ready: true } : READY);
+      c.flush();
+      tick();
+      sawSafetyCar ||= c.session?.safetyCar === 'deployed';
+      sawPose ||= c.session?.safetyCar != null && c.safetyCarPose() !== null;
+      sawRule ||= c.session?.noOvertaking.includes(c.id!) ?? false;
+    }
+    expect(sawSafetyCar).toBe(true);
+    expect(sawPose).toBe(true);
+    expect(sawRule).toBe(true);
+  });
+
   it('retires a driver who disconnects mid-race', () => {
     const { host, join, tick } = setup();
     const c = join('Alice');

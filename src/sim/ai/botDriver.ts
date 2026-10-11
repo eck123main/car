@@ -1,9 +1,11 @@
 import { F1_CAR } from '../../physics/carParams';
 import type { Track } from '../../track/track';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
+import { safetyCarProfile } from '../safetyCar';
+import type { Session } from '../session';
 import { pitAdvice } from '../strategy';
 import { COMPOUNDS, DRY_COMPOUNDS, type Compound } from '../tyres';
-import { IDLE_INPUT, type PlayerInput, type RaceWorld, type Racer } from '../world';
+import { IDLE_INPUT, raceProgress, type PlayerInput, type RaceWorld, type Racer } from '../world';
 import { racingLine, speedProfile, type RacingLine } from './racingLine';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -34,6 +36,23 @@ export interface BotContext {
   raceStart: number;
   laps: number | null;
   mandatoryStop: boolean;
+  /** The safety car, if it's on track: where it is (race distance) and how fast it's going. */
+  safetyCar?: { progress: number; speed: number; comingIn: boolean } | null;
+  /** Cars that may not overtake (safety car out, or the restart before the line). */
+  noOvertaking?: ReadonlySet<string>;
+}
+
+/** Everything a bot needs to know about a running session. */
+export function botContext(session: Session): BotContext {
+  const sc = session.safetyCar;
+  return {
+    phase: session.phase,
+    raceStart: session.raceStart,
+    laps: session.settings.laps,
+    mandatoryStop: session.settings.mandatoryStop && session.settings.weather === 'dry',
+    safetyCar: sc ? { progress: sc.progress, speed: sc.speed, comingIn: sc.phase === 'inThisLap' } : null,
+    noOvertaking: session.noOvertaking,
+  };
 }
 
 const CAR_LENGTH = 5.6;
@@ -42,6 +61,12 @@ const PASS_OFFSET = 3.2;
 const LATERAL_SPEED = 4;
 /** Braking (m/s^2) a following bot counts on to avoid the car ahead: well within what the car can do. */
 const FOLLOW_DECEL = 15;
+/** Seconds without getting anywhere before a bot gives up and resets to the track. */
+const STUCK_RESET_TIME = 8;
+/** In the queue behind the safety car (this close, m), drive at its pace, so nobody has to brake mid-corner. */
+const SAFETY_CAR_QUEUE = 300;
+/** Gap (m) bots leave behind the safety car. */
+const SAFETY_CAR_GAP = 18;
 /** Seconds after lights out that bots stay in their grid column. */
 const START_COLUMN_TIME = 4;
 /** A car behind closer than this many seconds (at the closing speed) is too close to move across in front of. */
@@ -56,11 +81,14 @@ export class BotDriver {
   private readonly skill: Skill;
   private readonly line: RacingLine;
   private readonly profile: number[];
+  private readonly scProfile: number[];
   private readonly reaction: number;
   /** How far the bot is choosing to be off its racing line (m), moved smoothly (traffic, pits). */
   private deviation = 0;
   private startLateral: number | null = null;
   private stuckFor = 0;
+  /** Where we were (lap distance) and when, to notice being stuck for good. */
+  private progressMark = { s: 0, t: 0 };
   /** When the car was wrecked, so the bot can reset after a moment. */
   private retiredAt: number | null = null;
   private reverseUntil = 0;
@@ -80,6 +108,7 @@ export class BotDriver {
     this.skill = SKILL[difficulty];
     this.line = racingLine(track);
     this.profile = speedProfile(track, this.line, F1_CAR, this.skill.pace);
+    this.scProfile = safetyCarProfile(track);
     const [lo, hi] = this.skill.reaction;
     this.reaction = lo + (hi - lo) * hash01(id);
   }
@@ -114,6 +143,17 @@ export class BotDriver {
       this.stuckFor = 0;
       this.reverseUntil = world.time + 1.2;
     }
+    // Still going nowhere after several tries (e.g. wedged in a barrier): press R, like a player.
+    if (ctx.phase === 'race' && me.pit.phase === 'out') {
+      // The clock starts at lights out (or when we last got going again).
+      if (this.progressMark.t < ctx.raceStart) this.progressMark = { s: q.s, t: world.time };
+      if (this.track.forwardDistance(this.progressMark.s, q.s) > 10 && this.track.forwardDistance(this.progressMark.s, q.s) < 100) {
+        this.progressMark = { s: q.s, t: world.time };
+      } else if (world.time - this.progressMark.t > STUCK_RESET_TIME) {
+        this.progressMark = { s: q.s, t: world.time };
+        return { ...base, brake: 1, reset: true };
+      }
+    } else this.progressMark = { s: q.s, t: world.time };
 
     const advice = pitAdvice({
       laps: ctx.phase === 'race' ? ctx.laps : null,
@@ -126,7 +166,9 @@ export class BotDriver {
       wear: me.tyres.wear,
       damage: car.damage,
       wetness: world.options.wetness,
+      safetyCar: ctx.phase === 'race' && !!ctx.safetyCar && !ctx.safetyCar.comingIn,
     });
+    const noOvertaking = ctx.phase === 'race' && (ctx.noOvertaking?.has(me.id) ?? false);
 
     // Where across the track to drive: racing line, pit lane, or around traffic.
     let wanted = this.line.offset[q.index];
@@ -164,13 +206,13 @@ export class BotDriver {
     const braking = Math.min(this.profile[q.index], this.profile[(q.index + lookIdx) % n]) < speed - 1;
     // Braking for a corner ends the straight: the next straight allows another move.
     if (braking) this.defended = false;
-    if (braking || pitting || !collisionsOn || ctx.phase !== 'race') this.defenceLateral = null;
+    if (braking || pitting || !collisionsOn || noOvertaking || ctx.phase !== 'race') this.defenceLateral = null;
     else if (sinceStart > START_COLUMN_TIME && this.skill.defends) this.defend(world, me, q.s, q.index, speed);
     if (this.defenceLateral !== null) wanted = this.defenceLateral;
     let minLateral = -Infinity;
     let maxLateral = Infinity;
     if (collisionsOn && me.pit.phase !== 'in' && me.pit.phase !== 'stopped') {
-      const traffic = this.traffic(world, me, q.s, q.d, wanted, sinceStart < 8);
+      const traffic = this.traffic(world, me, q.s, q.d, wanted, sinceStart < 8, noOvertaking);
       // In the pit lane we only slow for traffic; the lane decides where we drive.
       if (!pitting) {
         wanted = traffic.lateral;
@@ -178,6 +220,14 @@ export class BotDriver {
         maxLateral = traffic.maxLateral;
       }
       speedCap = Math.min(speedCap, traffic.speedCap);
+    }
+    // Behind the safety car: queue up behind it, never past it.
+    const sc = ctx.phase === 'race' ? ctx.safetyCar : null;
+    let queuing = false;
+    if (sc && noOvertaking && me.pit.phase === 'out') {
+      const gap = sc.progress - raceProgress(me, this.track.length);
+      if (gap > 0 && gap < 600) speedCap = Math.min(speedCap, followSpeed(gap, sc.speed, SAFETY_CAR_GAP));
+      queuing = gap > 0 && gap < SAFETY_CAR_QUEUE;
     }
     const edge = q.sample.halfWidth - 1.4;
     if (me.pit.phase === 'out' && !pitting) wanted = Math.max(-edge, Math.min(edge, wanted));
@@ -214,6 +264,8 @@ export class BotDriver {
 
     // Speed: the planned speed here and a little ahead, scaled for grip (tyres, rain, damage).
     let target = Math.min(this.profile[q.index], this.profile[(q.index + lookIdx) % n]);
+    // In the safety car queue: its pace (a touch quicker, to close up), never a sudden stop mid-corner.
+    if (queuing) target = Math.min(target, 1.08 * this.scProfile[q.index] + 2);
     const gripScale = car.gripFactor * (1 - 0.4 * car.parts.frontWing) * (1 - 0.15 * (car.parts.left + car.parts.right) / 2);
     target *= Math.sqrt(Math.max(0.2, gripScale));
     // Off the racing line, corners must be taken a bit slower.
@@ -245,6 +297,7 @@ export class BotDriver {
     d: number,
     wanted: number,
     startCaution: boolean,
+    noOvertaking: boolean,
   ): { lateral: number; speedCap: number; minLateral: number; maxLateral: number } {
     const L = this.track.length;
     const speed = me.car.speed;
@@ -322,7 +375,8 @@ export class BotDriver {
         const canRight = passRight <= half;
         const canLeft = passLeft >= -half;
         // At the start only go round cars that have stalled.
-        const mayPass = !startCaution || other.car.speed < 2;
+        // At the start and under the safety car, only go round cars that have stopped.
+        const mayPass = (!startCaution && !noOvertaking) || other.car.speed < 2;
         if (mayPass && closing > 0.5 && gap < 35 && (canLeft || canRight)) {
           // Pass on the side closer to where we already are.
           lateral = canRight && (!canLeft || Math.abs(passRight - d) <= Math.abs(passLeft - d)) ? passRight : passLeft;
@@ -336,8 +390,7 @@ export class BotDriver {
         // over the gap brings us down to their speed (a little lower if they're braking now).
         const minGap = CAR_LENGTH + 2.5 + speed * 0.1 + (startCaution && other.car.speed >= 2 ? 6 : 0);
         const theirs = Math.max(0, other.car.speed - (other.car.brake > 0.3 ? 8 : 0));
-        const room = gap - minGap;
-        let cap = room >= 0 ? Math.sqrt(theirs * theirs + 2 * FOLLOW_DECEL * room) : theirs + room * 0.5;
+        let cap = followSpeed(gap, theirs, minGap);
         // Going round a stopped or very slow car: keep creeping forward, or we can never steer past.
         if (lateral !== wanted && gap > CAR_LENGTH + 1.5 && other.car.speed < 5) cap = Math.max(cap, 4);
         speedCap = Math.min(speedCap, cap);
@@ -410,6 +463,15 @@ export class BotDriver {
     this.nextTyre = (lasting[0] ?? options[options.length - 1] ?? 'hard') as Compound;
     return this.nextTyre;
   }
+}
+
+/**
+ * Follow as close as we could still stop from: the fastest speed from which braking over
+ * the gap (less the gap we want to keep) brings us down to the speed of whatever is ahead.
+ */
+function followSpeed(gap: number, theirs: number, minGap: number): number {
+  const room = gap - minGap;
+  return room >= 0 ? Math.sqrt(theirs * theirs + 2 * FOLLOW_DECEL * room) : theirs + room * 0.5;
 }
 
 /** Stable 0..1 from a string, for per-bot variation that's the same on every run. */

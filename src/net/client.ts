@@ -1,3 +1,4 @@
+import type { SafetyCarSnap } from '../sim/safetyCar';
 import type { SessionEvent } from '../sim/session';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import { parseTrackDef } from '../track/io';
@@ -34,7 +35,7 @@ export class ClientGame {
   deltas = new Map<string, number | null>();
   /** Estimated host clock minus local clock (s). */
   private clockOffset: number | null = null;
-  private snaps: { time: number; cars: Map<string, CarSnap> }[] = [];
+  private snaps: { time: number; cars: Map<string, CarSnap>; sc?: SafetyCarSnap }[] = [];
   private pending: { seq: number; input: PlayerInput }[] = [];
   private outbox: { seq: number; input: PlayerInput }[] = [];
   private seq = 0;
@@ -146,7 +147,7 @@ export class ClientGame {
         break;
       }
       case 'snap':
-        this.onSnap(msg.time, msg.cars);
+        this.onSnap(msg.time, msg.cars, msg.sc);
         break;
       case 'state':
         this.syncClock(msg.time);
@@ -166,11 +167,11 @@ export class ClientGame {
     }
   }
 
-  private onSnap(time: number, cars: CarSnap[]): void {
+  private onSnap(time: number, cars: CarSnap[], sc: SafetyCarSnap | undefined): void {
     const world = this.world;
     if (!world || !this.track) return;
     this.syncClock(time);
-    this.snaps.push({ time, cars: new Map(cars.map((c) => [c.id, c])) });
+    this.snaps.push({ time, cars: new Map(cars.map((c) => [c.id, c])), sc });
     while (this.snaps.length > 30) this.snaps.shift();
     world.time = time;
 
@@ -203,6 +204,23 @@ export class ClientGame {
     } else {
       this.offset = { x: 0, y: 0 };
     }
+  }
+
+  /** Where to draw the safety car this frame (blended like the other cars), if it is out. */
+  safetyCarPose(): Pose | null {
+    const t = this.serverTime() - INTERPOLATION_DELAY;
+    const snaps = this.snaps;
+    const b = snaps.findIndex((s) => s.time >= t);
+    if (b <= 0) {
+      const sc = (b === 0 ? snaps[0] : snaps[snaps.length - 1])?.sc;
+      return sc ? { x: sc.x, y: sc.y, heading: sc.h } : null;
+    }
+    const sa = snaps[b - 1].sc;
+    const sb = snaps[b].sc;
+    if (!sa || !sb) return sb ? { x: sb.x, y: sb.y, heading: sb.h } : null;
+    const k = (t - snaps[b - 1].time) / (snaps[b].time - snaps[b - 1].time);
+    const dh = Math.atan2(Math.sin(sb.h - sa.h), Math.cos(sb.h - sa.h));
+    return { x: sa.x + (sb.x - sa.x) * k, y: sa.y + (sb.y - sa.y) * k, heading: sa.h + dh * k };
   }
 
   private interpolated(id: string, t: number): Pose | null {

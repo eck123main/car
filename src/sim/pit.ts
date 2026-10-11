@@ -53,8 +53,10 @@ export function boxLane(track: Track, halfWidth: number): number {
   return (halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH - 2) * (track.pit?.side ?? 1);
 }
 
-/** Start moving over to the box lane this far before the box (m). */
-const BOX_TURN_IN = 22;
+/** Start moving over to the box lane this far before the box (m): late, so as not to swing in behind a car in the box before. */
+const BOX_TURN_IN = 7;
+/** How far ahead the autopilot aims (m). */
+const AIM = 6;
 
 /**
  * Advance a car's pit state. Returns the input to use this step (the autopilot's while
@@ -136,10 +138,10 @@ function autopilot(
   }
 
   const n = track.samples.length;
-  const aimS = s + Math.min(12, Math.max(toBox, 4));
+  const aimS = s + Math.min(AIM, Math.max(toBox, 4));
   const aim = track.samples[Math.floor(aimS / 2) % n];
   // Fast lane until close to the box, then over into the box lane.
-  const toBoxFromAim = toBox - Math.min(12, Math.max(toBox, 4));
+  const toBoxFromAim = toBox - Math.min(AIM, Math.max(toBox, 4));
   const blend = Math.max(0, Math.min(1, 1 - toBoxFromAim / BOX_TURN_IN));
   const offset = fastLane(track, aim.halfWidth) + (boxLane(track, aim.halfWidth) - fastLane(track, aim.halfWidth)) * blend;
   const ax = aim.x + aim.nx * offset;

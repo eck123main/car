@@ -23,6 +23,8 @@ export function drawLights(ctx: CanvasRenderingContext2D, lit: number, width: nu
 }
 
 /** Lap counter or qualifying status, top centre. */
+const SAFETY_CAR_YELLOW = '#ffb000';
+
 export function drawSessionBanner(
   ctx: CanvasRenderingContext2D,
   session: SessionSnap,
@@ -48,6 +50,16 @@ export function drawSessionBanner(
   } else if (session.phase === 'race') {
     const laps = Math.min(session.laps, me.timer.lapsCompleted + 1);
     text = `LAP ${laps}/${session.laps}`;
+    if (session.safetyCar === 'deployed') {
+      text += ' · SAFETY CAR · no overtaking';
+      color = SAFETY_CAR_YELLOW;
+    } else if (session.safetyCar === 'inThisLap') {
+      text += ' · SAFETY CAR IN THIS LAP';
+      color = SAFETY_CAR_YELLOW;
+    } else if (session.noOvertaking.includes(me.id)) {
+      text += ' · RESTART · no overtaking until the line';
+      color = SAFETY_CAR_YELLOW;
+    }
   }
   if (!text) return;
   ctx.font = 'bold 16px system-ui, sans-serif';
