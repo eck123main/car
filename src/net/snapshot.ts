@@ -30,6 +30,7 @@ export function carSnap(r: Racer, ack: number): CarSnap {
     ersOn: r.ersActive,
     drs: r.drsOpen,
     drsOk: r.drsEligible,
+    drsHint: r.drsHint,
     tow: r.slipstream,
     pit: r.pit.phase,
     pitEnds: r.pit.stopEnds,
@@ -69,6 +70,7 @@ export function applyCarStatus(r: Racer, s: CarSnap): void {
   r.ersActive = s.ersOn;
   r.drsOpen = s.drs;
   r.drsEligible = s.drsOk;
+  r.drsHint = s.drsHint;
   r.slipstream = s.tow;
   r.pit.phase = s.pit;
   r.pit.stopEnds = s.pitEnds;

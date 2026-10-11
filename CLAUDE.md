@@ -75,6 +75,8 @@ Top-down 2D car physics that feels like an F1 car:
   detection point) can open DRS for a top-speed boost. DRS closes on braking. Disabled
   on lap 1 and in the wet (real rules). Cars in the pit lane or wrecked don't count at
   detection and can't open DRS. When open, the whole rear wing is drawn bright green.
+  In a zone the HUD shows "press SPACE", or why not: "not within 1 s", "from lap 2",
+  "off: rain", "off: safety car" (`DrsHint` in `src/sim/world.ts`).
   **Fairness**: every track's zones are worth 0.4-1.2 s a lap to a Hard bot (tested in
   `src/sim/drs.test.ts`; currently 0.54-1.01 s). Full bot races on every map check that
   each car crossing a detection line gets DRS exactly when it is within 1 s and past lap
@@ -82,6 +84,9 @@ Top-down 2D car physics that feels like an F1 car:
 - **Surfaces**: track (full grip), kerbs (slightly less), grass/gravel/dirt (drivable
   but slower with less grip; you can always drive back onto the track), walls/barriers
   (collision).
+- **Walls**: a car only meets the walls of the stretch of track it is on (`Track.wallContact`),
+  so where two parts of a track run close together (Baku's castle section next to the
+  main straight) it can't be pushed through onto the other one.
 - **Track width**: 19 m (wider than real F1 tracks, ~12-15 m): at half scale with keyboard
   steering, narrower tracks made track limits too easy to hit.
 - **Track scale**: keep tracks compact. Laps should be roughly 30–60 s, so real circuits
@@ -105,7 +110,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Action | Key | Notes |
 |---|---|---|
 | Throttle / brake / steer | **W A S D** and **arrow keys** (both work) | Keyboard is on/off, so throttle and steering ramp smoothly in code |
-| DRS | **Space** | Only works in a DRS zone when within 1 s at detection; closes on braking |
+| DRS | **Space** | Press once (or hold): opens in a DRS zone when allowed (within 1 s at detection in races) and stays open to the end of the zone or until you brake. A press up to 0.75 s before the zone counts. The HUD says why when it isn't allowed |
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
@@ -311,7 +316,8 @@ The timing tower is always shown (no Tab needed).
   for 4 s at the start, use DRS/ERS, pit using the race engineer, change to wets in the
   rain, reverse out if stuck, and press R if still stuck after 8 s. Bots run only on the host. `src/sim/bot.ts` is a
   simpler driver used by older tests.
-- Dev server only: the offline/host race is `window.f1host` in the browser console (e.g.
+- Dev server only: `window.f1game` is the running game (any mode; `f1game.driver.world()`),
+  and the offline/host race is `window.f1host` in the browser console (e.g.
   `f1host.session.world.racers[2].car.retired = true` to trigger the safety car).
 - Code: `src/net/` — `host.ts` (lobby + authoritative session, snapshots 20 Hz,
   timing/standings 4 Hz), `client.ts` (mirror world, own-car prediction + reconciliation,

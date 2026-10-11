@@ -39,6 +39,15 @@ const ERS_POWER = 120_000;
 const ERS_DEPLOY_TIME = 7;
 const DRS_DRAG = 0.65;
 const DRS_GAP = 1;
+/** A press of the DRS button this long (s) before reaching the zone still opens it there. */
+const DRS_PRESS_WINDOW = 0.75;
+
+/**
+ * Why DRS isn't open, for the HUD: in a zone where it's allowed ('press'), or not allowed
+ * because the car wasn't within a second at detection ('gap'), it's lap 1 ('lap1'), the
+ * track is wet ('rain') or the safety car rule ('safetyCar'). Empty outside DRS zones.
+ */
+export type DrsHint = '' | 'press' | 'gap' | 'lap1' | 'rain' | 'safetyCar';
 const SLIPSTREAM_RANGE = 60;
 const SLIPSTREAM_MAX = 0.35;
 /** Track positions are kept this long (s), sampled this often, to judge who moved before a collision. */
@@ -70,6 +79,9 @@ export interface Racer {
   slipstream: number;
   /** Per DRS zone: has this car earned DRS for it? */
   drsZoneEligible: boolean[];
+  /** Simulation time the DRS button was last pressed. */
+  drsPressedAt: number;
+  drsHint: DrsHint;
   pit: PitState;
   /** Every compound this car has raced on (for the two-compound rule). */
   compoundsUsed: Compound[];
@@ -154,6 +166,8 @@ export class RaceWorld {
       drsEligible: false,
       slipstream: 0,
       drsZoneEligible: this.track.drsZones.map(() => false),
+      drsPressedAt: -Infinity,
+      drsHint: '',
       pit: newPitState(this.racers.length),
       compoundsUsed: [compound],
       penalties: [],
@@ -222,6 +236,8 @@ export class RaceWorld {
     r.ers = 1;
     r.ersActive = r.drsOpen = r.drsEligible = false;
     r.drsZoneEligible = this.track.drsZones.map(() => false);
+    r.drsPressedAt = -Infinity;
+    r.drsHint = '';
     r.slipstream = 0;
     r.pit = newPitState(r.pit.box);
     r.compoundsUsed = [compound];
@@ -321,8 +337,22 @@ export class RaceWorld {
       }
     });
     r.drsEligible = canOpen || eligible.some((e) => e);
-    // DRS closes as soon as the driver brakes.
-    r.drsOpen = racing && inZone && canOpen && r.input.drs && r.car.brake < 0.05;
+    // Like the real button: one press opens it (a press just before the zone counts too) and
+    // it stays open to the end of the zone, or until the driver brakes.
+    if (r.input.drs) r.drsPressedAt = this.time;
+    const wantsOpen = r.drsOpen || this.time - r.drsPressedAt < DRS_PRESS_WINDOW;
+    r.drsOpen = racing && inZone && canOpen && wantsOpen && r.car.brake < 0.05;
+    r.drsHint = !racing || !inZone || r.drsOpen
+      ? ''
+      : canOpen
+        ? 'press'
+        : this.options.wetness >= 0.3
+          ? 'rain'
+          : this.options.drsDisabled
+            ? 'safetyCar'
+            : r.timer.lapsCompleted < 1
+              ? 'lap1'
+              : 'gap';
   }
 
   /** A car gets a tow when it's right behind another car going the same way. */

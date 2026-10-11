@@ -3,7 +3,7 @@ import type { Track } from '../track/track';
 import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
 import { COMPOUNDS } from '../sim/tyres';
 import type { PitAdvice } from '../sim/strategy';
-import type { Racer } from '../sim/world';
+import type { Racer, DrsHint } from '../sim/world';
 
 /** Side of the minimap square (CSS px); the damage panel sits under it. */
 export const MINIMAP_SIZE = 260;
@@ -243,6 +243,15 @@ export function drawToasts(ctx: CanvasRenderingContext2D, toasts: Toast[], now: 
   ctx.textAlign = 'left';
 }
 
+const DRS_HINTS: Record<DrsHint, string> = {
+  '': '',
+  press: 'press SPACE',
+  gap: 'not within 1 s',
+  lap1: 'from lap 2',
+  rain: 'off: rain',
+  safetyCar: 'off: safety car',
+};
+
 /** Tyres, ERS, DRS, limiter and slipstream for the local car, bottom left. */
 export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width: number, height: number, advice?: PitAdvice): void {
   const x = 260;
@@ -309,9 +318,15 @@ export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width:
   ctx.fillText('DRS', bx + 26, by + 18);
 
   ctx.font = 'bold 12px system-ui, sans-serif';
+  const hint = DRS_HINTS[r.drsHint];
   if (r.input.limiter) {
     ctx.fillStyle = '#ffd400';
     ctx.fillText('PIT LIMITER', bx + 105, by + 17);
+  } else if (hint) {
+    // In a DRS zone: press SPACE, or why it isn't allowed.
+    ctx.fillStyle = r.drsHint === 'press' ? '#2ecc40' : '#bbb';
+    ctx.textAlign = 'left';
+    ctx.fillText(hint, bx + 62, by + 17);
   } else if (r.slipstream > 0.2) {
     ctx.fillStyle = '#9fd8ff';
     ctx.fillText('TOW', bx + 90, by + 17);

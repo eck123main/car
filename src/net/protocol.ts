@@ -4,11 +4,11 @@ import type { Difficulty } from '../sim/ai/botDriver';
 import type { PitPhase } from '../sim/pit';
 import type { PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
 import type { Compound } from '../sim/tyres';
-import type { Penalty, PlayerInput } from '../sim/world';
+import type { Penalty, PlayerInput, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -49,6 +49,7 @@ export interface CarSnap {
   ersOn: boolean;
   drs: boolean;
   drsOk: boolean;
+  drsHint: DrsHint;
   tow: number;
   pit: PitPhase;
   pitEnds: number;

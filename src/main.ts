@@ -55,6 +55,8 @@ function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: 
   stopGame();
   clearUi();
   game = new GameScreen(canvas, keyboard, driver);
+  // Dev server only: the game is reachable from the browser console, for testing.
+  if (import.meta.env.DEV) (window as unknown as { f1game: GameScreen }).f1game = game;
   const g = game;
   g.onMenu = () => {
     g.setPaused(true);

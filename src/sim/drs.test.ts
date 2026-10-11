@@ -159,3 +159,58 @@ describe('DRS in a real race', () => {
     60_000,
   );
 });
+
+describe('The DRS button', () => {
+  const track = new Track(TRACKS.silverstone);
+  const zone = track.drsZones[0];
+  const line = racingLine(track);
+
+  function setup(drsRule: 'free' | 'race') {
+    const world = new RaceWorld(track, { drsRule, wetness: 0 });
+    const r = world.addRacer('a', 'A', 'red');
+    const i = Math.floor((zone.start - 30) / 2);
+    placeAt(track, r, zone.start - 30, 60, line.offset[i]);
+    const bot = new BotDriver(track, 'a', 'hard');
+    const drive = (drs: boolean, brake = false) => {
+      const input = { ...bot.drive(world, PRACTICE, DT), drs };
+      world.step(DT, new Map([['a', brake ? { ...input, throttle: 0, brake: 1 } : input]]));
+    };
+    return { world, r, drive };
+  }
+
+  it('one tap, just before the zone, opens it and it stays open', () => {
+    const { r, drive } = setup('free');
+    // A single press while still short of the zone...
+    drive(true);
+    let openFor = 0;
+    for (let t = 0; t < 3; t += DT) {
+      drive(false);
+      if (r.drsOpen) openFor += DT;
+    }
+    // ...and it's open in the zone without holding the button.
+    expect(openFor).toBeGreaterThan(1.5);
+  });
+
+  it('closes when the driver brakes, and shows "press" again', () => {
+    const { r, drive } = setup('free');
+    drive(true);
+    for (let t = 0; t < 1.5; t += DT) drive(false);
+    expect(r.drsOpen).toBe(true);
+    for (let t = 0; t < 0.3; t += DT) drive(false, true);
+    expect(r.drsOpen).toBe(false);
+    expect(r.drsHint).toBe('press');
+  });
+
+  it('says why it is not allowed in a race', () => {
+    const { r, drive } = setup('race');
+    for (let t = 0; t < 1.5; t += DT) drive(true);
+    expect(r.drsOpen).toBe(false);
+    expect(r.drsHint).toBe('lap1');
+    const later = setup('race');
+    later.r.timer.lapsCompleted = 2;
+    for (let t = 0; t < 1.5; t += DT) later.drive(true);
+    // Alone on track: nobody within a second at detection.
+    expect(later.r.drsOpen).toBe(false);
+    expect(later.r.drsHint).toBe('gap');
+  });
+});
