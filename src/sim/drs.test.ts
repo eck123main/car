@@ -4,6 +4,7 @@ import { TRACKS } from '../tracks';
 import { F1_CAR } from '../physics/carParams';
 import { BotDriver } from './ai/botDriver';
 import { racingLine, speedProfile } from './ai/racingLine';
+import { DEFAULT_SETTINGS, Session } from './session';
 import { RaceWorld, type PlayerInput, type Racer } from './world';
 
 const DT = 1 / 120;
@@ -108,4 +109,53 @@ describe.each(['silverstone', 'bahrain', 'albert-park', 'monaco', 'cota', 'spa',
     expect(gain).toBeGreaterThan(0.4);
     expect(gain).toBeLessThan(1.2);
   }, 30_000);
+});
+
+describe('DRS in a real race', () => {
+  it.each(['silverstone', 'bahrain', 'albert-park', 'monaco', 'cota', 'spa', 'baku', 'yas-marina'])(
+    'on %s, every car within a second at detection gets it, nobody else, never on lap 1',
+    (id) => {
+      const track = new Track(TRACKS[id]);
+      const grid = ['hard', 'hard', 'medium', 'hard', 'medium', 'easy'] as const;
+      const players = grid.map((_, i) => ({ id: `b${i}`, name: `B${i}`, color: 'red' }));
+      const laps = 4;
+      const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: id, laps, qualifying: false }, players);
+      const bots = grid.map((d, i) => new BotDriver(track, `b${i}`, d));
+      const world = session.world;
+      const lastCross = track.drsZones.map(() => -Infinity);
+      const prev = new Map<string, number>();
+      let checked = 0;
+      let given = 0;
+      let openedOnLapOne = false;
+      for (let t = 0; t < 600 && session.phase !== 'finished'; t += DT) {
+        const ctx = { phase: session.phase, raceStart: session.raceStart, laps, mandatoryStop: false };
+        session.step(DT, new Map<string, PlayerInput>(bots.map((b) => [b.id, b.drive(world, ctx, DT)])));
+        if (session.phase !== 'race') continue;
+        for (const r of world.racers) {
+          if (r.drsOpen && r.timer.lapsCompleted === 0) openedOnLapOne = true;
+          const s = r.timer.lapDistance;
+          const p = prev.get(r.id);
+          if (s === null) continue;
+          prev.set(r.id, s);
+          if (p === undefined || r.pit.phase !== 'out' || r.car.retired) continue;
+          track.drsZones.forEach((z, i) => {
+            const moved = track.forwardDistance(p, s);
+            const toLine = track.forwardDistance(p, z.detect);
+            if (moved === 0 || moved > 30 || toLine === 0 || toLine > moved) return;
+            const within = world.time - lastCross[i] < 1 && r.timer.lapsCompleted >= 1;
+            expect(r.drsZoneEligible[i], `${r.id} at zone ${i}`).toBe(within);
+            lastCross[i] = world.time;
+            checked++;
+            if (within) given++;
+          });
+        }
+      }
+      expect(session.phase).toBe('finished');
+      expect(openedOnLapOne).toBe(false);
+      // Plenty of crossings checked, and some cars did get DRS.
+      expect(checked).toBeGreaterThan(track.drsZones.length * 12);
+      expect(given).toBeGreaterThan(0);
+    },
+    60_000,
+  );
 });

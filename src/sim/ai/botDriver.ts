@@ -40,6 +40,8 @@ const CAR_LENGTH = 5.6;
 const SAFE_LATERAL = 2.6;
 const PASS_OFFSET = 3.2;
 const LATERAL_SPEED = 4;
+/** Braking (m/s^2) a following bot counts on to avoid the car ahead: well within what the car can do. */
+const FOLLOW_DECEL = 15;
 /** Seconds after lights out that bots stay in their grid column. */
 const START_COLUMN_TIME = 4;
 /** A car behind closer than this many seconds (at the closing speed) is too close to move across in front of. */
@@ -330,9 +332,12 @@ export class BotDriver {
       // line is about to take us into their lane and we aren't going round them.
       const inPath = Math.abs(side) < SAFE_LATERAL || (lateral === wanted && Math.abs(q.d - ourLineThere) < SAFE_LATERAL);
       if (inPath) {
-        const safeGap = CAR_LENGTH + 3 + speed * 0.22 + Math.max(0, closing) * 1.1 + (startCaution && other.car.speed >= 2 ? 6 : 0);
-        const braking = other.car.brake > 0.3 ? 4 : 0;
-        let cap = other.car.speed - braking + (gap - safeGap) * 0.4;
+        // Follow as close as we could still stop from: the fastest speed from which braking
+        // over the gap brings us down to their speed (a little lower if they're braking now).
+        const minGap = CAR_LENGTH + 2.5 + speed * 0.1 + (startCaution && other.car.speed >= 2 ? 6 : 0);
+        const theirs = Math.max(0, other.car.speed - (other.car.brake > 0.3 ? 8 : 0));
+        const room = gap - minGap;
+        let cap = room >= 0 ? Math.sqrt(theirs * theirs + 2 * FOLLOW_DECEL * room) : theirs + room * 0.5;
         // Going round a stopped or very slow car: keep creeping forward, or we can never steer past.
         if (lateral !== wanted && gap > CAR_LENGTH + 1.5 && other.car.speed < 5) cap = Math.max(cap, 4);
         speedCap = Math.min(speedCap, cap);
