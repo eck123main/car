@@ -74,6 +74,30 @@ export function drawSessionBanner(
   ctx.textAlign = 'left';
 }
 
+/** Spectating: whose car we're watching, under the session banner. */
+export function drawSpectating(ctx: CanvasRenderingContext2D, name: string, color: string, width: number): void {
+  ctx.font = 'bold 15px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  const label = 'SPECTATING  ';
+  const hint = '   ← → switch driver';
+  const total = ctx.measureText(label + name + hint).width + 28;
+  const x0 = width / 2 - total / 2;
+  ctx.fillStyle = 'rgba(10,10,14,0.75)';
+  ctx.beginPath();
+  ctx.roundRect(x0, 50, total, 30, 6);
+  ctx.fill();
+  ctx.textAlign = 'left';
+  let x = x0 + 14;
+  ctx.fillStyle = '#bbb';
+  ctx.fillText(label, x, 71);
+  x += ctx.measureText(label).width;
+  ctx.fillStyle = color;
+  ctx.fillText(name, x, 71);
+  x += ctx.measureText(name).width;
+  ctx.fillStyle = '#888';
+  ctx.fillText(hint, x, 71);
+}
+
 /** Timing tower: position, name, gap, tyre. Left side under the timing panel. */
 export function drawTower(ctx: CanvasRenderingContext2D, session: SessionSnap, world: RaceWorld, meId: string): void {
   const x = 20;

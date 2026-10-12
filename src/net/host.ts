@@ -1,5 +1,5 @@
 import { botContext, BotDriver, type Difficulty } from '../sim/ai/botDriver';
-import { DEFAULT_SETTINGS, Session, type RaceSettings, type SessionEvent } from '../sim/session';
+import { DEFAULT_SETTINGS, Session, type PlayerInfo, type RaceSettings, type SessionEvent } from '../sim/session';
 import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { Track } from '../track/track';
 import type { TrackDef } from '../track/types';
@@ -42,6 +42,8 @@ export class HostGame {
   settings: RaceSettings = { ...DEFAULT_SETTINGS };
   session: Session | null = null;
   track: Track | null = null;
+  /** The running weekend's track and drivers, for anyone who joins late to spectate. */
+  private running: { def: TrackDef; players: PlayerInfo[] } | null = null;
   private readonly hostPlayer: LobbyPlayer;
   private readonly remotes = new Map<string, Remote>();
   /** Computer drivers in the lobby, and their brains once a race starts. */
@@ -99,6 +101,7 @@ export class HostGame {
     this.track = new Track(def);
     const players = this.lobby.players.map(({ id, name, color }) => ({ id, name, color }));
     this.session = new Session(this.track, this.settings, players);
+    this.running = { def, players };
     for (const b of this.bots.values()) b.driver = new BotDriver(this.track, b.player.id, b.player.bot!);
     this.steps = 0;
     for (const r of this.remotes.values()) {
@@ -112,6 +115,7 @@ export class HostGame {
 
   backToLobby(): void {
     this.session = null;
+    this.running = null;
     this.track = null;
     this.lobbyChanged();
   }
@@ -165,9 +169,7 @@ export class HostGame {
         const reason =
           msg.version !== PROTOCOL_VERSION
             ? 'Different game version: refresh the page'
-            : this.session
-              ? 'A race is already running'
-              : this.lobby.players.length >= MAX_PLAYERS
+            : this.lobby.players.length >= MAX_PLAYERS
                 ? 'The lobby is full'
                 : null;
         if (reason) {
@@ -181,6 +183,11 @@ export class HostGame {
         joined = { conn, player: { id, name, color, host: false }, queue: [], last: IDLE_INPUT, ack: 0 };
         this.remotes.set(id, joined);
         conn.send({ t: 'welcome', id } satisfies HostMessage);
+        // Joining while a weekend is on: spectate it now, race in the next one.
+        if (this.running) {
+          conn.send({ t: 'start', track: this.running.def, settings: this.settings, players: this.running.players } satisfies HostMessage);
+          this.sendState();
+        }
         this.lobbyChanged();
         return;
       }
