@@ -115,6 +115,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
+| Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 
@@ -312,7 +313,14 @@ The timing tower is always shown (no Tab needed).
     friends game; could add a free TURN option later if needed.
 - The game itself is static files, deployable free to **GitHub Pages** (or similar).
 - If the host leaves, the race ends (host migration is out of scope for now). A client
-  who disconnects mid-race is retired (DNF). Joining mid-race is refused.
+  who disconnects mid-race is retired (DNF).
+- **Spectating** (`src/app/spectate.ts`, `GameScreen.updateSpectating`): someone who joins
+  after the weekend has started gets the track and every car straight away and watches
+  (they're in the lobby, so they race in the next weekend; only a full lobby turns people
+  away). Drivers also spectate while waiting for their qualifying run, once it's done,
+  and once they've finished the race. **← / →** (or A / D) switch between the cars out on
+  track (everyone, if nobody is); the camera and HUD (speed, tyres, DRS, timing) follow
+  that car, with a "SPECTATING name" banner. If the watched car parks, the view moves on.
 - **Max 10 players** per race, bots included.
 - **Bots** (`src/sim/ai/`): the host adds them in the lobby (Easy / Medium / Hard), or uses
   "Race against bots" on the welcome screen (offline, starts with 5 bots). They follow a

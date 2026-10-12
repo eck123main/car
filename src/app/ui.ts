@@ -37,11 +37,12 @@ export function clearUi(): void {
 
 const CONTROLS: [string, string][] = [
   ['WASD / Arrows', 'Drive'],
-  ['Space (hold)', 'DRS (in DRS zones)'],
+  ['Space', 'DRS (in DRS zones; one press opens it)'],
   ['Shift (hold)', 'ERS boost'],
   ['P', 'Pit limiter'],
   ['1-5', 'Tyres for your next stop (S, M, H, Inter, Wet)'],
   ['C', 'Camera: fixed map or rotating (you always drive up)'],
+  ['← / →', 'Spectating: switch driver (after your qualifying lap, once you finish, or joining late)'],
   ['Esc', 'Menu'],
 ];
 

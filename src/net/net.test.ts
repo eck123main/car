@@ -47,7 +47,7 @@ describe('Lobby', () => {
     expect(a.lobby?.settings.weather).toBe('rain');
   });
 
-  it('turns players away when full or mid-race', () => {
+  it('turns players away when full, even mid-race', () => {
     const { host, join, tick } = setup();
     const clients = Array.from({ length: MAX_PLAYERS }, (_, i) => join(`P${i}`));
     tick();
@@ -59,7 +59,7 @@ describe('Lobby', () => {
     tick();
     tick();
     expect(late.status).toBe('rejected');
-    expect(late.rejectReason).toMatch(/race/i);
+    expect(late.rejectReason).toMatch(/full/i);
   });
 });
 
@@ -262,6 +262,45 @@ describe('Lag', () => {
     tick();
     for (let t = 0; t < 5.5; t += DT) host.step(DT, READY);
     expect(racer.car.retired).toBe(false);
+  });
+});
+
+describe('Spectators', () => {
+  it('someone who joins mid-race watches it, then races in the next weekend', () => {
+    const { host, join, tick } = setup();
+    const a = join('Alice');
+    tick();
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    for (let t = 0; t < 3; t += DT) {
+      host.step(DT, READY);
+      tick();
+    }
+    const late = join('Late');
+    for (let i = 0; i < 40; i++) {
+      host.step(DT, READY);
+      tick();
+    }
+    // In straight away, watching the race: the track, every car and the timing, but no car of its own.
+    expect(late.status).toBe('racing');
+    expect(late.world!.racers.map((r) => r.id).sort()).toEqual(['host', a.id!].sort());
+    expect(late.me).toBeUndefined();
+    expect(late.session?.phase).toBe(host.session!.phase);
+    expect(late.pose('host', DT)).not.toBeNull();
+    // Its (idle) inputs don't upset the race.
+    late.step(DT, READY);
+    late.flush();
+    host.step(DT, READY);
+    tick();
+    expect(host.session!.world.racers).toHaveLength(2);
+    // Next weekend it has a car.
+    host.start();
+    for (let i = 0; i < 5; i++) {
+      host.step(DT, READY);
+      tick();
+    }
+    expect(host.session!.world.racers.map((r) => r.id)).toContain(late.id);
+    expect(late.me).toBeDefined();
   });
 });
 

@@ -11,11 +11,15 @@ import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawRain } from '../render/rain';
 import { drawSafetyCar } from '../render/safetyCar';
-import { drawLights, drawNameTag, drawSessionBanner, drawTower } from '../render/sessionHud';
+import { drawLights, drawNameTag, drawSessionBanner, drawSpectating, drawTower } from '../render/sessionHud';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
+import { cycle, isSpectating, watchable } from './spectate';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import type { Track } from '../track/track';
+
+/** The camera jumps to the car when it is further behind than this (m). */
+const CAMERA_SNAP_DISTANCE = 150;
 
 /** Remembers the camera view (C) between games. */
 const CAMERA_KEY = 'f1td.camera';
@@ -226,6 +230,8 @@ export class GameScreen {
   private dpr = 1;
   private snapped = false;
   private lastPhase: string | null = null;
+  /** Spectating: the driver being watched (null: our own car). */
+  private watching: string | null = null;
   private ticker: Worker | null = null;
   /** Called when the session phase changes (e.g. 'finished'). */
   onPhase: (phase: string) => void = () => {};
@@ -283,6 +289,32 @@ export class GameScreen {
     this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 2 });
   }
 
+  /**
+   * Spectating (joined late, between qualifying runs, or finished): follow another driver,
+   * and switch with the left/right keys. Otherwise follow our own car.
+   */
+  private updateSpectating(): void {
+    const keys = { prev: ['ArrowLeft', 'KeyA'], next: ['ArrowRight', 'KeyD'] };
+    let dir: 1 | -1 | 0 = 0;
+    for (const k of keys.prev) if (this.keyboard.wasPressed(k)) dir = -1;
+    for (const k of keys.next) if (this.keyboard.wasPressed(k)) dir = 1;
+    const world = this.driver.world();
+    const session = this.driver.session();
+    if (!world || !session || !isSpectating(session, world, this.driver.meId)) {
+      // (Steering presses while driving are not "switch driver" presses later.)
+      this.watching = null;
+      return;
+    }
+    const list = watchable(session, world, this.driver.meId);
+    const before = this.watching;
+    // Nobody watched yet, or they parked (finished, done or still waiting) or left: watch the
+    // next car that's out on track.
+    if (this.watching === null || !list.includes(this.watching)) this.watching = list[0] ?? null;
+    else if (dir !== 0) this.watching = cycle(list, this.watching, dir);
+    // Jump straight to the new car rather than sweeping across the map.
+    if (this.watching !== before) this.snapped = false;
+  }
+
   private resize = (): void => {
     // Cap the resolution: drawing at 3x on high-DPI screens costs a lot for little gain.
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -305,6 +337,7 @@ export class GameScreen {
 
     if (this.keyboard.wasPressed('Escape')) this.onMenu();
     if (this.keyboard.wasPressed('KeyC')) this.toggleCamera();
+    this.updateSpectating();
     let input = this.controls.read();
     const idle = { ...input, throttle: 0, brake: 0, steer: 0, drs: false, ers: false, reset: false };
     while (this.acc >= DT) {
@@ -341,11 +374,16 @@ export class GameScreen {
       this.gfx = { track: world.track, graphics: new TrackGraphics(world.track), minimap: new Minimap(world.track) };
       this.snapped = false;
     }
-    const me = world.racer(this.driver.meId);
+    const own = world.racer(this.driver.meId);
+    // The car the camera and HUD follow: our own, or the one we're spectating.
+    const me = (this.watching !== null ? world.racer(this.watching) : undefined) ?? own;
     if (!me) return;
+    const spectating = me !== own;
     const poses = new Map(world.racers.map((r) => [r.id, this.driver.pose(r, alpha, dt)]));
     const myPose = poses.get(me.id)!;
-    if (!this.snapped) {
+    // Jump to the car (rather than sweep across the map) on a new car, or after the tab was
+    // in the background and the camera fell far behind.
+    if (!this.snapped || Math.hypot(this.camera.x - myPose.x, this.camera.y - myPose.y) > CAMERA_SNAP_DISTANCE) {
       this.camera.snap(myPose.x, myPose.y, myPose.heading);
       this.snapped = true;
     }
@@ -393,19 +431,20 @@ export class GameScreen {
         ...(sc ? [{ x: sc.x, y: sc.y, color: '#ffb000' }] : []),
       ],
     );
-    const recoverAt = this.driver.recoverAt();
-    drawHud(ctx, me.car, world.track.name, w, h, this.driver.resetHint, recoverAt !== null ? recoverAt - now : null);
+    const recoverAt = spectating ? null : this.driver.recoverAt();
+    drawHud(ctx, me.car, world.track.name, w, h, spectating ? '' : this.driver.resetHint, recoverAt !== null ? recoverAt - now : null);
     drawDamage(ctx, me.car, w);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);
     drawRacerStatus(ctx, me, w, h, advice);
-    drawTiming(ctx, me.timer, now, this.driver.delta());
+    drawTiming(ctx, me.timer, now, spectating ? null : this.driver.delta());
     if (session) {
-      drawSessionBanner(ctx, session, me, now, w);
+      drawSessionBanner(ctx, session, own ?? me, now, w);
+      if (spectating) drawSpectating(ctx, me.name, me.color, w);
       drawTower(ctx, session, world, me.id);
       if (session.phase === 'lights' || session.phase === 'grid') drawLights(ctx, session.lights, w);
     }
-    drawPitStatus(ctx, world, me, w, advice);
+    if (!spectating) drawPitStatus(ctx, world, me, w, advice);
     drawToasts(ctx, this.toasts, now, w);
   }
 }
