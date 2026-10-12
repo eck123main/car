@@ -113,8 +113,9 @@ export class Car {
     return this.vx * Math.cos(this.heading) + this.vy * Math.sin(this.heading);
   }
 
-  place(x: number, y: number, heading: number): void {
-    this.trackIndex = null;
+  /** Put the car somewhere, stopped. `trackIndex`: the stretch of track it is on, if known. */
+  place(x: number, y: number, heading: number, trackIndex: number | null = null): void {
+    this.trackIndex = trackIndex;
     this.x = this.prevX = x;
     this.y = this.prevY = y;
     this.heading = this.prevHeading = heading;

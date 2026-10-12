@@ -256,7 +256,7 @@ export class RaceWorld {
     const { car } = r;
     const prevS = r.timer.lapDistance;
     if (r.frozen) {
-      car.place(car.x, car.y, car.heading);
+      car.place(car.x, car.y, car.heading, car.trackIndex);
       return;
     }
 
@@ -266,7 +266,7 @@ export class RaceWorld {
     for (const e of pitEvents) this.handlePitEvent(r, e, events);
     if (pitInput === 'hold') {
       // Sitting in the box: the car doesn't move, the clock keeps running.
-      car.place(car.x, car.y, car.heading);
+      car.place(car.x, car.y, car.heading, car.trackIndex);
       for (const e of r.timer.update(this.time, dt, car)) events.push({ ...e, racerId: r.id });
       return;
     }

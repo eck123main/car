@@ -264,8 +264,9 @@ The timing tower is always shown (no Tab needed).
   worth too little on its short straights); Jeddah 15 m; Zandvoort and Suzuka 17 m. Where
   the real pit side had no room, the other side is used. Suzuka is a figure of eight: the
   two roads cross at the bridge, so each car tracks which stretch it's on
-  (`Car.trackIndex`, `Track.query` hint). **[TODO]** A car dropped exactly on the crossing
-  (reset there) can still pick the wrong road.
+  (`Car.trackIndex`, `Track.query` hint; kept through resets and while held still), and
+  cars on different stretches of the lap never collide (`onOtherStretches`: one goes over
+  the bridge, the other under). Bots ignore cars on other stretches too.
   Import new circuits with
   `scripts/import-track.ts` (see its header).
   For DRS zones on new tracks, use the full-throttle sections from

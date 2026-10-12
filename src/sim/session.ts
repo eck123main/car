@@ -619,8 +619,11 @@ export class Session {
         r.frozen = this.quali.get(id)!.status === 'done';
       } else {
         const hit = this.track.query(r.car.x, r.car.y, r.car.trackIndex);
-        const t = hit?.sample ?? this.track.samples[0];
-        r.car.place(t.x, t.y, Math.atan2(t.ty, t.tx));
+        // Back onto the stretch of track the car was on (not whichever is nearest: at
+        // Suzuka's crossover that could be the other road).
+        const index = hit?.index ?? 0;
+        const t = this.track.samples[index];
+        r.car.place(t.x, t.y, Math.atan2(t.ty, t.tx), index);
         r.frozen = false;
       }
       r.car.repair();

@@ -246,6 +246,9 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
       const ca = a.car;
       const cb = b.car;
       if (Math.abs(ca.x - cb.x) > 7 || Math.abs(ca.y - cb.y) > 7) continue;
+      // Different parts of the lap that pass close by (Suzuka's bridge goes over the other
+      // road): those cars can't touch.
+      if (onOtherStretches(track, ca, cb)) continue;
       const hit = overlap(box(ca), box(cb));
       if (!hit) continue;
       const { nx, ny, depth, px, py } = hit;
@@ -308,6 +311,17 @@ export function resolveCollisions(track: Track, racers: Racer[], time: number, c
     }
   }
   return contacts;
+}
+
+/** Cars this many track samples apart are on different stretches of track. */
+const OTHER_STRETCH_SAMPLES = 25;
+
+/** On different parts of the lap that pass close by (e.g. over and under Suzuka's bridge). */
+export function onOtherStretches(track: Track, a: Car, b: Car): boolean {
+  if (a.trackIndex === null || b.trackIndex === null) return false;
+  const n = track.samples.length;
+  const di = Math.abs(a.trackIndex - b.trackIndex);
+  return Math.min(di, n - di) > OTHER_STRETCH_SAMPLES;
 }
 
 /** A world point in a car's own frame (x forward, y right). */

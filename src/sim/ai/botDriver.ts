@@ -1,6 +1,7 @@
 import { F1_CAR } from '../../physics/carParams';
 import type { Track } from '../../track/track';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
+import { onOtherStretches } from '../collisions';
 import { safetyCarProfile } from '../safetyCar';
 import type { Session } from '../session';
 import { pitAdvice } from '../strategy';
@@ -314,7 +315,8 @@ export class BotDriver {
     /** Cars right in front of our nose, and the speed that keeps us off their gearbox. */
     const nose: { d: number; room: number; cap: number }[] = [];
     for (const other of world.racers) {
-      if (other === me || other.frozen) continue;
+      // (A car on another stretch of track, over or under a bridge, is not in our way.)
+      if (other === me || other.frozen || onOtherStretches(this.track, me.car, other.car)) continue;
       const q = this.track.query(other.car.x, other.car.y, other.car.trackIndex);
       if (!q) continue;
       let gap = this.track.forwardDistance(s, q.s);
