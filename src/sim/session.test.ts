@@ -77,7 +77,7 @@ describe('Session', () => {
     const { session, events } = run(
       { qualifying: false, laps: 4 },
       // Separate lines so the bots don't run into each other.
-      { a: { pitOnLap: 1, nextTyre: 'hard', offset: -3.5 }, b: { offset: 0 }, c: { pitOnLap: 2, nextTyre: 'medium', offset: 3.5 } },
+      { a: { pitOnLap: 1, nextTyre: 'hard', offset: -3.5 }, b: { offset: 0 }, c: { pitOnLap: 2, nextTyre: 'medium', offset: -2 } },
       'finished',
       900,
       // The test bots aren't racers and crash into each other; collisions have their own tests.

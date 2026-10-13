@@ -2,7 +2,7 @@ import { F1_CAR } from '../../physics/carParams';
 import type { Track } from '../../track/track';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
 import { onOtherStretches } from '../collisions';
-import { safetyCarProfile } from '../safetyCar';
+import { safetyCarProfile, SC_SLOW_CAR } from '../safetyCar';
 import type { Session } from '../session';
 import { pitAdvice } from '../strategy';
 import { COMPOUNDS, DRY_COMPOUNDS, type Compound } from '../tyres';
@@ -175,7 +175,8 @@ export class BotDriver {
     let wanted = this.line.offset[q.index];
     let speedCap = Infinity;
     const lane = this.track.pit;
-    const pitting = lane && ctx.phase === 'race' && (me.pit.phase !== 'out' || advice.boxNow);
+    // (Not from the grid: the pit entry is just before the line, and the race hasn't begun.)
+    const pitting = lane && ctx.phase === 'race' && (me.pit.phase !== 'out' || (advice.boxNow && me.timer.lapStart !== null));
     if (lane && pitting) {
       const toEntry = this.track.forwardDistance(q.s, lane.entry);
       const inLane = me.pit.phase !== 'out' || this.track.inRange(q.s, lane.entry, lane.wallStart);
@@ -213,7 +214,7 @@ export class BotDriver {
     let minLateral = -Infinity;
     let maxLateral = Infinity;
     if (collisionsOn && me.pit.phase !== 'in' && me.pit.phase !== 'stopped') {
-      const traffic = this.traffic(world, me, q.s, q.d, wanted, sinceStart < 8, noOvertaking);
+      const traffic = this.traffic(world, me, q.s, q.d, wanted, sinceStart < 8, noOvertaking, braking);
       // In the pit lane we only slow for traffic; the lane decides where we drive.
       if (!pitting) {
         wanted = traffic.lateral;
@@ -289,7 +290,10 @@ export class BotDriver {
    * Pick the lateral position and speed limit around nearby cars:
    * - never steer into a car alongside or just behind;
    * - keep a safe gap to the car ahead (bigger at speed), unless we're already beside it;
-   * - pull out to pass a slower car when there's room (not in the first seconds of a race).
+   * - pull out to pass a slower car when there's room (not in the first seconds of a race,
+   *   and not once we're braking for a corner: no dive-bombs);
+   * - under the safety car (or before the line at the restart), stay behind every car ahead
+   *   wherever it is on the track, unless it has all but stopped.
    */
   private traffic(
     world: RaceWorld,
@@ -299,6 +303,7 @@ export class BotDriver {
     wanted: number,
     startCaution: boolean,
     noOvertaking: boolean,
+    braking: boolean,
   ): { lateral: number; speedCap: number; minLateral: number; maxLateral: number } {
     const L = this.track.length;
     const speed = me.car.speed;
@@ -314,6 +319,8 @@ export class BotDriver {
     this.attacking = false;
     /** Cars right in front of our nose, and the speed that keeps us off their gearbox. */
     const nose: { d: number; room: number; cap: number }[] = [];
+    /** Under the safety car: the nearest car ahead, whose line we queue up on (single file). */
+    let queueBehind: { gap: number; d: number } | null = null;
     for (const other of world.racers) {
       // (A car on another stretch of track, over or under a bridge, is not in our way.)
       if (other === me || other.frozen || onOtherStretches(this.track, me.car, other.car)) continue;
@@ -338,6 +345,11 @@ export class BotDriver {
         nose.push({ d: q.d, room: Math.max(0, room), cap: Math.max(0, along) + room * 0.5 });
       }
 
+      // Under the safety car a car ahead may not be passed wherever it is across the track,
+      // unless it has all but stopped (or one of us is in the pit lane).
+      const mustFollow =
+        noOvertaking && me.pit.phase === 'out' && other.pit.phase === 'out' && !other.car.retired && other.car.speed >= SC_SLOW_CAR;
+
       // Beside us (overlapping), or just behind with their nose alongside: keep a car's
       // width away. A car directly behind us is their problem, not ours.
       const overlapping = (gap > -(CAR_LENGTH + 1) && gap < CAR_LENGTH + 1.5) || (Math.abs(ahead) < CAR_LENGTH + 1 && Math.abs(across) < 6);
@@ -349,6 +361,11 @@ export class BotDriver {
         if (Math.abs(side) < room + 2) {
           if (side > 0) maxLateral = Math.min(maxLateral, q.d - room);
           else minLateral = Math.max(minLateral, q.d + room);
+        }
+        // Under the safety car, alongside a car that is (even just) ahead: drop back behind it.
+        if (mustFollow && gap > -1) {
+          speedCap = Math.min(speedCap, Math.max(0, other.car.speed - 3));
+          if (!queueBehind || gap < queueBehind.gap) queueBehind = { gap, d: q.d };
         }
         continue;
       }
@@ -364,9 +381,10 @@ export class BotDriver {
       }
       if (gap <= 0 || gap > 60) continue;
 
+      if (mustFollow && gap < 40 && (!queueBehind || gap < queueBehind.gap)) queueBehind = { gap, d: q.d };
       // Ahead: are they on the line we're about to drive?
       const ourLineThere = this.line.offset[q.index] + this.deviation;
-      if (Math.abs(q.d - ourLineThere) > SAFE_LATERAL + 0.5 && Math.abs(side) > SAFE_LATERAL) continue;
+      if (!mustFollow && Math.abs(q.d - ourLineThere) > SAFE_LATERAL + 0.5 && Math.abs(side) > SAFE_LATERAL) continue;
       const closing = speed - other.car.speed;
       if (gap < closest) {
         closest = gap;
@@ -376,9 +394,13 @@ export class BotDriver {
         const passLeft = q.d - PASS_OFFSET;
         const canRight = passRight <= half;
         const canLeft = passLeft >= -half;
-        // At the start only go round cars that have stalled.
-        // At the start and under the safety car, only go round cars that have stopped.
-        const mayPass = (!startCaution && !noOvertaking) || other.car.speed < 2;
+        // At the start only go round cars that have stalled, and under the safety car only
+        // ones that have all but stopped. Never start a pass once braking for a corner
+        // (a dive-bomb); one already under way, in the other lane, carries on.
+        const committed = Math.abs(side) >= SAFE_LATERAL;
+        const mayPass = noOvertaking
+          ? !mustFollow
+          : (!startCaution && (!braking || committed)) || other.car.speed < 2;
         if (mayPass && closing > 0.5 && gap < 35 && (canLeft || canRight)) {
           // Pass on the side closer to where we already are.
           lateral = canRight && (!canLeft || Math.abs(passRight - d) <= Math.abs(passLeft - d)) ? passRight : passLeft;
@@ -386,11 +408,13 @@ export class BotDriver {
       }
       // Until we're actually beside them, don't run into the back of them: also when our
       // line is about to take us into their lane and we aren't going round them.
-      const inPath = Math.abs(side) < SAFE_LATERAL || (lateral === wanted && Math.abs(q.d - ourLineThere) < SAFE_LATERAL);
+      const inPath =
+        mustFollow || Math.abs(side) < SAFE_LATERAL || (lateral === wanted && Math.abs(q.d - ourLineThere) < SAFE_LATERAL);
       if (inPath) {
         // Follow as close as we could still stop from: the fastest speed from which braking
-        // over the gap brings us down to their speed (a little lower if they're braking now).
-        const minGap = CAR_LENGTH + 2.5 + speed * 0.1 + (startCaution && other.car.speed >= 2 ? 6 : 0);
+        // over the gap brings us down to their speed (a little lower if they're braking now),
+        // with a gap that grows with speed.
+        const minGap = CAR_LENGTH + 2.5 + speed * 0.15 + (startCaution && other.car.speed >= 2 ? 6 : 0);
         const theirs = Math.max(0, other.car.speed - (other.car.brake > 0.3 ? 8 : 0));
         let cap = followSpeed(gap, theirs, minGap);
         // Going round a stopped or very slow car: keep creeping forward, or we can never steer past.
@@ -398,6 +422,9 @@ export class BotDriver {
         speedCap = Math.min(speedCap, cap);
       }
     }
+    // Queue in single file behind the car ahead: on a different line through a corner we could
+    // end up ahead of it without ever being faster.
+    if (queueBehind) lateral = queueBehind.d;
     if (minLateral > maxLateral) {
       // Squeezed: hold our position.
       lateral = d;

@@ -14,10 +14,10 @@ const WAIT_SPEED = 22;
 /** Placed this far (m) ahead of the leader when it comes out. */
 export const SC_LEAD = 150;
 /**
- * Passing a car going slower than this (m/s, ~43 km/h) is allowed under the safety car: it has
+ * Passing a car going slower than this (m/s, ~22 km/h) is allowed under the safety car: it has
  * stopped, spun or is limping back to the pits.
  */
-export const SC_SLOW_CAR = 12;
+export const SC_SLOW_CAR = 6;
 
 /**
  * - deployed: lights on, no overtaking, the field queues up behind it.

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Track } from '../track/track';
 import { TRACKS } from '../tracks';
 import { botContext, BotDriver, type Difficulty } from './ai/botDriver';
+import { botInput } from './bot';
 import { DEFAULT_SETTINGS, Session, type RaceSettings, type SessionEvent } from './session';
 import type { PlayerInput } from './world';
 
@@ -75,6 +76,41 @@ describe('Safety car', () => {
     // Bots obey the rules: no overtaking under it, nobody passes it.
     const scPenalties = events.filter((e) => e.kind === 'penalty' && /safety car/.test(e.penalty.reason));
     expect(scPenalties).toEqual([]);
+  }, 60_000);
+
+  it('bots never overtake under the safety car, even a slow human off the racing line', () => {
+    const track = new Track(TRACKS.silverstone);
+    const grid: Difficulty[] = ['hard', 'medium', 'hard', 'easy', 'hard'];
+    const players = [{ id: 'h', name: 'Human', color: 'blue' }, ...grid.map((_, i) => ({ id: `b${i}`, name: `B${i}`, color: 'red' }))];
+    const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'silverstone', laps: 6, qualifying: false, mandatoryStop: false }, players);
+    const bots = grid.map((d, i) => new BotDriver(track, `b${i}`, d));
+    const humanAsBot = new BotDriver(track, 'h', 'hard');
+    const events: SessionEvent[] = [];
+    let slow = false;
+    const step = () => {
+      const ctx = botContext(session);
+      const inputs = new Map<string, PlayerInput>(bots.map((b) => [b.id, b.drive(session.world, ctx, DT)]));
+      const h = session.world.racer('h')!;
+      // The human races normally (from pole), then under the safety car dawdles along well off the racing line.
+      let input = slow ? botInput(track, h, { offset: 5 }) : humanAsBot.drive(session.world, ctx, DT);
+      if (slow && h.car.speed > 26) input = { ...input, throttle: 0, brake: 0.5 };
+      inputs.set('h', input);
+      events.push(...session.step(DT, inputs));
+    };
+    for (let t = 0; t < 600 && !(session.phase === 'race' && session.world.racers.every((r) => r.timer.lapsCompleted >= 1)); t += DT) step();
+    session.world.racers[3].car.retired = true;
+    step();
+    expect(session.safetyCar).not.toBeNull();
+    slow = true;
+    // Cars behind the human when it starts to dawdle: they must stay there.
+    const h = session.world.racer('h')!;
+    const behind = session.world.racers.filter((r) => r !== h && !r.car.retired && session.progress(r) < session.progress(h));
+    expect(behind.length).toBeGreaterThanOrEqual(2);
+    for (let t = 0; t < 60 && session.safetyCar; t += DT) step();
+    // Everyone is still queued behind the human.
+    for (const r of behind) if (!r.car.retired && r.pit.phase === 'out') expect(session.progress(r)).toBeLessThan(session.progress(h));
+    const botPenalties = events.filter((e) => e.kind === 'penalty' && e.racerId !== 'h' && /safety car/.test(e.penalty.reason));
+    expect(botPenalties).toEqual([]);
   }, 60_000);
 
   it('bots that still owe their stop take the cheap one under the safety car', () => {
