@@ -1,5 +1,5 @@
 import type { Track } from '../track/track';
-import { SafetyCar, SC_LEAD } from './safetyCar';
+import { SafetyCar, SC_LEAD, SC_SLOW_CAR } from './safetyCar';
 import { DRY_COMPOUNDS } from './tyres';
 import { penaltyTime, raceProgress, RaceWorld, type PlayerInput, type Racer, type WorldEvent } from './world';
 
@@ -97,9 +97,10 @@ const SAFETY_CAR_LEADER_GAP = 60;
 const SAFETY_CAR_QUEUE_GAP = 45;
 /** A car must be this far (m) ahead of another before it counts as having passed it. */
 const PASS_MARGIN = 6;
-/** Passing a car going slower than this (m/s: stopped) is allowed under the safety car. */
-const SLOW_CAR = 3;
+/** One penalty at most per driver per safety car (passing it or overtaking under it). */
 const SAFETY_CAR_PENALTY = 5;
+/** A car that has just come out of the pits can be passed (or pass) for this long (s) while it gets up to speed. */
+const PIT_REJOIN_GRACE = 5;
 /** Seconds a reset car waits before going back on track. */
 export const RESET_WAIT = 5;
 
@@ -136,7 +137,10 @@ export class Session {
   /** DRS comes back when the leader has completed this many laps (a lap after the restart). */
   private drsBackAtLap = 0;
   private readonly wrecked = new Set<string>();
-  private readonly passedSafetyCar = new Set<string>();
+  /** Drivers already penalised under this safety car: one penalty each is enough. */
+  private readonly safetyCarPenalised = new Set<string>();
+  /** When each car was last in the pit lane. */
+  private readonly lastInPits = new Map<string, number>();
   /** For each pair of cars under the no-overtaking rule, which one is ahead. */
   private readonly pairOrder = new Map<string, number>();
 
@@ -312,7 +316,10 @@ export class Session {
         if (r.timer.lapsCompleted >= this.settings.laps || this.firstFinishAt !== null) this.finish(r, events);
       }
     }
-    for (const r of this.world.racers) this.recordProgress(r);
+    for (const r of this.world.racers) {
+      this.recordProgress(r);
+      if (r.pit.phase !== 'out') this.lastInPits.set(r.id, now);
+    }
     this.updateSafetyCar(dt, worldEvents, events);
 
     const everyoneDone = this.world.racers.every((r) => this.finishTimes.has(r.id) || r.car.retired);
@@ -460,7 +467,7 @@ export class Session {
         this.safetyCars++;
         this.restartPending = false;
         this.pairOrder.clear();
-        this.passedSafetyCar.clear();
+        this.safetyCarPenalised.clear();
         for (const r of this.world.racers) if (!this.finishTimes.has(r.id)) this.noOvertaking.add(r.id);
         events.push({ kind: 'safetyCar', state: 'deployed' });
       }
@@ -502,11 +509,8 @@ export class Session {
       const car = this.safetyCar;
       if (car) {
         for (const r of running) {
-          if (!this.noOvertaking.has(r.id) || r.pit.phase !== 'out' || r.frozen || this.passedSafetyCar.has(r.id)) continue;
-          if (this.progress(r) > car.progress + 3) {
-            this.passedSafetyCar.add(r.id);
-            this.world.addPenalty(r, SAFETY_CAR_PENALTY, 'Passing the safety car', events as WorldEvent[]);
-          }
+          if (!this.noOvertaking.has(r.id) || r.pit.phase !== 'out' || r.frozen) continue;
+          if (this.progress(r) > car.progress + 3) this.safetyCarPenalty(r, 'Passing the safety car', events);
         }
       }
     }
@@ -549,8 +553,14 @@ export class Session {
    * that has stopped or is crawling is fine, as is anything to do with the pit lane.
    */
   private checkOvertaking(events: SessionEvent[]): void {
+    const now = this.world.time;
     const bound = this.world.racers.filter(
-      (r) => this.noOvertaking.has(r.id) && r.pit.phase === 'out' && !r.frozen && !r.car.retired,
+      (r) =>
+        this.noOvertaking.has(r.id) &&
+        r.pit.phase === 'out' &&
+        !r.frozen &&
+        !r.car.retired &&
+        now - (this.lastInPits.get(r.id) ?? -Infinity) > PIT_REJOIN_GRACE,
     );
     const ids = new Set(bound.map((r) => r.id));
     // Forget pairs where a car went into the pits, was reset or is free to race again.
@@ -569,10 +579,16 @@ export class Session {
         this.pairOrder.set(key, ahead);
         if (was === undefined || was === ahead) continue;
         const [passer, passed] = ahead > 0 ? [a, b] : [b, a];
-        if (passed.car.speed < SLOW_CAR) continue;
-        this.world.addPenalty(passer, SAFETY_CAR_PENALTY, `Overtaking ${passed.name} under the safety car`, events as WorldEvent[]);
+        if (passed.car.speed < SC_SLOW_CAR) continue;
+        this.safetyCarPenalty(passer, `Overtaking ${passed.name} under the safety car`, events);
       }
     }
+  }
+
+  private safetyCarPenalty(r: Racer, reason: string, events: SessionEvent[]): void {
+    if (this.safetyCarPenalised.has(r.id)) return;
+    this.safetyCarPenalised.add(r.id);
+    this.world.addPenalty(r, SAFETY_CAR_PENALTY, reason, events as WorldEvent[]);
   }
 
   // ---------- Resets

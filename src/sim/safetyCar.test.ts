@@ -89,7 +89,7 @@ describe('Safety car', () => {
     expect(stops.length).toBeGreaterThanOrEqual(3);
   }, 60_000);
 
-  it('penalises overtaking and passing the safety car', () => {
+  it('penalises overtaking and passing the safety car, but only once per driver', () => {
     const { session, events, step, runUntil, track } = race('bahrain');
     runUntil(() => session.phase === 'race' && session.world.racers.every((r) => r.timer.lapsCompleted >= 1));
     session.world.racers[5].car.retired = true;
@@ -110,13 +110,19 @@ describe('Safety car', () => {
     move(second, ahead);
     step();
     step();
-    expect(second.penalties.map((p) => p.reason)).toContain(`Overtaking ${leader.name} under the safety car`);
-    // ...then past the safety car itself.
+    expect(second.penalties.map((p) => p.reason)).toEqual([`Overtaking ${leader.name} under the safety car`]);
+    // ...then past the safety car itself: no second penalty.
     const sc = session.safetyCar!;
     move(second, sc.progress - session.progress(second) + 10);
     step();
     step();
-    expect(second.penalties.map((p) => p.reason)).toContain('Passing the safety car');
+    expect(second.penalties).toHaveLength(1);
+    // Someone else passing the safety car is penalised.
+    const third = order[2];
+    move(third, sc.progress - session.progress(third) + 10);
+    step();
+    step();
+    expect(third.penalties.map((p) => p.reason)).toContain('Passing the safety car');
     expect(events.filter((e) => e.kind === 'penalty' && e.racerId === leader.id)).toEqual([]);
   }, 60_000);
 
