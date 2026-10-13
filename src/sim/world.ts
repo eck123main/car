@@ -53,6 +53,8 @@ const SLIPSTREAM_MAX = 0.35;
 /** Track positions are kept this long (s), sampled this often, to judge who moved before a collision. */
 const TRAIL_TIME = 1.5;
 const TRAIL_STEP = 1 / 30;
+/** Minor at-fault contacts let off with a warning before the next one is penalised. */
+const COLLISION_WARNINGS = 2;
 
 /** Where a car was on the track at a moment (host only). */
 export interface TrailPoint {
@@ -211,8 +213,8 @@ export class RaceWorld {
 
   private handleContacts(events: WorldEvent[]): void {
     for (const c of resolveCollisions(this.track, this.racers, this.time, this.contactCooldowns)) {
-      // A first, minor at-fault hit is a warning; repeats or big hits are penalised.
-      const warning = c.atFault !== null && !c.serious && c.atFault.collisionWarnings === 0;
+      // The first minor at-fault hits are warnings; after that, or for a big hit, a penalty.
+      const warning = c.atFault !== null && !c.serious && c.atFault.collisionWarnings < COLLISION_WARNINGS;
       const tell = (r: Racer, other: Racer) => {
         const verdict = c.atFault === null ? 'incident' : c.atFault === r ? 'yourFault' : 'theirFault';
         events.push({ kind: 'contact', other: other.name, verdict, warning, reason: c.reason || undefined, racerId: r.id });
