@@ -42,5 +42,7 @@ create or replace view public.time_trial_best with (security_invoker = true) as
   from public.time_trial
   order by track, player, time asc;
 
-grant select on public.time_trial_best to anon, authenticated;
+-- Reading and adding laps only: no updates or deletes through the public key.
+revoke all on public.time_trial from anon, authenticated;
 grant select, insert on public.time_trial to anon, authenticated;
+grant select on public.time_trial_best to anon, authenticated;
