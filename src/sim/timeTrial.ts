@@ -23,8 +23,9 @@ export interface TimeTrialLap {
 /**
  * Time trial: one car alone on track, setting laps. A lap only counts if the car never has
  * all four wheels off the track (kerbs count as track) and stays out of the pit lane.
- * Tyres and ERS are topped up at the start of every lap so every lap is set on the same
- * terms; DRS can be used in every zone.
+ * Every lap is set on the same terms: it starts from the same rolling start (the car goes
+ * back there after each lap, so nobody carries speed out of the last corner), on fresh
+ * tyres and a full ERS battery. DRS can be used in every zone.
  */
 export class TimeTrial {
   readonly world: RaceWorld;
@@ -76,10 +77,18 @@ export class TimeTrial {
   step(dt: number, input: PlayerInput): WorldEvent[] {
     const { me, world } = this;
     const events = world.step(dt, new Map([[me.id, input]]));
+    let finished = false;
     for (const e of events) {
-      if (e.kind === 'lap' && e.racerId === me.id && e.lap.valid && this.invalidAt === null) {
+      if (e.kind !== 'lap' || e.racerId !== me.id) continue;
+      finished = true;
+      if (e.lap.valid && this.invalidAt === null) {
         this.onLap({ time: e.lap.time, sectors: e.lap.sectors, ghost: this.recorder.finish(this.trackId, me.name, e.lap.time) });
       }
+    }
+    // Lap over: back to the start for the next one.
+    if (finished) {
+      this.restart();
+      return events;
     }
     const timer = me.timer;
     if (timer.lapStart !== this.lapStart) {

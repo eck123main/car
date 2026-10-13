@@ -11,7 +11,7 @@ export interface BoardView {
   state: 'loading' | 'ok' | 'error';
   global: boolean;
   trackName: string;
-  /** Which ghost is out: 'record', 'personal' or 'off'. */
+  /** Which ghost is out, e.g. 'P1 Max', 'your best' or 'off'. */
   ghost: string;
 }
 
@@ -70,9 +70,8 @@ export function drawLeaderboard(ctx: CanvasRenderingContext2D, v: BoardView): vo
 
   ctx.fillStyle = '#8a8d96';
   ctx.font = '11px system-ui, sans-serif';
-  const ghost = v.ghost === 'record' ? 'record' : v.ghost === 'personal' ? 'your best' : 'off';
-  ctx.fillText(`G ghost: ${ghost}`, x + 12, y + 20);
-  ctx.fillText('ENTER restart lap', x + 12, y + 36);
+  ctx.fillText(`G ghost: ${v.ghost.slice(0, 18)}`, x + 12, y + 20);
+  ctx.fillText('R / ENTER restart lap', x + 12, y + 36);
   // Who to beat next.
   const target = mine === -1 ? v.rows[v.rows.length - 1] : v.rows[mine - 1];
   if (v.state === 'ok' && target && mine !== 0) {
@@ -98,7 +97,7 @@ export function drawInvalidPrompt(ctx: CanvasRenderingContext2D, reason: string,
   ctx.fillText(`LAP INVALID · ${reason}`, width / 2, y + 34);
   ctx.fillStyle = '#ddd';
   ctx.font = '15px system-ui, sans-serif';
-  ctx.fillText('ENTER  restart from the line      or keep driving to finish the lap', width / 2, y + 64);
+  ctx.fillText('R / ENTER  restart from the start      or keep driving to finish the lap', width / 2, y + 64);
   ctx.textAlign = 'left';
 }
 

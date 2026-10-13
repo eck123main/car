@@ -4,7 +4,7 @@ import type { Pose } from '../net/client';
 import { formatLapTime } from '../render/hud';
 import { drawInvalidPrompt, drawLeaderboard, drawNotice, GHOST_COLOR } from '../render/timeTrialHud';
 import { ghostDelta, ghostPose, ghostTrace, type Ghost } from '../sim/ghost';
-import { RESET_WAIT, type SessionEvent } from '../sim/session';
+import type { SessionEvent } from '../sim/session';
 import { TimeTrial, type TimeTrialLap } from '../sim/timeTrial';
 import type { PlayerInput, Racer } from '../sim/world';
 import type { Track } from '../track/track';
@@ -15,22 +15,35 @@ export const TIME_TRIAL_COLOR = '#e10600';
 /** How long the "lap invalid" prompt stays up (s). */
 const PROMPT_TIME = 6;
 
-type GhostMode = 'record' | 'personal' | 'off';
+/**
+ * Which ghost to race: a leaderboard player's id, 'personal' (your own best), 'off', or 'auto'
+ * (the fastest player who isn't you).
+ */
+export type GhostChoice = string;
+/** G cycles through this many of the fastest other players, then your best, then off. */
+const GHOST_PLAYERS = 5;
+
+interface LoadedGhost {
+  ghost: Ghost;
+  trace: number[];
+}
 
 /** Time trial on one machine: alone on track against the leaderboard and a ghost. */
 export class TimeTrialDriver implements GameDriver {
   readonly meId = 'me';
   readonly pausable = true;
-  readonly resetHint = 'R: back on track (5 s wait) · ENTER: restart from the line';
+  readonly resetHint = 'R or ENTER: restart from the start';
   readonly tt: TimeTrial;
-  private recovering: number | null = null;
+  /** Set by the menu's Restart lap button; handled on the next step. */
+  restartRequested = false;
   private events: SessionEvent[] = [];
-  private enterDown = false;
+  private restartDown = false;
   private board: TimeEntry[] = [];
   private boardState: 'loading' | 'ok' | 'error' = 'loading';
   private readonly player = playerId();
-  private ghosts: Record<'record' | 'personal', { ghost: Ghost; trace: number[] } | null> = { record: null, personal: null };
-  private ghostMode: GhostMode = 'record';
+  private personal: LoadedGhost | null = null;
+  /** Other players' ghosts by player id (null: loading, or they have none). */
+  private readonly playerGhosts = new Map<string, LoadedGhost | null>();
   private notice: { text: string; color: string; until: number } | null = null;
   /** Our best lap time on this track (from the leaderboard or this browser). */
   private best: number | null = null;
@@ -40,27 +53,29 @@ export class TimeTrialDriver implements GameDriver {
     private readonly trackId: string,
     name: string,
     private readonly store: Leaderboard,
+    private ghostChoice: GhostChoice = 'auto',
   ) {
     this.tt = new TimeTrial(track, trackId, name, TIME_TRIAL_COLOR);
     this.tt.onLap = (lap) => this.lapDone(lap);
     const pb = loadPersonalGhost(trackId);
     if (pb) {
-      this.setGhost('personal', pb);
+      this.personal = this.load(pb);
       this.best = pb.time;
     }
-    void this.refresh(true);
+    void this.refresh();
   }
 
-  /** Reload the leaderboard (and the record ghost, if it may have changed). */
-  private async refresh(withGhost: boolean): Promise<void> {
+  /** Reload the leaderboard. */
+  private async refresh(): Promise<void> {
     try {
       this.board = await this.store.top(this.trackId, 50);
       this.boardState = 'ok';
       const mine = this.board.find((e) => e.player === this.player);
       if (mine && (this.best === null || mine.time < this.best)) this.best = mine.time;
-      if (withGhost) {
-        const g = await this.store.recordGhost(this.trackId);
-        if (g) this.setGhost('record', g);
+      // Someone improved: their old ghost is out of date.
+      for (const [id, g] of this.playerGhosts) {
+        const row = this.board.find((e) => e.player === id);
+        if (g && row && row.time < g.ghost.time) this.playerGhosts.delete(id);
       }
     } catch (err) {
       console.warn(err);
@@ -68,8 +83,8 @@ export class TimeTrialDriver implements GameDriver {
     }
   }
 
-  private setGhost(kind: 'record' | 'personal', ghost: Ghost): void {
-    this.ghosts[kind] = { ghost, trace: ghostTrace(ghost, this.track) };
+  private load(ghost: Ghost): LoadedGhost {
+    return { ghost, trace: ghostTrace(ghost, this.track) };
   }
 
   private lapDone(lap: TimeTrialLap): void {
@@ -81,10 +96,8 @@ export class TimeTrialDriver implements GameDriver {
     }
     this.best = lap.time;
     savePersonalGhost(lap.ghost);
-    this.setGhost('personal', lap.ghost);
-    const record = this.board[0]?.time ?? Infinity;
-    const isRecord = lap.time < record;
-    if (isRecord) this.setGhost('record', lap.ghost);
+    this.personal = this.load(lap.ghost);
+    const isRecord = lap.time < (this.board[0]?.time ?? Infinity);
     const entry: TimeEntry = { player: this.player, name: this.tt.me.name, time: lap.time, sectors: lap.sectors };
     const position = this.board.filter((e) => e.player !== this.player && e.time < lap.time).length + 1;
     this.notice = isRecord
@@ -94,23 +107,48 @@ export class TimeTrialDriver implements GameDriver {
     this.board = [...this.board.filter((e) => e.player !== this.player), entry].sort((a, b) => a.time - b.time);
     this.store
       .submit(this.trackId, entry, lap.ghost)
-      .then(() => this.refresh(false))
+      .then(() => this.refresh())
       .catch((err) => {
         console.warn(err);
         this.notice = { text: "Couldn't save the lap to the leaderboard", color: '#ff4136', until: this.tt.world.time + 4 };
       });
   }
 
+  /** G: the next ghost (the fastest other players, then your best, then none). */
   handleKeys(keyboard: Keyboard): void {
     if (!keyboard.wasPressed('KeyG')) return;
-    const order: GhostMode[] = ['record', 'personal', 'off'];
-    this.ghostMode = order[(order.indexOf(this.ghostMode) + 1) % order.length];
-    const text = this.ghostMode === 'off' ? 'GHOST OFF' : this.ghostMode === 'record' ? 'GHOST: RECORD LAP' : 'GHOST: YOUR BEST LAP';
-    this.notice = { text, color: GHOST_COLOR, until: this.tt.world.time + 2 };
+    const order = [...this.board.filter((e) => e.player !== this.player).slice(0, GHOST_PLAYERS).map((e) => e.player), 'personal', 'off'];
+    this.ghostChoice = order[(order.indexOf(this.ghostKey()) + 1) % order.length];
+    this.notice = { text: `GHOST: ${this.ghostLabel().toUpperCase()}`, color: GHOST_COLOR, until: this.tt.world.time + 2 };
   }
 
-  private activeGhost(): { ghost: Ghost; trace: number[] } | null {
-    return this.ghostMode === 'off' ? null : this.ghosts[this.ghostMode];
+  /** The ghost being raced: a player id, 'personal' or 'off'. */
+  private ghostKey(): string {
+    if (this.ghostChoice !== 'auto') return this.ghostChoice;
+    // The fastest player who isn't us; if nobody else has a time, our own best.
+    return this.board.find((e) => e.player !== this.player)?.player ?? 'personal';
+  }
+
+  private ghostLabel(): string {
+    const key = this.ghostKey();
+    if (key === 'off') return 'off';
+    if (key === 'personal') return 'your best';
+    const pos = this.board.findIndex((e) => e.player === key);
+    return pos === -1 ? 'player' : `P${pos + 1} ${this.board[pos].name}`;
+  }
+
+  private activeGhost(): LoadedGhost | null {
+    const key = this.ghostKey();
+    if (key === 'off') return null;
+    if (key === 'personal') return this.personal;
+    if (!this.playerGhosts.has(key)) {
+      this.playerGhosts.set(key, null);
+      this.store
+        .ghostOf(this.trackId, key)
+        .then((g) => g && this.playerGhosts.set(key, this.load(g)))
+        .catch((err) => console.warn(err));
+    }
+    return this.playerGhosts.get(key) ?? null;
   }
 
   ghostCars(): GhostCar[] {
@@ -128,7 +166,7 @@ export class TimeTrialDriver implements GameDriver {
       state: this.boardState,
       global: this.store.global,
       trackName: this.track.name,
-      ghost: this.ghostMode,
+      ghost: this.ghostLabel(),
     });
     const now = this.tt.world.time;
     const inv = this.tt.invalidAt;
@@ -156,23 +194,11 @@ export class TimeTrialDriver implements GameDriver {
   }
   step(dt: number, input: PlayerInput) {
     const { tt } = this;
-    const me = tt.me;
-    // ENTER: restart from the line, at any time.
-    const enter = input.ready === true;
-    if (enter && !this.enterDown) {
-      this.recovering = null;
-      tt.restart();
-    }
-    this.enterDown = enter;
-    if (input.reset && this.recovering === null) {
-      this.recovering = tt.world.time + RESET_WAIT;
-      me.frozen = true;
-    }
-    if (this.recovering !== null && tt.world.time >= this.recovering) {
-      this.recovering = null;
-      me.frozen = false;
-      this.backOnTrack(me);
-    }
+    // R or ENTER: straight back to the start, at any time.
+    const restart = input.ready === true || input.reset === true;
+    if ((restart && !this.restartDown) || this.restartRequested) tt.restart();
+    this.restartRequested = false;
+    this.restartDown = input.ready === true;
     for (const e of tt.step(dt, input)) {
       // Lap times get their own notices here (against the leaderboard, not just this visit).
       if (e.kind !== 'lap') this.events.push(e);
@@ -180,7 +206,7 @@ export class TimeTrialDriver implements GameDriver {
     }
   }
   recoverAt() {
-    return this.recovering;
+    return null;
   }
   safetyCar() {
     return null;
@@ -201,16 +227,5 @@ export class TimeTrialDriver implements GameDriver {
     const e = this.events;
     this.events = [];
     return e;
-  }
-
-  /** R: back on the centreline nearest the car; the lap in progress is lost. */
-  private backOnTrack(me: Racer): void {
-    const ss = this.track.samples;
-    const i = this.track.query(me.car.x, me.car.y, me.car.trackIndex)?.index ?? ss.length - 10;
-    const s = ss[i];
-    me.car.place(s.x, s.y, Math.atan2(s.ty, s.tx), i);
-    me.car.repair();
-    me.timer.abortLap();
-    me.pit.phase = 'out';
   }
 }

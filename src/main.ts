@@ -53,7 +53,17 @@ function welcome(joining: boolean): void {
   showWelcome({ joining, onJoin: join, onHost: (n) => host(n, false), onBots: (n) => host(n, true), onPractice: practice, onTimeTrial: timeTrial });
 }
 
-function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: string; onLeave?: () => void; leaveLabel?: string }): void {
+function runGame(
+  driver: GameDriver,
+  opts: {
+    onFinished?: () => void;
+    menuNote: string;
+    onLeave?: () => void;
+    leaveLabel?: string;
+    /** An extra menu button; the menu closes and the game resumes after it. */
+    extra?: { label: string; onClick: () => void };
+  },
+): void {
   stopGame();
   clearUi();
   game = new GameScreen(canvas, keyboard, driver);
@@ -70,6 +80,14 @@ function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: 
       opts.onLeave ?? home,
       opts.menuNote,
       opts.leaveLabel,
+      opts.extra && {
+        label: opts.extra.label,
+        onClick: () => {
+          opts.extra!.onClick();
+          g.setPaused(false);
+          clearUi();
+        },
+      },
     );
   };
   let closePicker: (() => void) | null = null;
@@ -136,16 +154,18 @@ function timeTrial(name: string): void {
     track: TRACKS[last] ? last : DEFAULT_TRACK,
     board: leaderboard(),
     onBack: home,
-    onDrive: (id) => {
+    onDrive: (id, ghost) => {
       try {
         localStorage.setItem(TT_TRACK_KEY, id);
       } catch {
         // Remembering the track is a convenience only.
       }
-      runGame(new TimeTrialDriver(new Track(TRACKS[id]), id, name, leaderboard()), {
-        menuNote: 'Time trial (paused). ENTER restarts the lap, G switches the ghost.',
+      const driver = new TimeTrialDriver(new Track(TRACKS[id]), id, name, leaderboard(), ghost);
+      runGame(driver, {
+        menuNote: 'Time trial (paused). R or ENTER restarts the lap, G switches the ghost.',
         onLeave: () => timeTrial(name),
         leaveLabel: 'Change track',
+        extra: { label: 'Restart lap', onClick: () => (driver.restartRequested = true) },
       });
     },
   });

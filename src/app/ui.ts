@@ -45,8 +45,8 @@ const CONTROLS: [string, string][] = [
   ['1-5', 'Tyres for your next stop (S, M, H, Inter, Wet)'],
   ['C', 'Camera: fixed map or rotating (you always drive up)'],
   ['← / →', 'Spectating: switch driver (after your qualifying lap, once you finish, or joining late)'],
-  ['Enter', 'Time trial: restart from the line'],
-  ['G', 'Time trial: ghost (record lap, your best, off)'],
+  ['R / Enter', 'Time trial: restart the lap from the start'],
+  ['G', 'Time trial: switch ghost (top players, your best, off)'],
   ['Esc', 'Menu'],
 ];
 
@@ -363,7 +363,13 @@ export function showResults(v: ResultsView): void {
 }
 
 /** Esc menu during a session. */
-export function showPauseMenu(onResume: () => void, onLeave: () => void, note: string, leaveLabel = 'Leave'): void {
+export function showPauseMenu(
+  onResume: () => void,
+  onLeave: () => void,
+  note: string,
+  leaveLabel = 'Leave',
+  extra?: { label: string; onClick: () => void },
+): void {
   show(
     el(
       'div',
@@ -373,7 +379,13 @@ export function showPauseMenu(onResume: () => void, onLeave: () => void, note: s
         { class: 'card' },
         el('h1', {}, 'Menu'),
         el('p', { class: 'sub' }, note),
-        el('div', { class: 'buttons' }, el('button', { class: 'primary', onclick: onResume }, 'Resume'), el('button', { onclick: onLeave }, leaveLabel)),
+        el(
+          'div',
+          { class: 'buttons' },
+          el('button', { class: 'primary', onclick: onResume }, 'Resume'),
+          extra ? el('button', { onclick: extra.onClick }, extra.label) : null,
+          el('button', { onclick: onLeave }, leaveLabel),
+        ),
         el('h2', {}, 'Controls'),
         controlsHelp(),
       ),
@@ -451,7 +463,8 @@ export interface TimeTrialMenu {
   tracks: { id: string; name: string }[];
   track: string;
   board: Leaderboard;
-  onDrive: (track: string) => void;
+  /** Track id, and whose ghost to race (see GhostChoice). */
+  onDrive: (track: string, ghost: string) => void;
   onBack: () => void;
 }
 
@@ -461,6 +474,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   for (const t of m.tracks) select.append(el('option', { value: t.id, selected: t.id === m.track }, t.name));
   const table = el('table', { class: 'results' });
   const status = el('p', { class: 'muted' });
+  const ghost = el('select', { style: 'width:100%' });
   const me = playerId();
   let shownFor = '';
   const load = async () => {
@@ -468,9 +482,14 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
     shownFor = track;
     table.replaceChildren();
     status.textContent = 'Loading times…';
+    const ghostOption = (value: string, text: string) => el('option', { value }, text);
+    ghost.replaceChildren(ghostOption('auto', 'Fastest player'), ghostOption('personal', 'Your best lap'), ghostOption('off', 'No ghost'));
     try {
       const rows = await m.board.top(track, 10);
       if (shownFor !== track) return;
+      rows.forEach((r, i) => {
+        if (r.player !== me) ghost.append(ghostOption(r.player, `P${i + 1} ${r.name} · ${formatLapTime(r.time)}`));
+      });
       status.textContent = rows.length === 0 ? 'No times yet: set the first one!' : '';
       if (rows.length > 0) table.append(el('tr', {}, ...['Pos', 'Driver', 'Time', 'Gap'].map((h) => el('th', {}, h))));
       rows.forEach((r, i) =>
@@ -505,13 +524,16 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
             "Beat the times below and race the record holder's ghost.",
         ),
         select,
+        el('h2', {}, 'Ghost to race'),
+        ghost,
+        el('p', { class: 'muted' }, 'Press G while driving to switch ghost.'),
         el('h2', {}, m.board.global ? 'World leaderboard' : 'Leaderboard (this device only)'),
         status,
         table,
         el(
           'div',
           { class: 'buttons' },
-          el('button', { class: 'primary', onclick: () => m.onDrive(select.value) }, 'Drive'),
+          el('button', { class: 'primary', onclick: () => m.onDrive(select.value, ghost.value) }, 'Drive'),
           el('button', { onclick: m.onBack }, 'Back'),
         ),
       ),

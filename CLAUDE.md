@@ -55,21 +55,26 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 ## Time trial mode
 
 "Time trial" on the welcome screen (`src/app/timeTrial.ts`, rules in `src/sim/timeTrial.ts`).
-Pick any real circuit (track and leaderboard shown in the menu), then drive alone: soft
-tyres and full ERS topped up at every line crossing, DRS free in every zone, no other cars.
+Pick any real circuit and a ghost in the menu (track leaderboard shown there), then drive
+alone: DRS free in every zone, ERS, no other cars.
+- **Every lap is set on the same terms**: it starts from the same rolling start (the
+  straightest spot 60-300 m before the line, 45 m/s), on fresh softs and a full ERS battery.
+  Crossing the line to finish a lap puts the car straight back there, so nobody carries
+  speed out of the last corner into the next lap.
 - **All four wheels off** (`LapTimer.offTrack`; kerbs count as track), or entering the pit
-  lane, cancels the lap. A prompt offers **ENTER = restart from the line** (rolling start
-  from the straightest spot 60-300 m before it, ~160 km/h) or keep driving; ENTER restarts
-  at any time. R works as in practice. Esc truly pauses (single player).
+  lane, cancels the lap. A prompt offers **R / ENTER = restart from the start** or keep
+  driving. R, ENTER or the Esc menu's **Restart lap** restart at any time (no wait). Esc
+  truly pauses (single player).
 - **Leaderboard** (`src/net/leaderboard.ts`): best lap per player (random id per browser,
   `f1td.player`). Global when the build has `VITE_SUPABASE_URL` + `VITE_SUPABASE_KEY`
-  (free Supabase project, schema in `supabase/time_trial.sql`; deploy reads repo variables
-  `SUPABASE_URL` / `SUPABASE_KEY`), otherwise kept in this browser only. Shown on the left
-  in game with "Next:" the time to beat. No anti-cheat: anyone with the key can post times.
-- **Ghosts** (`src/sim/ghost.ts`): each personal best is uploaded with a 20 Hz recording;
-  the fastest lap with one is the record ghost. **G** cycles record / your best / off. Drawn
-  see-through in cyan (`GHOST_COLOR`; the player is red). The timing delta is against the
-  ghost shown.
+  (free Supabase project "race", schema in `supabase/time_trial.sql`: the public key can only
+  read and add laps; deploy reads repo variables `SUPABASE_URL` / `SUPABASE_KEY`; local dev
+  reads `.env.local`), otherwise kept in this browser only. Shown on the left in game with
+  "Next:" the time to beat. No anti-cheat beyond sane-value checks.
+- **Ghosts** (`src/sim/ghost.ts`): every personal best is uploaded with a 20 Hz recording, so
+  any player's best can be raced. Default: the fastest player who isn't you. **G** cycles the
+  top 5 other players, your best, off. Drawn see-through in cyan (`GHOST_COLOR`; the player
+  is red). The timing delta is against the ghost shown.
 
 ## Driving & physics
 

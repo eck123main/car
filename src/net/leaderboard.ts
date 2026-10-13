@@ -18,8 +18,8 @@ export interface Leaderboard {
   readonly global: boolean;
   /** Best lap per player on a track, fastest first. */
   top(track: string, limit?: number): Promise<TimeEntry[]>;
-  /** The record lap's ghost (fastest lap with a ghost), if any. */
-  recordGhost(track: string): Promise<Ghost | null>;
+  /** A player's best lap as a ghost, if there is one. */
+  ghostOf(track: string, player: string): Promise<Ghost | null>;
   /** Save a personal best lap with its ghost (so whoever holds the record has one). */
   submit(track: string, entry: TimeEntry, ghost: Ghost | null): Promise<void>;
 }
@@ -72,8 +72,8 @@ export class LocalLeaderboard implements Leaderboard {
     return (read<TimeEntry[]>(this.kv, `f1td.tt.${track}`) ?? []).slice(0, limit);
   }
 
-  async recordGhost(track: string): Promise<Ghost | null> {
-    const g = read<unknown>(this.kv, `f1td.tt.ghost.${track}`);
+  async ghostOf(track: string, player: string): Promise<Ghost | null> {
+    const g = read<unknown>(this.kv, `f1td.tt.ghost.${track}.${player}`);
     return isGhost(g) ? g : null;
   }
 
@@ -81,7 +81,7 @@ export class LocalLeaderboard implements Leaderboard {
     const all = read<TimeEntry[]>(this.kv, `f1td.tt.${track}`) ?? [];
     const merged = mergeBest(all, entry);
     write(this.kv, `f1td.tt.${track}`, merged);
-    if (ghost && merged[0] === entry) write(this.kv, `f1td.tt.ghost.${track}`, ghost);
+    if (ghost && merged.includes(entry)) write(this.kv, `f1td.tt.ghost.${track}.${entry.player}`, ghost);
   }
 }
 
@@ -113,9 +113,10 @@ export class SupabaseLeaderboard implements Leaderboard {
     return rows.map((r) => ({ ...r, sectors: Array.isArray(r.sectors) ? r.sectors : [] }));
   }
 
-  async recordGhost(track: string): Promise<Ghost | null> {
+  async ghostOf(track: string, player: string): Promise<Ghost | null> {
     const rows = await this.get<{ ghost: unknown }[]>(
-      `time_trial?select=ghost&track=eq.${encodeURIComponent(track)}&ghost=not.is.null&order=time.asc&limit=1`,
+      `time_trial?select=ghost&track=eq.${encodeURIComponent(track)}&player=eq.${encodeURIComponent(player)}` +
+        '&ghost=not.is.null&order=time.asc&limit=1',
     );
     const g = rows[0]?.ghost;
     return isGhost(g) ? g : null;

@@ -52,6 +52,22 @@ describe('Time trial', () => {
     expect(tt.me.car.damage).toBe(0);
   });
 
+  it('every lap starts from the same spot at the same speed', () => {
+    const tt = new TimeTrial(track, 'test', 'Me', '#e10600');
+    const start = { x: tt.me.car.x, y: tt.me.car.y, v: tt.me.car.speed };
+    let laps = 0;
+    for (let t = 0; t < 200; t += DT) {
+      if (!tt.step(DT, botInput(track, tt.me)).some((e) => e.kind === 'lap')) continue;
+      laps++;
+      // Straight after the finish line: back at the start spot, same speed, no lap running.
+      expect(tt.me.car.x).toBe(start.x);
+      expect(tt.me.car.y).toBe(start.y);
+      expect(tt.me.car.speed).toBeCloseTo(start.v, 6);
+      expect(tt.lapTime()).toBeNull();
+    }
+    expect(laps).toBeGreaterThanOrEqual(2);
+  });
+
   it('a clean lap counts and comes with a ghost of it', () => {
     const tt = new TimeTrial(track, 'test', 'Me', '#e10600');
     const laps: TimeTrialLap[] = [];
@@ -129,14 +145,15 @@ describe('Local leaderboard', () => {
     expect(await b.top('other')).toEqual([]);
   });
 
-  it('keeps the ghost of the record lap only', async () => {
+  it("keeps each player's best lap as their ghost", async () => {
     const b = new LocalLeaderboard(memory());
     const ghost = (time: number) => ({ track: 't', name: 'x', time, dt: 0.05, x: [0], y: [0], h: [0] });
     await b.submit('t', { player: 'a', name: 'A', time: 50, sectors: [] }, ghost(50));
     await b.submit('t', { player: 'b', name: 'B', time: 52, sectors: [] }, ghost(52));
-    expect((await b.recordGhost('t'))?.time).toBe(50);
-    await b.submit('t', { player: 'b', name: 'B', time: 49, sectors: [] }, ghost(49));
-    expect((await b.recordGhost('t'))?.time).toBe(49);
+    await b.submit('t', { player: 'b', name: 'B', time: 53, sectors: [] }, ghost(53));
+    expect((await b.ghostOf('t', 'a'))?.time).toBe(50);
+    expect((await b.ghostOf('t', 'b'))?.time).toBe(52);
+    expect(await b.ghostOf('t', 'c')).toBeNull();
   });
 
   it('mergeBest ignores a slower lap', () => {
