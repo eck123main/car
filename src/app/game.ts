@@ -48,6 +48,20 @@ export interface GameDriver {
   safetyCar(alpha: number): Pose | null;
   /** Every player's connection to the host (online games). */
   net(): readonly NetInfo[];
+  /** See-through cars to race against (time trial ghosts). */
+  ghostCars?(): GhostCar[];
+  /** Mode-specific HUD, drawn last (CSS px). */
+  drawOverlay?(ctx: CanvasRenderingContext2D, width: number, height: number): void;
+  /** Single player only: the menu truly pauses the game (online the race goes on). */
+  readonly pausable?: boolean;
+  /** Mode-specific keys, read once per frame. */
+  handleKeys?(keyboard: Keyboard): void;
+}
+
+/** A replayed car: no physics, drawn see-through with a label. */
+export interface GhostCar extends Pose {
+  color: string;
+  label: string;
 }
 
 function lerpPose(r: Racer, alpha: number): Pose {
@@ -349,8 +363,11 @@ export class GameScreen {
 
     if (this.keyboard.wasPressed('Escape')) this.onMenu();
     if (this.keyboard.wasPressed('KeyC')) this.toggleCamera();
+    this.driver.handleKeys?.(this.keyboard);
     this.updateSpectating();
     let input = this.controls.read();
+    // Nothing to keep in sync with: stop the clock while the menu is open.
+    if (this.paused && this.driver.pausable) this.acc = 0;
     const idle = { ...input, throttle: 0, brake: 0, steer: 0, drs: false, ers: false, reset: false };
     while (this.acc >= DT) {
       this.driver.step(DT, this.paused ? idle : input);
@@ -406,6 +423,13 @@ export class GameScreen {
     drawPitBoxes(ctx, world);
     const session = this.driver.session();
     const ghosts = session?.phase === 'qualifying';
+    // Time trial ghosts, under the real cars.
+    for (const g of this.driver.ghostCars?.() ?? []) {
+      ctx.globalAlpha = 0.45;
+      drawCar(ctx, me.car.params, g.x, g.y, g.heading, 0, g.color, { drsOpen: false, compound: me.tyres.compound, rainLight: false, time: world.time });
+      ctx.globalAlpha = 1;
+      drawNameTag(ctx, g.label, g.x, g.y, g.color);
+    }
     // Draw other cars first so the local car is always on top.
     for (const r of [...world.racers.filter((r) => r !== me), me]) {
       const p = poses.get(r.id)!;
@@ -458,6 +482,7 @@ export class GameScreen {
     }
     if (!spectating) drawPitStatus(ctx, world, me, w, advice);
     drawToasts(ctx, this.toasts, now, w);
+    this.driver.drawOverlay?.(ctx, w, h);
     // Our own ping, for players who joined (the host's is zero).
     drawOwnPing(ctx, this.driver.net().find((n) => n.id === this.driver.meId), w);
   }

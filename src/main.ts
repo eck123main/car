@@ -1,5 +1,7 @@
 import { ClientDriver, GameScreen, HostDriver, PracticeDriver, type GameDriver } from './app/game';
-import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
+import { TimeTrialDriver } from './app/timeTrial';
+import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
+import { leaderboard } from './net/leaderboard';
 import { recommendedStartTyre } from './sim/strategy';
 import { Keyboard } from './game/input';
 import { ClientGame } from './net/client';
@@ -48,10 +50,10 @@ function home(): void {
 }
 
 function welcome(joining: boolean): void {
-  showWelcome({ joining, onJoin: join, onHost: (n) => host(n, false), onBots: (n) => host(n, true), onPractice: practice });
+  showWelcome({ joining, onJoin: join, onHost: (n) => host(n, false), onBots: (n) => host(n, true), onPractice: practice, onTimeTrial: timeTrial });
 }
 
-function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: string }): void {
+function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: string; onLeave?: () => void; leaveLabel?: string }): void {
   stopGame();
   clearUi();
   game = new GameScreen(canvas, keyboard, driver);
@@ -65,8 +67,9 @@ function runGame(driver: GameDriver, opts: { onFinished?: () => void; menuNote: 
         g.setPaused(false);
         clearUi();
       },
-      home,
+      opts.onLeave ?? home,
       opts.menuNote,
+      opts.leaveLabel,
     );
   };
   let closePicker: (() => void) | null = null;
@@ -113,6 +116,39 @@ function practice(name: string): void {
   const id = params.get('track') ?? DEFAULT_TRACK;
   const def = trackDef(id) ?? TRACKS[DEFAULT_TRACK];
   runGame(new PracticeDriver(new Track(def), name), { menuNote: 'Practice: R puts you back on track.' });
+}
+
+// ---------- Time trial
+
+const TT_TRACK_KEY = 'f1td.tt.track';
+
+function timeTrial(name: string): void {
+  let last = DEFAULT_TRACK;
+  try {
+    last = localStorage.getItem(TT_TRACK_KEY) ?? DEFAULT_TRACK;
+  } catch {
+    // Default track then.
+  }
+  stopGame();
+  showTimeTrialMenu({
+    // Only the real circuits (and not the editor's custom track): times must be comparable.
+    tracks: trackList().filter((t) => t.id !== 'custom' && t.id !== 'test'),
+    track: TRACKS[last] ? last : DEFAULT_TRACK,
+    board: leaderboard(),
+    onBack: home,
+    onDrive: (id) => {
+      try {
+        localStorage.setItem(TT_TRACK_KEY, id);
+      } catch {
+        // Remembering the track is a convenience only.
+      }
+      runGame(new TimeTrialDriver(new Track(TRACKS[id]), id, name, leaderboard()), {
+        menuNote: 'Time trial (paused). ENTER restarts the lap, G switches the ghost.',
+        onLeave: () => timeTrial(name),
+        leaveLabel: 'Change track',
+      });
+    },
+  });
 }
 
 // ---------- Hosting

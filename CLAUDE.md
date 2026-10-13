@@ -52,6 +52,25 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 6. **Results**: finishing order, gaps, fastest lap, penalties. The host can **Play again**
    (same lobby and settings, straight into a new weekend) or go back to the lobby.
 
+## Time trial mode
+
+"Time trial" on the welcome screen (`src/app/timeTrial.ts`, rules in `src/sim/timeTrial.ts`).
+Pick any real circuit (track and leaderboard shown in the menu), then drive alone: soft
+tyres and full ERS topped up at every line crossing, DRS free in every zone, no other cars.
+- **All four wheels off** (`LapTimer.offTrack`; kerbs count as track), or entering the pit
+  lane, cancels the lap. A prompt offers **ENTER = restart from the line** (rolling start
+  from the straightest spot 60-300 m before it, ~160 km/h) or keep driving; ENTER restarts
+  at any time. R works as in practice. Esc truly pauses (single player).
+- **Leaderboard** (`src/net/leaderboard.ts`): best lap per player (random id per browser,
+  `f1td.player`). Global when the build has `VITE_SUPABASE_URL` + `VITE_SUPABASE_KEY`
+  (free Supabase project, schema in `supabase/time_trial.sql`; deploy reads repo variables
+  `SUPABASE_URL` / `SUPABASE_KEY`), otherwise kept in this browser only. Shown on the left
+  in game with "Next:" the time to beat. No anti-cheat: anyone with the key can post times.
+- **Ghosts** (`src/sim/ghost.ts`): each personal best is uploaded with a 20 Hz recording;
+  the fastest lap with one is the record ghost. **G** cycles record / your best / off. Drawn
+  see-through in cyan (`GHOST_COLOR`; the player is red). The timing delta is against the
+  ghost shown.
+
 ## Driving & physics
 
 Top-down 2D car physics that feels like an F1 car:

@@ -2,6 +2,7 @@ import type { LobbyState, NetInfo } from '../net/protocol';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
 import { ALL_COMPOUNDS, COMPOUNDS, type Compound } from '../sim/tyres';
 import { formatLapTime } from '../render/hud';
+import { playerId, type Leaderboard } from '../net/leaderboard';
 import { pingColor, pingText } from '../render/ping';
 import type { RaceSettings, Standing, Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
@@ -44,6 +45,8 @@ const CONTROLS: [string, string][] = [
   ['1-5', 'Tyres for your next stop (S, M, H, Inter, Wet)'],
   ['C', 'Camera: fixed map or rotating (you always drive up)'],
   ['← / →', 'Spectating: switch driver (after your qualifying lap, once you finish, or joining late)'],
+  ['Enter', 'Time trial: restart from the line'],
+  ['G', 'Time trial: ghost (record lap, your best, off)'],
   ['Esc', 'Menu'],
 ];
 
@@ -77,6 +80,7 @@ export interface WelcomeActions {
   onHost: (name: string) => void;
   onBots: (name: string) => void;
   onPractice: (name: string) => void;
+  onTimeTrial: (name: string) => void;
 }
 
 /** First screen: enter a name, then join (from an invite link), host, or practise. */
@@ -96,6 +100,7 @@ export function showWelcome(a: WelcomeActions): void {
     : [
         el('button', { class: 'primary', onclick: go(a.onHost) }, 'Create lobby'),
         el('button', { onclick: go(a.onBots) }, 'Race against bots'),
+        el('button', { onclick: go(a.onTimeTrial) }, 'Time trial'),
         el('button', { onclick: go(a.onPractice) }, 'Practice solo'),
       ];
   name.addEventListener('keydown', (e) => e.key === 'Enter' && buttons[0].click());
@@ -358,7 +363,7 @@ export function showResults(v: ResultsView): void {
 }
 
 /** Esc menu during a session. */
-export function showPauseMenu(onResume: () => void, onLeave: () => void, note: string): void {
+export function showPauseMenu(onResume: () => void, onLeave: () => void, note: string, leaveLabel = 'Leave'): void {
   show(
     el(
       'div',
@@ -368,7 +373,7 @@ export function showPauseMenu(onResume: () => void, onLeave: () => void, note: s
         { class: 'card' },
         el('h1', {}, 'Menu'),
         el('p', { class: 'sub' }, note),
-        el('div', { class: 'buttons' }, el('button', { class: 'primary', onclick: onResume }, 'Resume'), el('button', { onclick: onLeave }, 'Leave')),
+        el('div', { class: 'buttons' }, el('button', { class: 'primary', onclick: onResume }, 'Resume'), el('button', { onclick: onLeave }, leaveLabel)),
         el('h2', {}, 'Controls'),
         controlsHelp(),
       ),
@@ -440,4 +445,77 @@ export function showTyrePicker(state: () => TyrePickerState, onPick: (c: Compoun
     clearInterval(timer);
     if (root.querySelector('.picker')) clearUi();
   };
+}
+
+export interface TimeTrialMenu {
+  tracks: { id: string; name: string }[];
+  track: string;
+  board: Leaderboard;
+  onDrive: (track: string) => void;
+  onBack: () => void;
+}
+
+/** Time trial: pick a track, see its leaderboard, drive. */
+export function showTimeTrialMenu(m: TimeTrialMenu): void {
+  const select = el('select', { style: 'width:100%' });
+  for (const t of m.tracks) select.append(el('option', { value: t.id, selected: t.id === m.track }, t.name));
+  const table = el('table', { class: 'results' });
+  const status = el('p', { class: 'muted' });
+  const me = playerId();
+  let shownFor = '';
+  const load = async () => {
+    const track = select.value;
+    shownFor = track;
+    table.replaceChildren();
+    status.textContent = 'Loading times…';
+    try {
+      const rows = await m.board.top(track, 10);
+      if (shownFor !== track) return;
+      status.textContent = rows.length === 0 ? 'No times yet: set the first one!' : '';
+      if (rows.length > 0) table.append(el('tr', {}, ...['Pos', 'Driver', 'Time', 'Gap'].map((h) => el('th', {}, h))));
+      rows.forEach((r, i) =>
+        table.append(
+          el(
+            'tr',
+            { class: r.player === me ? 'me' : '' },
+            el('td', {}, String(i + 1)),
+            el('td', {}, r.name),
+            el('td', {}, formatLapTime(r.time)),
+            el('td', {}, i === 0 ? '' : `+${(r.time - rows[0].time).toFixed(3)}`),
+          ),
+        ),
+      );
+    } catch {
+      if (shownFor === track) status.textContent = "Couldn't reach the leaderboard.";
+    }
+  };
+  select.addEventListener('change', () => void load());
+  show(
+    el(
+      'div',
+      { class: 'screen' },
+      el(
+        'div',
+        { class: 'card wide' },
+        el('h1', {}, 'Time Trial'),
+        el(
+          'p',
+          { class: 'sub' },
+          'Alone on track, soft tyres, DRS in every zone and ERS. All four wheels off the track and the lap is cancelled. ' +
+            "Beat the times below and race the record holder's ghost.",
+        ),
+        select,
+        el('h2', {}, m.board.global ? 'World leaderboard' : 'Leaderboard (this device only)'),
+        status,
+        table,
+        el(
+          'div',
+          { class: 'buttons' },
+          el('button', { class: 'primary', onclick: () => m.onDrive(select.value) }, 'Drive'),
+          el('button', { onclick: m.onBack }, 'Back'),
+        ),
+      ),
+    ),
+  );
+  void load();
 }
