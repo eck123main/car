@@ -1,7 +1,7 @@
 import { Keyboard, LocalControls } from '../game/input';
 import type { ClientGame, Pose } from '../net/client';
 import { HostGame } from '../net/host';
-import type { SessionSnap } from '../net/protocol';
+import type { NetInfo, SessionSnap } from '../net/protocol';
 import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
@@ -9,6 +9,7 @@ import { drawCar } from '../render/drawCar';
 import { drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
+import { drawOwnPing } from '../render/ping';
 import { drawRain } from '../render/rain';
 import { drawSafetyCar } from '../render/safetyCar';
 import { drawLights, drawNameTag, drawSessionBanner, drawSpectating, drawTower } from '../render/sessionHud';
@@ -45,6 +46,8 @@ export interface GameDriver {
   recoverAt(): number | null;
   /** Where to draw the safety car this frame, if it is out. */
   safetyCar(alpha: number): Pose | null;
+  /** Every player's connection to the host (online games). */
+  net(): readonly NetInfo[];
 }
 
 function lerpPose(r: Racer, alpha: number): Pose {
@@ -105,6 +108,9 @@ export class PracticeDriver implements GameDriver {
   safetyCar() {
     return null;
   }
+  net() {
+    return [];
+  }
   endFrame() {}
   pose(r: Racer, alpha: number) {
     return lerpPose(r, alpha);
@@ -144,6 +150,9 @@ export class HostDriver implements GameDriver {
     return { x: sc.prevX + (sc.x - sc.prevX) * alpha, y: sc.prevY + (sc.y - sc.prevY) * alpha, heading: sc.prevHeading + dh * alpha };
   }
   constructor(private readonly host: HostGame) {}
+  net() {
+    return this.host.net;
+  }
   world() {
     return this.host.session?.world ?? null;
   }
@@ -172,6 +181,9 @@ export class HostDriver implements GameDriver {
 /** Someone who joined a lobby. */
 export class ClientDriver implements GameDriver {
   constructor(private readonly client: ClientGame) {}
+  net() {
+    return this.client.net;
+  }
   get meId() {
     return this.client.id ?? '';
   }
@@ -441,11 +453,13 @@ export class GameScreen {
     if (session) {
       drawSessionBanner(ctx, session, own ?? me, now, w);
       if (spectating) drawSpectating(ctx, me.name, me.color, w);
-      drawTower(ctx, session, world, me.id);
+      drawTower(ctx, session, world, me.id, this.driver.net());
       if (session.phase === 'lights' || session.phase === 'grid') drawLights(ctx, session.lights, w);
     }
     if (!spectating) drawPitStatus(ctx, world, me, w, advice);
     drawToasts(ctx, this.toasts, now, w);
+    // Our own ping, for players who joined (the host's is zero).
+    drawOwnPing(ctx, this.driver.net().find((n) => n.id === this.driver.meId), w);
   }
 }
 

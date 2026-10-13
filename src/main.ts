@@ -1,5 +1,5 @@
 import { ClientDriver, GameScreen, HostDriver, PracticeDriver, type GameDriver } from './app/game';
-import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTyrePicker, showWelcome } from './app/ui';
+import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { recommendedStartTyre } from './sim/strategy';
 import { Keyboard } from './game/input';
 import { ClientGame } from './net/client';
@@ -132,7 +132,13 @@ async function host(name: string, offline: boolean): Promise<void> {
     showMessage("Couldn't create a lobby", (err as Error).message, { label: 'Back', onClick: home });
     return;
   }
-  cleanup = () => hostGame.close();
+  // Pings to everyone who joined, for the lobby (the race pings from its own loop too).
+  const pinger = offline ? null : setInterval(() => hostGame.tickNet(), 250);
+  hostGame.onNetChange = updateLobbyNet;
+  cleanup = () => {
+    if (pinger !== null) clearInterval(pinger);
+    hostGame.close();
+  };
   const invite = offline ? '' : `${location.origin}${location.pathname}?join=${hostGame.transport.code}`;
   const showResultsForHost = () => {
     const s = hostGame.session!;
@@ -172,6 +178,7 @@ async function host(name: string, offline: boolean): Promise<void> {
       },
       onLeave: home,
     });
+    updateLobbyNet(hostGame.net);
   };
   hostGame.onLobbyChange = lobby;
   lobby();
@@ -221,6 +228,7 @@ async function join(name: string): Promise<void> {
           onLeave: home,
         });
       }
+      updateLobbyNet(client.net);
     } else if (status === 'racing' && shown !== 'racing') {
       shown = 'racing';
       runGame(new ClientDriver(client), {

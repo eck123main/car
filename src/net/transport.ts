@@ -4,6 +4,8 @@ export interface Connection {
   onMessage(cb: (msg: unknown) => void): void;
   onClose(cb: () => void): void;
   close(): void;
+  /** How the connection is routed: straight between the browsers, or through a relay server. */
+  route?(): Promise<'direct' | 'relayed' | null>;
 }
 
 /** The host side: hands out an invite code and accepts incoming connections. */

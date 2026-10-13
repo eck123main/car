@@ -14,7 +14,7 @@ const READY = { ...IDLE_INPUT, ready: true };
 function setup(latency = 0) {
   const net = new LoopbackNetwork(latency);
   let clock = 0;
-  const host = new HostGame(net.host('ABC'), 'Hosty', (id) => TRACKS[id]);
+  const host = new HostGame(net.host('ABC'), 'Hosty', (id) => TRACKS[id], () => clock);
   const join = (name: string) => new ClientGame(net.connect('ABC'), name, () => clock);
   const tick = (dt = DT) => {
     clock += dt;
@@ -22,6 +22,39 @@ function setup(latency = 0) {
   };
   return { net, host, join, tick };
 }
+
+describe('Ping', () => {
+  it('measures each round trip and shares it with everyone, in the lobby and the race', () => {
+    // 50 ms each way: a 100 ms round trip.
+    const { host, join, tick } = setup(0.05);
+    const a = join('Alice');
+    const b = join('Bob');
+    for (let t = 0; t < 3; t += DT) {
+      host.tickNet();
+      tick();
+    }
+    const pingOf = (net: { id: string; ping: number | null }[], id: string) => net.find((n) => n.id === id)?.ping ?? null;
+    expect(pingOf(host.net, a.id!)).toBeCloseTo(100, -1);
+    // Everyone sees everyone's ping; the host has none of its own.
+    expect(pingOf(b.net, a.id!)).toBeCloseTo(100, -1);
+    expect(pingOf(a.net, b.id!)).toBeCloseTo(100, -1);
+    expect(pingOf(a.net, HostGame.HOST_ID)).toBeNull();
+    // Racing: the race loop keeps it going.
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    const before = host.net.find((n) => n.id === a.id)!;
+    for (let t = 0; t < 2; t += DT) {
+      host.step(DT, READY);
+      a.step(DT, READY);
+      b.step(DT, READY);
+      a.flush();
+      b.flush();
+      tick();
+    }
+    expect(pingOf(a.net, a.id!)).toBeCloseTo(100, -1);
+    expect(host.net.find((n) => n.id === a.id)).not.toBe(before);
+  });
+});
 
 describe('Lobby', () => {
   it('lets players join with their name and a unique colour', () => {

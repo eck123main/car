@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS, Session, type PlayerInfo, type RaceSettings, type Ses
 import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { Track } from '../track/track';
 import type { TrackDef } from '../track/types';
-import { MAX_PLAYERS, PROTOCOL_VERSION, type ClientMessage, type HostMessage, type LobbyPlayer, type LobbyState } from './protocol';
+import { MAX_PLAYERS, PROTOCOL_VERSION, type ClientMessage, type HostMessage, type LobbyPlayer, type LobbyState, type NetInfo } from './protocol';
 import { carSnap, sessionSnap, timingSnap } from './snapshot';
 import type { Connection, HostTransport } from './transport';
 
@@ -31,7 +31,17 @@ interface Remote {
   queue: { seq: number; input: PlayerInput }[];
   last: PlayerInput;
   ack: number;
+  /** Smoothed round-trip time (ms), and whether the link goes through a relay server. */
+  ping: number | null;
+  relayed: boolean | null;
+  /** The last ping sent: its number and when (host clock, s). */
+  pingSent: { n: number; at: number } | null;
 }
+
+/** New round-trip times are blended in with this weight, so the number doesn't jump about. */
+const PING_SMOOTHING = 0.4;
+/** Seconds between pings. */
+const PING_INTERVAL = 1;
 
 /**
  * The lobby owner's game: runs the lobby and the authoritative race, and keeps every
@@ -52,13 +62,19 @@ export class HostGame {
   private nextId = 1;
   private steps = 0;
   private localEvents: SessionEvent[] = [];
+  private pings = 0;
+  private lastPingAt = -Infinity;
   /** Called whenever the lobby changes (for the host's own lobby screen). */
   onLobbyChange: (lobby: LobbyState) => void = () => {};
+  /** Called when pings have been updated (about once a second). */
+  onNetChange: (net: NetInfo[]) => void = () => {};
 
   constructor(
     readonly transport: HostTransport,
     hostName: string,
     private readonly trackDefs: (id: string) => TrackDef | undefined,
+    /** Wall-clock seconds, for measuring pings. */
+    private readonly clock: () => number = () => performance.now() / 1000,
   ) {
     this.hostPlayer = { id: HostGame.HOST_ID, name: hostName, color: CAR_COLORS[0], host: true };
     transport.onConnection((conn) => this.accept(conn));
@@ -69,6 +85,36 @@ export class HostGame {
       players: [this.hostPlayer, ...[...this.remotes.values()].map((r) => r.player), ...[...this.bots.values()].map((b) => b.player)],
       settings: this.settings,
     };
+  }
+
+  /** Every player's connection to us. The host and bots have none (null). */
+  get net(): NetInfo[] {
+    return this.lobby.players.map((p) => {
+      const r = this.remotes.get(p.id);
+      return { id: p.id, ping: r?.ping ?? null, relayed: r?.relayed ?? null };
+    });
+  }
+
+  /**
+   * Once a second: ping every player and share the results. The race calls this every step;
+   * call it from a timer too, for the lobby. The previous round's answers are in by now, and
+   * route lookups finish in the background.
+   */
+  tickNet(): void {
+    const at = this.clock();
+    if (at - this.lastPingAt < PING_INTERVAL) return;
+    this.lastPingAt = at;
+    const n = ++this.pings;
+    for (const r of this.remotes.values()) {
+      r.pingSent = { n, at };
+      r.conn.send({ t: 'ping', n } satisfies HostMessage);
+      r.conn.route?.().then((route) => {
+        if (route) r.relayed = route === 'relayed';
+      });
+    }
+    const net = this.net;
+    this.broadcast({ t: 'net', net });
+    this.onNetChange(net);
   }
 
   updateSettings(changes: Partial<RaceSettings>): void {
@@ -137,6 +183,7 @@ export class HostGame {
     for (const [id, b] of this.bots) if (b.driver) inputs.set(id, b.driver.drive(session.world, ctx, dt));
     const events = session.step(dt, inputs);
     this.steps++;
+    this.tickNet();
     if (events.length) {
       this.localEvents.push(...events);
       this.broadcast({ t: 'events', time: session.world.time, events });
@@ -180,7 +227,7 @@ export class HostGame {
         const used = new Set(this.lobby.players.map((p) => p.color));
         const color = CAR_COLORS.find((c) => !used.has(c)) ?? CAR_COLORS[0];
         const name = (typeof msg.name === 'string' ? msg.name : '').trim().slice(0, 16) || `Driver ${this.nextId - 1}`;
-        joined = { conn, player: { id, name, color, host: false }, queue: [], last: IDLE_INPUT, ack: 0 };
+        joined = { conn, player: { id, name, color, host: false }, queue: [], last: IDLE_INPUT, ack: 0, ping: null, relayed: null, pingSent: null };
         this.remotes.set(id, joined);
         conn.send({ t: 'welcome', id } satisfies HostMessage);
         // Joining while a weekend is on: spectate it now, race in the next one.
@@ -190,6 +237,11 @@ export class HostGame {
         }
         this.lobbyChanged();
         return;
+      }
+      if (msg.t === 'pong' && joined.pingSent?.n === msg.n) {
+        const rtt = (this.clock() - joined.pingSent.at) * 1000;
+        joined.ping = joined.ping === null ? rtt : joined.ping + (rtt - joined.ping) * PING_SMOOTHING;
+        joined.pingSent = null;
       }
       if (msg.t === 'input' && Array.isArray(msg.inputs)) {
         for (const item of msg.inputs) if (item.seq > joined.ack) joined.queue.push(item);

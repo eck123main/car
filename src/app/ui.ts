@@ -1,7 +1,8 @@
-import type { LobbyState } from '../net/protocol';
+import type { LobbyState, NetInfo } from '../net/protocol';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
 import { ALL_COMPOUNDS, COMPOUNDS, type Compound } from '../sim/tyres';
 import { formatLapTime } from '../render/hud';
+import { pingColor, pingText } from '../render/ping';
 import type { RaceSettings, Standing, Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
 
@@ -156,6 +157,27 @@ const WEATHER: Record<Weather, string> = {
   drying: 'Wet, drying out',
 };
 
+/**
+ * Show each player's ping in the lobby, in place (no re-render, so an open menu stays open).
+ * "relayed" means WebRTC couldn't link the two browsers directly and goes through a relay
+ * server, often far away: the usual reason for a high ping between players who live close.
+ */
+export function updateLobbyNet(net: readonly NetInfo[]): void {
+  let relayed = false;
+  for (const span of root.querySelectorAll<HTMLElement>('.players .ping')) {
+    const info = net.find((n) => n.id === span.dataset.net);
+    span.textContent = pingText(info, true) ?? '';
+    span.style.color = info?.relayed ? '#ff8a00' : info && info.ping !== null ? pingColor(info.ping) : '';
+    if (info?.relayed) relayed = true;
+  }
+  const note = root.querySelector('.net-note');
+  if (note) {
+    note.textContent = relayed
+      ? 'Relayed = no direct link between your browsers, so traffic goes via a relay server and ping is higher. Usually a strict router or network on one side.'
+      : '';
+  }
+}
+
 /** The lobby: players, invite link, and race settings (editable by the host only). */
 export function showLobby(v: LobbyView): void {
   const s = v.lobby.settings;
@@ -170,6 +192,12 @@ export function showLobby(v: LobbyView): void {
         const remove = v.onRemoveBot;
         li.append(el('button', { class: 'small', title: 'Remove bot', onclick: () => remove(p.id) }, '✕'));
       }
+    }
+    if (!p.host && !p.bot) {
+      // Filled in (and kept up to date) by updateLobbyNet.
+      const ping = el('span', { class: 'ping' });
+      ping.dataset.net = p.id;
+      li.append(ping);
     }
     players.append(li);
   }
@@ -254,6 +282,7 @@ export function showLobby(v: LobbyView): void {
         ),
         el('h2', {}, `Drivers (${v.lobby.players.length}/10)`),
         players,
+        el('p', { class: 'sub net-note' }),
         botControls,
         v.inviteLink ? el('h2', {}, 'Invite link') : null,
         v.inviteLink ? el('div', { class: 'invite' }, link, copy) : null,

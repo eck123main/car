@@ -30,7 +30,30 @@ function wrap(conn: DataConnection): Connection {
       conn.on('error', cb);
     },
     close: () => conn.close(),
+    route: () => route(conn.peerConnection),
   };
+}
+
+/** Whether WebRTC is using a relay (TURN) server: the active candidate pair has a relay end. */
+async function route(pc: RTCPeerConnection | undefined): Promise<'direct' | 'relayed' | null> {
+  if (!pc) return null;
+  try {
+    const stats = await pc.getStats();
+    let pairId: string | undefined;
+    stats.forEach((s) => {
+      if (s.type === 'transport' && s.selectedCandidatePairId) pairId = s.selectedCandidatePairId;
+    });
+    let pair: RTCIceCandidatePairStats | undefined;
+    stats.forEach((s) => {
+      if (s.type !== 'candidate-pair') return;
+      if (pairId ? s.id === pairId : s.nominated && s.state === 'succeeded') pair = s;
+    });
+    if (!pair) return null;
+    const types = [stats.get(pair.localCandidateId)?.candidateType, stats.get(pair.remoteCandidateId)?.candidateType];
+    return types.includes('relay') ? 'relayed' : 'direct';
+  } catch {
+    return null;
+  }
 }
 
 /** Become a host. Resolves with the invite code once the signalling server accepts us. */

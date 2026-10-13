@@ -321,6 +321,12 @@ The timing tower is always shown (no Tab needed).
     introduction only). Invite link = `?join=<6-char code>`. Nothing to deploy ourselves.
   - Clients use **prediction + interpolation** so their own car feels instant even with
     latency to the host.
+  - **Ping display**: the host pings each player once a second (`HostGame.tickNet`, from the
+    race loop and a lobby timer) and reads WebRTC stats to see if the link is direct or
+    **relayed** (PeerJS falls back to its public TURN servers in the EU/US, which adds a lot
+    of ping even between neighbours). Everyone gets everyone's numbers (`net` message):
+    shown in the lobby ("42 ms · direct"), in the timing tower (orange "R 140" = relayed) and
+    as your own ping top right. Green < 60 ms, yellow < 120, red above.
   - Caveat: some strict networks block P2P without a TURN relay. Acceptable for a
     friends game; could add a free TURN option later if needed.
 - The game itself is static files, deployable free to **GitHub Pages** (or similar).

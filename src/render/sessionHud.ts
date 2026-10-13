@@ -1,7 +1,8 @@
-import type { SessionSnap } from '../net/protocol';
+import type { NetInfo, SessionSnap } from '../net/protocol';
 import { COMPOUNDS } from '../sim/tyres';
 import type { RaceWorld, Racer } from '../sim/world';
 import { formatLapTime } from './hud';
+import { pingColor } from './ping';
 
 /** Five red start lights, top centre. */
 export function drawLights(ctx: CanvasRenderingContext2D, lit: number, width: number): void {
@@ -98,11 +99,20 @@ export function drawSpectating(ctx: CanvasRenderingContext2D, name: string, colo
   ctx.fillText(hint, x, 71);
 }
 
-/** Timing tower: position, name, gap, tyre. Left side under the timing panel. */
-export function drawTower(ctx: CanvasRenderingContext2D, session: SessionSnap, world: RaceWorld, meId: string): void {
+/**
+ * Timing tower: position, name, ping (online players), gap, tyre. Left side under the timing
+ * panel. A ping shown as "R 140" (orange) goes through a relay server rather than direct.
+ */
+export function drawTower(
+  ctx: CanvasRenderingContext2D,
+  session: SessionSnap,
+  world: RaceWorld,
+  meId: string,
+  net: readonly NetInfo[] = [],
+): void {
   const x = 20;
   let y = 190;
-  const w = 250;
+  const w = 280;
   const rowH = 22;
   const rows = session.standings;
   ctx.fillStyle = 'rgba(10,10,14,0.7)';
@@ -126,6 +136,15 @@ export function drawTower(ctx: CanvasRenderingContext2D, session: SessionSnap, w
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.fillText(r.name.slice(0, 12), x + 42, y + 16);
+    const link = net.find((n) => n.id === s.id);
+    if (link && link.ping !== null) {
+      ctx.font = 'bold 10px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = link.relayed ? '#ff8a00' : pingColor(link.ping);
+      ctx.fillText(`${link.relayed ? 'R ' : ''}${Math.round(link.ping)}`, x + 172, y + 15);
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+    }
 
     let right = '';
     if (s.status === 'dnf') right = 'DNF';

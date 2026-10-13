@@ -8,13 +8,24 @@ import type { Penalty, PlayerInput, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
   host: boolean;
   /** Set for computer drivers. */
   bot?: Difficulty;
+}
+
+/**
+ * A player's connection to the host, measured by the host: round-trip time (ms) and
+ * whether WebRTC had to fall back to a relay server (TURN) instead of a direct link.
+ * Null while unknown, and for the host itself and bots.
+ */
+export interface NetInfo {
+  id: string;
+  ping: number | null;
+  relayed: boolean | null;
 }
 
 export interface LobbyState {
@@ -90,7 +101,9 @@ export interface SessionSnap {
 
 export type ClientMessage =
   | { t: 'hello'; name: string; version: number }
-  | { t: 'input'; inputs: { seq: number; input: PlayerInput }[] };
+  | { t: 'input'; inputs: { seq: number; input: PlayerInput }[] }
+  /** Answer to the host's ping, straight away. */
+  | { t: 'pong'; n: number };
 
 export type HostMessage =
   | { t: 'welcome'; id: string }
@@ -99,4 +112,8 @@ export type HostMessage =
   | { t: 'start'; track: TrackDef; settings: RaceSettings; players: PlayerInfo[] }
   | { t: 'snap'; time: number; cars: CarSnap[]; sc?: SafetyCarSnap }
   | { t: 'state'; time: number; session: SessionSnap; timing: TimingSnap[] }
-  | { t: 'events'; time: number; events: SessionEvent[] };
+  | { t: 'events'; time: number; events: SessionEvent[] }
+  /** Sent about once a second; the client answers with a pong to measure the round trip. */
+  | { t: 'ping'; n: number }
+  /** Everyone's ping and connection type, about once a second. */
+  | { t: 'net'; net: NetInfo[] };

@@ -3,7 +3,7 @@ import type { SessionEvent } from '../sim/session';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import { parseTrackDef } from '../track/io';
 import { Track } from '../track/track';
-import { PROTOCOL_VERSION, type CarSnap, type HostMessage, type LobbyState, type SessionSnap } from './protocol';
+import { PROTOCOL_VERSION, type CarSnap, type HostMessage, type LobbyState, type NetInfo, type SessionSnap } from './protocol';
 import { applyCarPhysics, applyCarStatus, applyTiming } from './snapshot';
 import type { Connection } from './transport';
 
@@ -33,6 +33,8 @@ export class ClientGame {
   world: RaceWorld | null = null;
   session: SessionSnap | null = null;
   deltas = new Map<string, number | null>();
+  /** Everyone's ping and connection type, as measured by the host. */
+  net: NetInfo[] = [];
   /** Estimated host clock minus local clock (s). */
   private clockOffset: number | null = null;
   private snaps: { time: number; cars: Map<string, CarSnap>; sc?: SafetyCarSnap }[] = [];
@@ -122,6 +124,12 @@ export class ClientGame {
       case 'welcome':
         this.id = msg.id;
         this.status = 'lobby';
+        break;
+      case 'ping':
+        this.conn.send({ t: 'pong', n: msg.n });
+        break;
+      case 'net':
+        this.net = msg.net;
         break;
       case 'reject':
         this.rejectReason = msg.reason;
