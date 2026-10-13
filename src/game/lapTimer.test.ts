@@ -74,25 +74,15 @@ describe('LapTimer', () => {
     expect(d.laps()).toHaveLength(0);
   });
 
-  it('deletes the lap when all four wheels leave the track', () => {
+  it('keeps the lap when all four wheels leave the track (no track limits)', () => {
     const d = new Driver(L - 40);
     d.drive(140, 50);
     d.drive(30, 30, track.samples[0].halfWidth + 3); // fully off on the right
+    expect(d.timer.offTrack).toBe(true);
     d.drive(L - 100, 50);
-    const trackLimits = d.events.filter((e) => e.kind === 'trackLimits');
-    expect(trackLimits).toHaveLength(1);
-    expect(d.timer.trackLimitWarnings).toBe(1);
-    expect(d.laps()[0].valid).toBe(false);
-    expect(d.timer.bestLap).toBeNull();
-  });
-
-  it('allows two wheels over the line', () => {
-    const d = new Driver(L - 40);
-    d.drive(140, 50);
-    d.drive(30, 30, track.samples[0].halfWidth); // car centre on the white line
-    d.drive(L - 100, 50);
-    expect(d.timer.trackLimitWarnings).toBe(0);
+    expect(d.timer.offTrack).toBe(false);
     expect(d.laps()[0].valid).toBe(true);
+    expect(d.timer.bestLap).not.toBeNull();
   });
 
   it('turns the current lap into an out-lap after a reset', () => {
@@ -145,6 +135,5 @@ describe('LapTimer with real physics', () => {
       expect(lap.time).toBeGreaterThan(50);
       expect(lap.time).toBeLessThan(120);
     }
-    expect(timer.trackLimitWarnings).toBe(0);
   });
 });

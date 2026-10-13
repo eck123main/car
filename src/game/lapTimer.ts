@@ -4,8 +4,6 @@ import { KERB_WIDTH, type Track, type TrackSample } from '../track/track';
 export const SECTOR_COUNT = 3;
 /** Wheels may go this far past the track edge before it counts as off track (m). */
 const LIMITS_TOLERANCE = 1;
-/** Back on track for this long before another excursion counts as a new warning. */
-const REARM_TIME = 0.5;
 /** Progress jumps bigger than this (m) in one step are resets, not driving. */
 const MAX_STEP_DISTANCE = 30;
 /** Resolution of the best-lap trace used for the live delta (m). */
@@ -26,14 +24,11 @@ export interface TimerState {
   lastLap: LapRecord | null;
   bestLap: LapRecord | null;
   bestSectors: (number | null)[];
-  trackLimitWarnings: number;
   offTrack: boolean;
   s: number | null;
 }
 
-export type TimingEvent =
-  | { kind: 'lap'; lap: LapRecord; personalBest: boolean }
-  | { kind: 'trackLimits'; warnings: number; lapDeleted: boolean };
+export type TimingEvent = { kind: 'lap'; lap: LapRecord; personalBest: boolean };
 
 /**
  * Lap and sector timing plus track limits for one car. Driven by simulation time,
@@ -55,16 +50,16 @@ export class LapTimer {
   bestLap: LapRecord | null = null;
   bestSectors: (number | null)[] = new Array(SECTOR_COUNT).fill(null);
 
-  trackLimitWarnings = 0;
-  /** True while all four wheels are beyond the white lines. */
+  /**
+   * True while all four wheels are beyond the track edge. Running wide is not penalised and
+   * never deletes a lap: grass and gravel cost time on their own.
+   */
   offTrack = false;
 
   private readonly sectorEnds: number[];
   private nextCheckpoint = 0;
   private sectorStart = 0;
   private prevS: number | null = null;
-  private armed = true;
-  private onTrackFor = 0;
   private currentTrace: number[] = [];
   private bestTrace: number[] | null = null;
 
@@ -82,7 +77,6 @@ export class LapTimer {
       lastLap: this.lastLap,
       bestLap: this.bestLap,
       bestSectors: this.bestSectors,
-      trackLimitWarnings: this.trackLimitWarnings,
       offTrack: this.offTrack,
       s: this.prevS,
     };
@@ -97,7 +91,6 @@ export class LapTimer {
     this.lastLap = st.lastLap;
     this.bestLap = st.bestLap;
     this.bestSectors = st.bestSectors;
-    this.trackLimitWarnings = st.trackLimitWarnings;
     this.offTrack = st.offTrack;
     this.prevS = st.s;
   }
@@ -141,7 +134,7 @@ export class LapTimer {
         if (this.currentTrace[bucket] === undefined) this.currentTrace[bucket] = now - this.lapStart;
       }
     }
-    this.checkTrackLimits(dt, car, events);
+    this.offTrack = this.allWheelsOff(car);
     return events;
   }
 
@@ -214,31 +207,18 @@ export class LapTimer {
   }
 
   /** Off track when all four wheels are beyond the track edge (kerbs count as track). */
-  private checkTrackLimits(dt: number, car: Car, events: TimingEvent[]): void {
+  private allWheelsOff(car: Car): boolean {
     const p = car.params;
     const c = Math.cos(car.heading);
     const s = Math.sin(car.heading);
     const half = p.width / 2 - 0.2;
-    let anyWheelOn = false;
     for (const lx of [p.cgToFront, -p.cgToRear]) {
       for (const ly of [-half, half]) {
         const hit = this.track.query(car.x + c * lx - s * ly, car.y + s * lx + c * ly, car.trackIndex);
-        if (hit && Math.abs(hit.d) <= trackEdge(this.track, hit.sample, hit.d) + LIMITS_TOLERANCE) anyWheelOn = true;
+        if (hit && Math.abs(hit.d) <= trackEdge(this.track, hit.sample, hit.d) + LIMITS_TOLERANCE) return false;
       }
     }
-    this.offTrack = !anyWheelOn;
-    if (anyWheelOn) {
-      this.onTrackFor += dt;
-      if (this.onTrackFor >= REARM_TIME) this.armed = true;
-      return;
-    }
-    this.onTrackFor = 0;
-    if (!this.armed) return;
-    this.armed = false;
-    this.trackLimitWarnings++;
-    const lapDeleted = this.lapStart !== null && this.valid;
-    if (this.lapStart !== null) this.valid = false;
-    events.push({ kind: 'trackLimits', warnings: this.trackLimitWarnings, lapDeleted });
+    return true;
   }
 }
 

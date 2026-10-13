@@ -10,12 +10,6 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
       const text = `${e.personalBest ? 'PERSONAL BEST  ' : ''}${formatLapTime(e.lap.time)}${e.lap.valid ? '' : '  (deleted)'}`;
       return { text, color: e.personalBest ? '#b84dff' : e.lap.valid ? '#ffffff' : '#888', until };
     }
-    case 'trackLimits': {
-      // In races only every 20th warning costs time (+5 s), so show the count towards it.
-      const count = `${((e.warnings - 1) % 20) + 1}/20`;
-      const text = e.lapDeleted ? `TRACK LIMITS ${count}: LAP TIME DELETED` : `TRACK LIMITS ${count}`;
-      return { text, color: '#ffb347', until };
-    }
     case 'pitEntry':
       return { text: 'PIT LANE', color: '#ffd400', until };
     case 'pitStop':

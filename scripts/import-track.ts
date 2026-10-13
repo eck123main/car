@@ -102,13 +102,15 @@ r.car.place(s0.x, s0.y, Math.atan2(s0.ty, s0.tx));
 const bot = new BotDriver(track, 'bot', 'hard');
 const laps: number[] = [];
 let walls = 0;
+let offTrack = 0;
 for (let t = 0; t < 400 && laps.length < 2; t += 1 / 120) {
   const before = r.car.lastImpact;
   const input = bot.drive(world, { phase: 'practice', raceStart: 0, laps: null, mandatoryStop: false }, 1 / 120);
   for (const e of world.step(1 / 120, new Map([['bot', input]]))) if (e.kind === 'lap') laps.push(e.lap.time);
   if (r.car.lastImpact !== before) walls++;
+  if (r.timer.offTrack) offTrack++;
 }
-console.log(`  Hard bot: lap ${laps[1]?.toFixed(1) ?? 'not completed'} s, wall hits ${walls}, track limits ${r.timer.trackLimitWarnings}`);
+console.log(`  Hard bot: lap ${laps[1]?.toFixed(1) ?? 'not completed'} s, wall hits ${walls}, time off track ${(offTrack / 120).toFixed(1)} s`);
 
 writeFileSync(out, trackToJson(def));
 console.log(`  wrote ${out}`);

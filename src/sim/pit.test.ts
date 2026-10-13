@@ -82,7 +82,7 @@ for (const id of ['silverstone', 'test'] as const) {
       expect(r.compoundsUsed).toEqual(['medium', 'soft']);
       expect(maxSpeedAfterStop).toBeLessThan(PIT_SPEED_LIMIT + 0.6);
       expect(penaltyTime(r)).toBe(0);
-      expect(r.timer.trackLimitWarnings).toBe(0);
+      expect(r.timer.offTrack).toBe(false);
       expect(r.car.damage).toBe(0);
     });
 

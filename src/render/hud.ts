@@ -213,12 +213,6 @@ export function drawTiming(ctx: CanvasRenderingContext2D, timer: LapTimer, now: 
   ctx.fillText(last ? formatLapTime(last.time) + (last.valid ? '' : '  deleted') : '-', x + 60, y + 92);
   ctx.fillStyle = SECTOR_COLORS.best;
   ctx.fillText(timer.bestLap ? formatLapTime(timer.bestLap.time) : '-', x + 60, y + 112);
-  if (timer.trackLimitWarnings > 0) {
-    ctx.fillStyle = '#ffb347';
-    ctx.textAlign = 'right';
-    ctx.fillText(`Track limits: ${timer.trackLimitWarnings}`, x + w - 14, y + 112);
-    ctx.textAlign = 'left';
-  }
 }
 
 export interface Toast {

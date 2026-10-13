@@ -29,15 +29,17 @@ describe('Bots on their own', () => {
       const bot = new BotDriver(track, 'b', diff);
       const laps: number[] = [];
       let walls = 0;
+      let offTrack = 0;
       for (let t = 0; t < 200 && laps.length < 2; t += DT) {
         const input = bot.drive(world, { phase: 'practice', raceStart: 0, laps: null, mandatoryStop: false }, DT);
         const before = r.car.lastImpact;
         for (const e of world.step(DT, new Map([['b', input]]))) if (e.kind === 'lap') laps.push(e.lap.time);
         if (r.car.lastImpact !== before) walls++;
+        if (r.timer.offTrack) offTrack++;
       }
       expect(laps).toHaveLength(2);
       expect(walls).toBe(0);
-      expect(r.timer.trackLimitWarnings).toBe(0);
+      expect(offTrack).toBe(0);
       lapTimes[diff] = laps[1];
     }
     expect(lapTimes.hard).toBeLessThan(lapTimes.medium);
