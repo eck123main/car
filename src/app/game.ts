@@ -371,7 +371,7 @@ export class GameScreen {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!world) return;
     if (this.gfx?.track !== world.track) {
-      this.gfx = { track: world.track, graphics: new TrackGraphics(world.track), minimap: new Minimap(world.track) };
+      this.gfx = { track: world.track, graphics: new TrackGraphics(world.track, { scenery: true }), minimap: new Minimap(world.track) };
       this.snapped = false;
     }
     const own = world.racer(this.driver.meId);

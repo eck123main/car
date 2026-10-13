@@ -1,5 +1,6 @@
 import { KERB_WIDTH, PIT_LANE_INNER, PIT_LANE_WIDTH, PIT_WALL_OFFSET, type Track, type TrackSample } from '../track/track';
 import type { ViewBounds } from './camera';
+import { Scenery } from './scenery';
 
 /** Kerb band runs from just inside the track edge to KERB_WIDTH outside it. */
 const KERB_LINE_WIDTH = KERB_WIDTH + 0.2;
@@ -54,8 +55,14 @@ export class TrackGraphics {
   private readonly drsDetect = new Path2D();
   private readonly drsStart = new Path2D();
   private readonly drsLabels: { x: number; y: number; angle: number }[] = [];
+  /** Grandstands, trees and the like around the track (the game only, not the editor). */
+  private readonly scenery: Scenery | null;
 
-  constructor(readonly track: Track) {
+  constructor(
+    readonly track: Track,
+    options: { scenery?: boolean } = {},
+  ) {
+    this.scenery = options.scenery ? new Scenery(track) : null;
     const ss = track.samples;
     const n = ss.length;
     for (let i0 = 0; i0 < n; i0 += CHUNK) {
@@ -113,6 +120,7 @@ export class TrackGraphics {
       ? this.chunks.filter((c) => c.maxX >= view.minX && c.minX <= view.maxX && c.maxY >= view.minY && c.minY <= view.maxY)
       : this.chunks;
 
+    this.scenery?.draw(ctx, view);
     // Fills are merged into one path per layer so chunk edges leave no anti-aliasing seams.
     ctx.fillStyle = COLORS.grass;
     ctx.fill(merge(visible, 'runoff'));

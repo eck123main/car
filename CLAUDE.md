@@ -87,8 +87,8 @@ Top-down 2D car physics that feels like an F1 car:
 - **Walls**: a car only meets the walls of the stretch of track it is on (`Track.wallContact`),
   so where two parts of a track run close together (Baku's castle section next to the
   main straight) it can't be pushed through onto the other one.
-- **Track width**: 19 m (wider than real F1 tracks, ~12-15 m): at half scale with keyboard
-  steering, narrower tracks made track limits too easy to hit.
+- **Track width**: 21 m (wider than real F1 tracks, ~12-15 m): at half scale with keyboard
+  steering, narrower tracks made it too easy to hit the walls and each other.
 - **Track scale**: keep tracks compact. Laps should be roughly 30–60 s, so real circuits
   are scaled down rather than built at full size.
 - **Camera**: follows the car and zooms out a little with speed. **Default: fixed north-up
@@ -130,11 +130,10 @@ The timing tower is always shown (no Tab needed).
 - **Start**: 4 s on the grid (held still), then 5 red lights 1 s apart, then lights out
   after 0.5-2.5 s. Moving forwards more than 1 m before lights out = **+5 s jump start**.
   No reversing on the grid.
-- **Track limits**: off track = all four wheels beyond the track edge. Kerbs count as
-  track (friendlier than the strict F1 white-line rule, which flagged nearly every corner). Each
-  excursion is a warning and deletes the current lap time. Wheels may go 1 m past the edge
-  before it counts. In races, only **every 20th** warning costs **+5 s**. Grass/gravel also slow the car hard, so
-  cutting never pays.
+- **Track limits: none.** Running wide never gives a warning, a deleted lap or a penalty
+  (players found it too punishing). Grass and gravel slow the car hard, so cutting never
+  pays. `LapTimer.offTrack` (all four wheels past the edge; kerbs count as track) is still
+  tracked, e.g. to check bots stay on the road.
 - **Timing**: three equal sectors; a lap only counts if the car passes every sector line
   in order (no faking laps by reversing). Uses simulation time, not wall-clock time.
 - Pit lane speed limit.
@@ -163,24 +162,32 @@ The timing tower is always shown (no Tab needed).
     with its middle) is at fault; a car turning in on one that is *not* alongside is only
     blamed on the other car if it came >6 m/s faster (a dive-bomb), else racing incident;
     otherwise nose into gearbox = car behind; nose into side while closing >2 m/s faster =
-    the hitter; everything else = racing incident. The penalty reason says which. Only hits
-    over 8 m/s (~29 km/h closing) are judged. A driver's first minor at-fault hit is a
-    **warning**; after that +5 s. Hits over 14 m/s or that wreck the victim: +10 s at once.
-    A pair is judged at most once every 3 s.
+    the hitter; everything else = racing incident. The penalty reason says which.
+    **The car in front is almost never at fault for being hit from behind**, even while braking
+    or drifting over to its line: it's only blamed for "moved across in front" if it cut
+    across on a straight less than ~a car length (11 m centre to centre) ahead, under 0.8 s
+    before the hit. In a corner, a car turning in only owes room to a car properly alongside
+    (front wheels past its middle). "Wrong way" means moving backwards, so a spun car that
+    is hit is never blamed. Only hits over 11 m/s (~40 km/h closing) are judged. A driver's
+    first **two** minor at-fault hits are **warnings**; after that +5 s. Hits over 18 m/s: +5 s
+    at once; wrecking the victim: +10 s. A pair is judged at most once every 3 s.
 - **Safety car** (`src/sim/safetyCar.ts`, rules in `Session.updateSafetyCar`; host setting,
   on by default). A **wreck** brings it out (max 2 per race, 60 s apart, never once anyone
   is on the last lap). It appears 150 m ahead of the leader and drives the racing line at
   an easy pace (70% grip, max 160 km/h), slowing to 80 km/h if the field is far behind
   (e.g. everyone pitting). It is not a racer: no physics, no collisions.
-  - While out: **no overtaking** (+5 s, except passing a stopped car or anything in the
-    pits), **no passing the SC** (+5 s), **DRS off**. Pit lane open, and the race engineer
+  - While out: **no overtaking**, **no passing the SC**, **DRS off**. Breaking either rule is
+    **+5 s, at most once per driver per safety car**. Passing a car under 22 km/h
+    (`SC_SLOW_CAR`), anything in the pits, or a car that left the pits under 5 s ago is fine. Pit lane open, and the race engineer
     says box for a **cheap stop** if a stop is still owed or tyres are 40%+ worn.
   - **"SC in this lap"** after at least 25 s once no car is still wrecked and the whole
     field has queued up behind it (after 60 s, just the leader; after 90 s, regardless).
     Lights go out and it turns into the pit entry. **Restart at the line**: each car may
     overtake once it crosses it. DRS is back a lap after the restart.
-  - Bots queue at the SC's pace (so nobody brakes mid-corner), never overtake under it,
-    and take the cheap stop. Clients get its state in `SessionSnap` and its position in
+  - Bots queue at the SC's pace (so nobody brakes mid-corner), in single file on the line of
+    the car ahead (on a different line through a hairpin they'd get ahead without passing),
+    never overtake under it (any car ahead, wherever it is across the track), and take the
+    cheap stop. Tested with a slow human off the racing line in `safetyCar.test.ts`. Clients get its state in `SessionSnap` and its position in
     each 20 Hz snapshot. Drawn as a silver road car with a flashing amber light bar.
   - Why it's worth having even though everyone can reset: it bunches the field (gaps
     vanish, so restarts are a fight), makes a cheap pit stop a strategy call, and makes a
@@ -256,13 +263,14 @@ The timing tower is always shown (no Tab needed).
   `src/tracks/index.ts`. "Test drive" opens the game with `?track=custom`.
 - Real circuit layouts come from **bacinger/f1-circuits** (MIT) GeoJSON, scaled to about
   0.5 (0.4 made slow corners too tight to drive). Tracks: Silverstone (3 DRS zones), Bahrain (3 DRS
-  zones like the real one), Albert Park (4 DRS zones), Monaco (full scale, 13 m wide, 3 DRS zones,
+  zones like the real one), Albert Park (4 DRS zones), Monaco (full scale, 13.5 m wide, 3 DRS zones,
   pits left), COTA (2 zones, pits left), Spa (2 zones, pits left), Baku (0.8 scale, 13 m wide for the
   castle section, 2 zones, pits left), Yas Marina (2 zones, pits right; no exit tunnel).
   **All 24 circuits of the 2026 calendar** are in (`src/tracks/index.ts`, calendar order;
-  tests run on every one via `REAL_TRACK_IDS`). Exceptions to 0.5 scale / 19 m: Miami and
-  Montreal 0.6 scale, 15 m (their close sections would overlap); Hungaroring 0.6 (DRS was
-  worth too little on its short straights); Jeddah 15 m; Zandvoort and Suzuka 17 m. Where
+  tests run on every one via `REAL_TRACK_IDS`). Exceptions to 0.5 scale / 21 m: Miami and
+  Montreal 0.6 scale, 16.5 m (their close sections would overlap); Hungaroring 0.6 (DRS was
+  worth too little on its short straights); Jeddah 16.5 m; Zandvoort and Suzuka 18.5 m;
+  Shanghai 19.5 m, Monaco 13.5 m, Baku 13 m (any wider and walls reach other parts of the track). Where
   the real pit side had no room, the other side is used. Suzuka is a figure of eight: the
   two roads cross at the bridge, so each car tracks which stretch it's on
   (`Car.trackIndex`, `Track.query` hint; kept through resets and while held still), and
@@ -279,6 +287,10 @@ The timing tower is always shown (no Tab needed).
   the lap at full throttle (58-71%) is close to real F1, so straights were not stretched.
 - Rendering is simple: grey track, red/white kerbs, green grass, beige gravel, and the
   start/finish line, DRS zone markers and pit lane drawn plainly.
+- **Scenery** (`src/render/scenery.ts`, game only): grandstands with a crowd on the main
+  straight and outside up to 4 big braking zones, pit garages, tyre walls, tree clumps and
+  lighter grass patches. Static, built once per track (~0.1-0.2 s), drawn per visible cell,
+  always clear of the walls and pit lane. Keep it light: no animation.
 
 ## Cars & teams
 
@@ -327,7 +339,8 @@ The timing tower is always shown (no Tab needed).
   minimum-curvature racing line with a planned speed profile (pace: Easy 74%, Medium 86%,
   Hard 95% of grip), follow by braking distance (as close as they could still stop from, so equal cars race
   within DRS range), keep safe gaps (measured directly, not just along the track, so hairpins work), overtake
-  when there is room, never steer towards a car alongside (more room the faster they're
+  when there is room (never starting a pass once braking for a corner: no dive-bombs),
+  never box from the grid, never steer towards a car alongside (more room the faster they're
   closing sideways) or move across in front of a car close behind, defend with **one move
   per straight** (Medium/Hard only, made early, covering the inside of the next braking
   corner, held until braking), hold their grid column
