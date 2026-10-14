@@ -13,6 +13,7 @@ import { drawOwnPing } from '../render/ping';
 import { drawRain } from '../render/rain';
 import { drawSafetyCar } from '../render/safetyCar';
 import { drawLights, drawNameTag, drawSessionBanner, drawSpectating, drawTower } from '../render/sessionHud';
+import { TileCache } from '../render/tiles';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { cycle, isSpectating, watchable } from './spectate';
@@ -247,7 +248,7 @@ export class GameScreen {
   private readonly ctx: CanvasRenderingContext2D;
   readonly controls: LocalControls;
   private readonly camera = new Camera();
-  private gfx: { track: Track; graphics: TrackGraphics; minimap: Minimap } | null = null;
+  private gfx: { track: Track; graphics: TrackGraphics; tiles: TileCache; minimap: Minimap } | null = null;
   private readonly toasts: Toast[] = [];
   private running = false;
   private paused = false;
@@ -400,7 +401,9 @@ export class GameScreen {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!world) return;
     if (this.gfx?.track !== world.track) {
-      this.gfx = { track: world.track, graphics: new TrackGraphics(world.track, { scenery: true }), minimap: new Minimap(world.track) };
+      // The track never changes during a session: draw it once into bitmap tiles.
+      const graphics = new TrackGraphics(world.track, { scenery: true });
+      this.gfx = { track: world.track, graphics, tiles: new TileCache((c, view) => graphics.draw(c, view)), minimap: new Minimap(world.track) };
       this.snapped = false;
     }
     const own = world.racer(this.driver.meId);
@@ -419,7 +422,7 @@ export class GameScreen {
     this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, myPose.heading, dt);
 
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
-    this.gfx.graphics.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr));
+    this.gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
     drawPitBoxes(ctx, world);
     const session = this.driver.session();
     const ghosts = session?.phase === 'qualifying';

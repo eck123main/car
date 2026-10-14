@@ -29,10 +29,14 @@ export class Camera {
     this.angle = heading;
   }
 
+  /** The closest the camera zooms in (standing still), in pixels per metre. */
+  static maxZoom(): number {
+    return 8 * (window.innerHeight / 800);
+  }
+
   follow(x: number, y: number, vx: number, vy: number, heading: number, dt: number): void {
     const speed = Math.hypot(vx, vy);
-    const screenScale = window.innerHeight / 800;
-    const targetZoom = (8 - 2.5 * Math.min(speed / 90, 1)) * screenScale;
+    const targetZoom = Camera.maxZoom() * (1 - (2.5 / 8) * Math.min(speed / 90, 1));
     this.zoom += (targetZoom - this.zoom) * (1 - Math.exp(-dt * 1.5));
     // The rotating view follows more tightly, or the car drifts off-centre as the map turns.
     const k = 1 - Math.exp(-dt * (this.mode === 'rotate' ? 9 : 4));
