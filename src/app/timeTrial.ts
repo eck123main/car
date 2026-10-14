@@ -14,6 +14,11 @@ import type { GameDriver, GhostCar } from './game';
 export const TIME_TRIAL_COLOR = '#e10600';
 /** How long the "lap invalid" prompt stays up (s). */
 const PROMPT_TIME = 6;
+/**
+ * Seconds of driving between leaderboard reloads. New laps are normally announced the moment
+ * they're saved; this is the fallback when that live connection is blocked.
+ */
+const REFRESH_EVERY = 30;
 
 /**
  * Which ghost to race: a leaderboard player's id, 'personal' (your own best), 'off', or 'auto'
@@ -47,6 +52,8 @@ export class TimeTrialDriver implements GameDriver {
   private notice: { text: string; color: string; until: number } | null = null;
   /** Our best lap time on this track (from the leaderboard or this browser). */
   private best: number | null = null;
+  private lastRefresh = 0;
+  private readonly unwatch: () => void;
 
   constructor(
     private readonly track: Track,
@@ -63,13 +70,26 @@ export class TimeTrialDriver implements GameDriver {
       this.best = pb.time;
     }
     void this.refresh();
+    this.unwatch = store.watch(trackId, () => void this.refresh());
+  }
+
+  /** Leaving the track: stop listening for other players' laps. */
+  dispose(): void {
+    this.unwatch();
   }
 
   /** Reload the leaderboard. */
   private async refresh(): Promise<void> {
+    this.lastRefresh = this.tt.world.time;
     try {
+      const before = this.boardState === 'ok' ? this.board[0] : undefined;
       this.board = await this.store.top(this.trackId, 50);
       this.boardState = 'ok';
+      // Someone else just took the record: tell whoever is driving.
+      const leader = this.board[0];
+      if (before && leader && leader.player !== this.player && leader.time < before.time) {
+        this.notice = { text: `NEW RECORD: ${leader.name} ${formatLapTime(leader.time)}`, color: '#b84dff', until: this.tt.world.time + 5 };
+      }
       const mine = this.board.find((e) => e.player === this.player);
       if (mine && (this.best === null || mine.time < this.best)) this.best = mine.time;
       // Someone improved: their old ghost is out of date.
@@ -194,6 +214,7 @@ export class TimeTrialDriver implements GameDriver {
   }
   step(dt: number, input: PlayerInput) {
     const { tt } = this;
+    if (tt.world.time - this.lastRefresh > REFRESH_EVERY) void this.refresh();
     // R or ENTER: straight back to the start, at any time.
     const restart = input.ready === true || input.reset === true;
     if ((restart && !this.restartDown) || this.restartRequested) tt.restart();

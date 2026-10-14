@@ -1,3 +1,4 @@
+import { RealtimeClient, type RealtimeChannel } from '@supabase/realtime-js';
 import { isGhost, type Ghost } from '../sim/ghost';
 
 /** One player's best lap on a track. */
@@ -22,6 +23,11 @@ export interface Leaderboard {
   ghostOf(track: string, player: string): Promise<Ghost | null>;
   /** Save a personal best lap with its ghost (so whoever holds the record has one). */
   submit(track: string, entry: TimeEntry, ghost: Ghost | null): Promise<void>;
+  /**
+   * Call `onChange` whenever someone else saves a lap on this track, so everyone driving it
+   * sees a new record straight away. Returns a function that stops watching.
+   */
+  watch(track: string, onChange: () => void): () => void;
 }
 
 const PLAYER_KEY = 'f1td.player';
@@ -83,6 +89,16 @@ export class LocalLeaderboard implements Leaderboard {
     write(this.kv, `f1td.tt.${track}`, merged);
     if (ghost && merged.includes(entry)) write(this.kv, `f1td.tt.ghost.${track}.${entry.player}`, ghost);
   }
+
+  /** Other tabs of this browser (the only other players a local board has). */
+  watch(track: string, onChange: () => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+    const listener = (e: StorageEvent) => {
+      if (e.key === `f1td.tt.${track}`) onChange();
+    };
+    window.addEventListener('storage', listener);
+    return () => window.removeEventListener('storage', listener);
+  }
 }
 
 /** Keep each player's best only, fastest first. */
@@ -92,9 +108,16 @@ export function mergeBest(entries: TimeEntry[], entry: TimeEntry): TimeEntry[] {
   return [...entries.filter((e) => e.player !== entry.player), entry].sort((a, b) => a.time - b.time);
 }
 
-/** Times shared by everyone, in a Supabase database (free tier, talked to over its REST API). */
+/**
+ * Times shared by everyone, in a Supabase database (free tier, talked to over its REST API).
+ * New laps are announced on a Realtime broadcast channel per track. The message only says
+ * "a lap was saved": everyone then reads the board from the database, so a made-up message
+ * can't put a fake time on anyone's screen.
+ */
 export class SupabaseLeaderboard implements Leaderboard {
   readonly global = true;
+  private realtime: RealtimeClient | null = null;
+  private readonly channels = new Map<string, RealtimeChannel>();
   constructor(
     private readonly url: string,
     private readonly key: string,
@@ -129,8 +152,33 @@ export class SupabaseLeaderboard implements Leaderboard {
       body: JSON.stringify({ track, ...entry, ghost }),
     });
     if (!res.ok) throw new Error(`Leaderboard: ${res.status} ${await res.text()}`);
+    // Tell everyone on this track (an announcement that doesn't arrive just waits for their next poll).
+    void this.channels
+      .get(track)
+      ?.send({ type: 'broadcast', event: LAP_EVENT, payload: {} })
+      .catch(() => {});
+  }
+
+  watch(track: string, onChange: () => void): () => void {
+    try {
+      this.realtime ??= new RealtimeClient(`${this.url}/realtime/v1`, { params: { apikey: this.key } });
+      const channel = this.realtime.channel(`time_trial:${track}`, { config: { broadcast: { self: false } } });
+      channel.on('broadcast', { event: LAP_EVENT }, () => onChange()).subscribe();
+      this.channels.set(track, channel);
+      return () => {
+        if (this.channels.get(track) === channel) this.channels.delete(track);
+        void this.realtime?.removeChannel(channel);
+      };
+    } catch (err) {
+      // No live updates then; the board still refreshes now and then.
+      console.warn(err);
+      return () => {};
+    }
   }
 }
+
+/** The broadcast sent when a lap is saved. */
+const LAP_EVENT = 'lap';
 
 /** localStorage, but never throwing (it can be blocked). */
 const browserKv: KeyValue = {

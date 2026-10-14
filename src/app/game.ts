@@ -62,6 +62,8 @@ export interface GameDriver {
   readonly pausable?: boolean;
   /** Mode-specific keys, read once per frame. */
   handleKeys?(keyboard: Keyboard): void;
+  /** The game screen closed: let go of anything still running (connections, timers). */
+  dispose?(): void;
 }
 
 /** A replayed car: no physics, drawn see-through with a label. */
@@ -304,6 +306,7 @@ export class GameScreen {
 
   stop(): void {
     this.running = false;
+    this.driver.dispose?.();
     this.ticker?.terminate();
     this.ticker = null;
     window.removeEventListener('resize', this.resize);

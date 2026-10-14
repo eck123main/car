@@ -71,6 +71,11 @@ alone: DRS free in every zone, ERS, no other cars.
   read and add laps; deploy reads repo variables `SUPABASE_URL` / `SUPABASE_KEY`; local dev
   reads `.env.local`), otherwise kept in this browser only. Shown on the left in game with
   "Next:" the time to beat. No anti-cheat beyond sane-value checks.
+  **Live**: saving a lap broadcasts "a lap was saved" on the Supabase Realtime channel
+  `time_trial:<track>` (`Leaderboard.watch`, `@supabase/realtime-js`); everyone on that track
+  re-reads the board from the database (never trusting the message) and gets a
+  "NEW RECORD: name" notice if the record fell. Fallback reload every 30 s of driving; the local
+  board uses the `storage` event between tabs.
 - **Ghosts** (`src/sim/ghost.ts`): every personal best is uploaded with a 20 Hz recording, so
   any player's best can be raced. Default: the fastest player who isn't you. **G** cycles the
   top 5 other players, your best, off. Drawn see-through in cyan (`GHOST_COLOR`; the player
