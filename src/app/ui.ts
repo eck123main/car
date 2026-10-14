@@ -39,6 +39,7 @@ export function clearUi(): void {
 
 const CONTROLS: [string, string][] = [
   ['WASD / Arrows', 'Drive'],
+  ['Mouse', 'Click the track to drive with the mouse: steer towards the cursor, left button throttle, right brake, middle DRS'],
   ['Space', 'DRS (in DRS zones; one press opens it)'],
   ['Shift (hold)', 'ERS boost'],
   ['P', 'Pit limiter'],

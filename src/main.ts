@@ -3,7 +3,7 @@ import { TimeTrialDriver } from './app/timeTrial';
 import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
 import { recommendedStartTyre } from './sim/strategy';
-import { Keyboard } from './game/input';
+import { Keyboard, Mouse } from './game/input';
 import { ClientGame } from './net/client';
 import { HostGame } from './net/host';
 import { connectToHost, createHost } from './net/peer';
@@ -14,6 +14,7 @@ import { DEFAULT_TRACK, loadCustomTrack, TRACKS } from './tracks';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const keyboard = new Keyboard(window);
+const mouse = new Mouse(canvas, window);
 const params = new URLSearchParams(location.search);
 const joinCode = params.get('join');
 
@@ -66,7 +67,7 @@ function runGame(
 ): void {
   stopGame();
   clearUi();
-  game = new GameScreen(canvas, keyboard, driver);
+  game = new GameScreen(canvas, keyboard, driver, mouse);
   // Dev server only: the game is reachable from the browser console, for testing.
   if (import.meta.env.DEV) (window as unknown as { f1game: GameScreen }).f1game = game;
   const g = game;

@@ -142,6 +142,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
+| Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |
 
 The timing tower is always shown (no Tab needed).
 

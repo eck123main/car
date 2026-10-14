@@ -1,4 +1,4 @@
-import { Keyboard, LocalControls } from '../game/input';
+import { Keyboard, LocalControls, type Mouse } from '../game/input';
 import type { ClientGame, Pose } from '../net/client';
 import { HostGame } from '../net/host';
 import type { NetInfo, SessionSnap } from '../net/protocol';
@@ -22,6 +22,11 @@ import type { Track } from '../track/track';
 
 /** The camera jumps to the car when it is further behind than this (m). */
 const CAMERA_SNAP_DISTANCE = 150;
+
+/** Mouse driving: full steering lock when the cursor is this far off the car's heading (rad). */
+const MOUSE_FULL_LOCK = (25 * Math.PI) / 180;
+/** Mouse driving: no steering with the cursor this close to the car (m), where its angle jumps about. */
+const MOUSE_DEAD_ZONE = 3;
 
 /** Remembers the camera view (C) between games. */
 const CAMERA_KEY = 'f1td.camera';
@@ -260,6 +265,8 @@ export class GameScreen {
   /** Spectating: the driver being watched (null: our own car). */
   private watching: string | null = null;
   private ticker: Worker | null = null;
+  /** Last frame's world-to-screen transform (device px), to find where the cursor points. */
+  private worldToScreen: DOMMatrix | null = null;
   /** Called when the session phase changes (e.g. 'finished'). */
   onPhase: (phase: string) => void = () => {};
   /** Called on Esc. */
@@ -269,9 +276,10 @@ export class GameScreen {
     private readonly canvas: HTMLCanvasElement,
     private readonly keyboard: Keyboard,
     private readonly driver: GameDriver,
+    mouse: Mouse | null = null,
   ) {
     this.ctx = canvas.getContext('2d')!;
-    this.controls = new LocalControls(keyboard);
+    this.controls = new LocalControls(keyboard, mouse);
   }
 
   start(): void {
@@ -281,6 +289,8 @@ export class GameScreen {
     } catch {
       // Storage blocked: stay on the default fixed view.
     }
+    // Mouse driving carries on from the last race.
+    if (this.controls.mouse?.active) this.canvas.style.cursor = 'crosshair';
     this.last = performance.now();
     window.addEventListener('resize', this.resize);
     this.resize();
@@ -297,6 +307,7 @@ export class GameScreen {
     this.ticker?.terminate();
     this.ticker = null;
     window.removeEventListener('resize', this.resize);
+    this.canvas.style.cursor = '';
   }
 
   /** While paused the menu is open: inputs go idle but the race carries on (it's online). */
@@ -342,6 +353,33 @@ export class GameScreen {
     if (this.watching !== before) this.snapped = false;
   }
 
+  /** Mouse driving: steer towards the cursor, harder the further it is off the car's heading. */
+  private mouseSteer(): number {
+    const mouse = this.controls.mouse;
+    const car = this.driver.world()?.racer(this.driver.meId)?.car;
+    if (!mouse?.active || !car || !this.worldToScreen) return 0;
+    const p = this.worldToScreen.inverse().transformPoint(new DOMPoint(mouse.x * this.dpr, mouse.y * this.dpr));
+    const dx = p.x - car.x;
+    const dy = p.y - car.y;
+    if (Math.hypot(dx, dy) < MOUSE_DEAD_ZONE) return 0;
+    const diff = Math.atan2(dy, dx) - car.heading;
+    const off = Math.atan2(Math.sin(diff), Math.cos(diff));
+    return Math.max(-1, Math.min(1, off / MOUSE_FULL_LOCK));
+  }
+
+  /** Say when mouse driving turns on or off, and show a crosshair while it's on. */
+  private mouseChanged(): void {
+    const mouse = this.controls.mouse;
+    if (!mouse?.changed) return;
+    mouse.changed = false;
+    this.canvas.style.cursor = mouse.active ? 'crosshair' : '';
+    const text = mouse.active
+      ? 'MOUSE DRIVING: steer towards the cursor · left button throttle · right brake · middle DRS'
+      : 'KEYBOARD DRIVING (click the track to drive with the mouse)';
+    this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 3 });
+    while (this.toasts.length > 3) this.toasts.shift();
+  }
+
   private resize = (): void => {
     // Cap the resolution: drawing at 3x on high-DPI screens costs a lot for little gain.
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -366,7 +404,9 @@ export class GameScreen {
     if (this.keyboard.wasPressed('KeyC')) this.toggleCamera();
     this.driver.handleKeys?.(this.keyboard);
     this.updateSpectating();
+    this.controls.mouseSteer = this.mouseSteer();
     let input = this.controls.read();
+    this.mouseChanged();
     // Nothing to keep in sync with: stop the clock while the menu is open.
     if (this.paused && this.driver.pausable) this.acc = 0;
     const idle = { ...input, throttle: 0, brake: 0, steer: 0, drs: false, ers: false, reset: false };
@@ -422,6 +462,7 @@ export class GameScreen {
     this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, myPose.heading, dt);
 
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
+    this.worldToScreen = ctx.getTransform();
     this.gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
     drawPitBoxes(ctx, world);
     const session = this.driver.session();
