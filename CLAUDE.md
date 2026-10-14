@@ -352,6 +352,14 @@ The timing tower is always shown (no Tab needed).
     of ping even between neighbours). Everyone gets everyone's numbers (`net` message):
     shown in the lobby ("42 ms · direct"), in the timing tower (orange "R 140" = relayed) and
     as your own ping top right. Green < 60 ms, yellow < 120, red above.
+  - **Two channels per player** (`src/net/peer.ts`): PeerJS's reliable one for the lobby, start,
+    timing and events, and a **fast** one (a negotiated RTCDataChannel, id 100, unordered, never
+    resent; `Connection.sendFast`) for snapshots, inputs and pings, so one lost packet doesn't hold
+    up everything after it. Inputs are packed (`packInput`, ~20 bytes) and each packet repeats the
+    last 8 unacknowledged ones; the host ignores ones it has seen. Clients drop snapshots older
+    than the last. Snapshot numbers are rounded (mm). The host drains an input backlog that
+    persists (queue never under 2 for 60 steps) so a player's car doesn't lag behind their keys.
+    `LoopbackNetwork` can drop and reorder fast messages for tests.
   - Caveat: some strict networks block P2P without a TURN relay. Acceptable for a
     friends game; could add a free TURN option later if needed.
 - The game itself is static files, deployable free to **GitHub Pages** (or similar).

@@ -4,7 +4,7 @@ import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { Track } from '../track/track';
 import type { TrackDef } from '../track/types';
 import { MAX_PLAYERS, PROTOCOL_VERSION, type ClientMessage, type HostMessage, type LobbyPlayer, type LobbyState, type NetInfo } from './protocol';
-import { carSnap, sessionSnap, timingSnap } from './snapshot';
+import { carSnap, sessionSnap, timingSnap, unpackInput } from './snapshot';
 import type { Connection, HostTransport } from './transport';
 
 /** Distinct car colours, handed out in order. */
@@ -24,6 +24,13 @@ const SNAP_EVERY = 6;
 const STATE_EVERY = 30;
 /** Inputs buffered per remote player; more than this means they're ahead, so drop old ones. */
 const MAX_QUEUED_INPUTS = 8;
+/**
+ * Inputs kept waiting to smooth over network jitter. When the queue never got shorter than
+ * this over a QUEUE_WINDOW of steps, it's a backlog (each queued input is 8 ms more delay for
+ * that player's car), so one input is dropped to drain it gently.
+ */
+const QUEUE_TARGET = 2;
+const QUEUE_WINDOW = 60;
 
 interface Remote {
   conn: Connection;
@@ -31,6 +38,11 @@ interface Remote {
   queue: { seq: number; input: PlayerInput }[];
   last: PlayerInput;
   ack: number;
+  /** Highest input number received: inputs come more than once (in case one is lost). */
+  received: number;
+  /** Shortest the input queue got during the current window of steps. */
+  minQueue: number;
+  window: number;
   /** Smoothed round-trip time (ms), and whether the link goes through a relay server. */
   ping: number | null;
   relayed: boolean | null;
@@ -107,7 +119,7 @@ export class HostGame {
     const n = ++this.pings;
     for (const r of this.remotes.values()) {
       r.pingSent = { n, at };
-      r.conn.send({ t: 'ping', n } satisfies HostMessage);
+      r.conn.sendFast({ t: 'ping', n } satisfies HostMessage);
       r.conn.route?.().then((route) => {
         if (route) r.relayed = route === 'relayed';
       });
@@ -152,6 +164,8 @@ export class HostGame {
     this.steps = 0;
     for (const r of this.remotes.values()) {
       r.queue = [];
+      r.minQueue = Infinity;
+      r.window = 0;
       r.last = IDLE_INPUT;
       r.ack = 0;
     }
@@ -172,6 +186,12 @@ export class HostGame {
     if (!session) return;
     const inputs = new Map<string, PlayerInput>([[HostGame.HOST_ID, localInput]]);
     for (const [id, r] of this.remotes) {
+      r.minQueue = Math.min(r.minQueue, r.queue.length);
+      if (++r.window >= QUEUE_WINDOW) {
+        if (r.minQueue > QUEUE_TARGET) dropOldest(r.queue);
+        r.minQueue = Infinity;
+        r.window = 0;
+      }
       const next = r.queue.shift();
       if (next) {
         r.last = next.input;
@@ -190,7 +210,7 @@ export class HostGame {
     }
     if (this.steps % SNAP_EVERY === 0) {
       const cars = session.world.racers.map((r) => carSnap(r, this.remotes.get(r.id)?.ack ?? 0));
-      this.broadcast({ t: 'snap', time: session.world.time, cars, sc: session.safetyCar?.snap() });
+      this.broadcast({ t: 'snap', time: session.world.time, cars, sc: session.safetyCar?.snap() }, true);
     }
     if (this.steps % STATE_EVERY === 0 || events.some((e) => e.kind === 'phase')) this.sendState();
   }
@@ -227,7 +247,7 @@ export class HostGame {
         const used = new Set(this.lobby.players.map((p) => p.color));
         const color = CAR_COLORS.find((c) => !used.has(c)) ?? CAR_COLORS[0];
         const name = (typeof msg.name === 'string' ? msg.name : '').trim().slice(0, 16) || `Driver ${this.nextId - 1}`;
-        joined = { conn, player: { id, name, color, host: false }, queue: [], last: IDLE_INPUT, ack: 0, ping: null, relayed: null, pingSent: null };
+        joined = { conn, player: { id, name, color, host: false }, queue: [], last: IDLE_INPUT, ack: 0, received: 0, minQueue: Infinity, window: 0, ping: null, relayed: null, pingSent: null };
         this.remotes.set(id, joined);
         conn.send({ t: 'welcome', id } satisfies HostMessage);
         // Joining while a weekend is on: spectate it now, race in the next one.
@@ -244,12 +264,13 @@ export class HostGame {
         joined.pingSent = null;
       }
       if (msg.t === 'input' && Array.isArray(msg.inputs)) {
-        for (const item of msg.inputs) if (item.seq > joined.ack) joined.queue.push(item);
-        while (joined.queue.length > MAX_QUEUED_INPUTS) {
-          const dropped = joined.queue.shift()!;
-          // Key presses (reset) must survive: carry them over to the next input.
-          if (dropped.input.reset) joined.queue[0] = { ...joined.queue[0], input: { ...joined.queue[0].input, reset: true } };
+        for (const packed of msg.inputs) {
+          const item = unpackInput(packed);
+          if (!item || item.seq <= Math.max(joined.received, joined.ack)) continue;
+          joined.received = item.seq;
+          joined.queue.push(item);
         }
+        while (joined.queue.length > MAX_QUEUED_INPUTS) dropOldest(joined.queue);
       }
     });
     conn.onClose(() => {
@@ -279,7 +300,17 @@ export class HostGame {
     });
   }
 
-  private broadcast(msg: HostMessage): void {
-    for (const r of this.remotes.values()) r.conn.send(msg);
+  /** To every player; `fast` for snapshots, which are fine to lose now and then. */
+  private broadcast(msg: HostMessage, fast = false): void {
+    for (const r of this.remotes.values()) {
+      if (fast) r.conn.sendFast(msg);
+      else r.conn.send(msg);
+    }
   }
+}
+
+/** Drop the oldest queued input. Key presses (R) must survive: carry them over to the next one. */
+function dropOldest(queue: Remote['queue']): void {
+  const dropped = queue.shift()!;
+  if (dropped.input.reset && queue[0]) queue[0] = { ...queue[0], input: { ...queue[0].input, reset: true } };
 }

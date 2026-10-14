@@ -7,6 +7,14 @@ import type { Connection, HostTransport } from './transport';
  */
 const ID_PREFIX = 'f1td-';
 const CONNECT_TIMEOUT = 15_000;
+/**
+ * The fast channel: a second data channel on the same connection, unordered and never resent
+ * (PeerJS's own "unreliable" mode still resends). Both ends create it with this fixed id, so it
+ * needs no extra signalling. PeerJS's channel takes a low id.
+ */
+const FAST_CHANNEL_ID = 100;
+/** Fast messages are dropped rather than queued when this much (bytes) is still waiting to go. */
+const FAST_BUFFER_LIMIT = 64 * 1024;
 
 function randomCode(): string {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -17,14 +25,45 @@ function randomCode(): string {
 
 function wrap(conn: DataConnection): Connection {
   const outbox: unknown[] = [];
+  const handlers: ((msg: unknown) => void)[] = [];
   let open = conn.open;
+  let fast: RTCDataChannel | null = null;
+  const openFast = () => {
+    const pc = conn.peerConnection;
+    if (fast || !pc) return;
+    try {
+      fast = pc.createDataChannel('fast', { negotiated: true, id: FAST_CHANNEL_ID, ordered: false, maxRetransmits: 0 });
+    } catch {
+      return; // Everything goes over the reliable channel then.
+    }
+    fast.onmessage = (e) => {
+      let msg: unknown;
+      try {
+        msg = JSON.parse(e.data as string);
+      } catch {
+        return;
+      }
+      for (const h of handlers) h(msg);
+    };
+  };
+  if (open) openFast();
   conn.on('open', () => {
     open = true;
+    openFast();
     for (const m of outbox.splice(0)) conn.send(m);
   });
+  conn.on('data', (msg) => {
+    for (const h of handlers) h(msg);
+  });
+  const send = (msg: unknown) => (open ? conn.send(msg) : outbox.push(msg));
   return {
-    send: (msg) => (open ? conn.send(msg) : outbox.push(msg)),
-    onMessage: (cb) => conn.on('data', cb),
+    send,
+    sendFast: (msg) => {
+      if (fast?.readyState !== 'open') send(msg);
+      // A congested link: drop it, the next one is due in a moment anyway.
+      else if (fast.bufferedAmount < FAST_BUFFER_LIMIT) fast.send(JSON.stringify(msg));
+    },
+    onMessage: (cb) => handlers.push(cb),
     onClose: (cb) => {
       conn.on('close', cb);
       conn.on('error', cb);

@@ -11,8 +11,8 @@ const DT = 1 / 120;
 /** Test players are always ready on the grid. */
 const READY = { ...IDLE_INPUT, ready: true };
 
-function setup(latency = 0) {
-  const net = new LoopbackNetwork(latency);
+function setup(latency = 0, fastLoss = 0, fastJitter = 0) {
+  const net = new LoopbackNetwork(latency, fastLoss, fastJitter);
   let clock = 0;
   const host = new HostGame(net.host('ABC'), 'Hosty', (id) => TRACKS[id], () => clock);
   const join = (name: string) => new ClientGame(net.connect('ABC'), name, () => clock);
@@ -295,6 +295,86 @@ describe('Lag', () => {
     tick();
     for (let t = 0; t < 5.5; t += DT) host.step(DT, READY);
     expect(racer.car.retired).toBe(false);
+  });
+});
+
+describe('Packet loss', () => {
+  it('keeps the race in sync when a fifth of snapshots and inputs are lost or arrive out of order', () => {
+    const { host, join, tick } = setup(0.05, 0.2, 0.03);
+    const c = join('Alice');
+    for (let i = 0; i < 20; i++) tick();
+    host.updateSettings({ trackId: 'test', qualifying: false, laps: 2 });
+    host.start();
+    for (let i = 0; i < 20; i++) tick();
+    expect(c.status).toBe('racing');
+
+    let maxCorrection = 0;
+    for (let t = 0; t < 25; t += DT) {
+      const session = host.session!;
+      const waiting = session.phase === 'grid' || session.phase === 'lights';
+      host.step(DT, { ...botInput(session.track, session.world.racer(HostGame.HOST_ID)!, { hold: waiting }), ready: true });
+      const me = c.me;
+      const cWaiting = c.session?.phase !== 'race';
+      c.step(DT, me && c.track ? { ...botInput(c.track, me, { hold: cWaiting, offset: 3 }), ready: true } : READY);
+      c.flush();
+      tick();
+      if (session.phase === 'race' && session.world.time - session.raceStart > 2) {
+        maxCorrection = Math.max(maxCorrection, c.lastCorrection);
+      }
+    }
+    // Lost inputs are covered by the copies in the next packets, so the host drives the
+    // client's car just as the client predicted it.
+    expect(host.session!.progress(host.session!.world.racer(c.id!)!)).toBeGreaterThan(200);
+    expect(maxCorrection).toBeLessThan(1);
+  });
+
+  it("drains a backlog of queued inputs, so a player's car doesn't stay behind their keys", () => {
+    const { host, join, tick } = setup();
+    const c = join('Alice');
+    tick();
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    tick();
+    const queue = () => (host as unknown as { remotes: Map<string, { queue: unknown[] }> }).remotes.get(c.id!)!.queue.length;
+    // A hitch on the client: a burst of inputs, then one per step again.
+    for (let i = 0; i < 8; i++) c.step(DT, READY);
+    c.flush();
+    tick();
+    host.step(DT, READY);
+    expect(queue()).toBeGreaterThan(5);
+    for (let t = 0; t < 5; t += DT) {
+      c.step(DT, READY);
+      c.flush();
+      tick();
+      host.step(DT, READY);
+    }
+    expect(queue()).toBeLessThanOrEqual(2);
+  });
+
+  it('never loses an R press, even when packets are dropped', () => {
+    const { host, join, tick } = setup(0.02, 0.4, 0.01);
+    const c = join('Alice');
+    for (let i = 0; i < 10; i++) tick();
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    for (let t = 0; t < 14; t += DT) {
+      c.step(DT, READY);
+      c.flush();
+      host.step(DT, READY);
+      tick();
+    }
+    const racer = host.session!.world.racer(c.id!)!;
+    expect(host.session!.phase).toBe('race');
+    for (let attempt = 0; attempt < 5; attempt++) {
+      racer.car.impact(30, 2.6, 0);
+      for (let t = 0; t < 6; t += DT) {
+        c.step(DT, { ...IDLE_INPUT, reset: t < DT / 2 });
+        c.flush();
+        host.step(DT, READY);
+        tick();
+      }
+      expect(racer.car.retired).toBe(false);
+    }
   });
 });
 

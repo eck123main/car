@@ -4,11 +4,11 @@ import type { Difficulty } from '../sim/ai/botDriver';
 import type { PitPhase } from '../sim/pit';
 import type { PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
 import type { Compound } from '../sim/tyres';
-import type { Penalty, PlayerInput, DrsHint } from '../sim/world';
+import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -99,9 +99,16 @@ export interface SessionSnap {
   noOvertaking: string[];
 }
 
+/** One step's input, packed: [seq, throttle, brake, steer, flags (DRS, ERS, limiter, R, ready), tyre]. */
+export type PackedInput = [number, number, number, number, number, number];
+
 export type ClientMessage =
   | { t: 'hello'; name: string; version: number }
-  | { t: 'input'; inputs: { seq: number; input: PlayerInput }[] }
+  /**
+   * The latest inputs, plus a few older ones the host hasn't acknowledged yet, so a lost
+   * packet costs nothing (inputs go over the fast channel, which never resends).
+   */
+  | { t: 'input'; inputs: PackedInput[] }
   /** Answer to the host's ping, straight away. */
   | { t: 'pong'; n: number };
 

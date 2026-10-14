@@ -4,13 +4,15 @@ import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import { parseTrackDef } from '../track/io';
 import { Track } from '../track/track';
 import { PROTOCOL_VERSION, type CarSnap, type HostMessage, type LobbyState, type NetInfo, type SessionSnap } from './protocol';
-import { applyCarPhysics, applyCarStatus, applyTiming } from './snapshot';
+import { applyCarPhysics, applyCarStatus, applyTiming, packInput } from './snapshot';
 import type { Connection } from './transport';
 
 /** Other cars are drawn this far in the past, so there are two snapshots to blend between. */
 const INTERPOLATION_DELAY = 0.1;
 /** How fast the visual offset after a prediction correction fades (1/s). */
 const CORRECTION_FADE = 10;
+/** Unacknowledged inputs sent again with each new batch, so a lost packet costs nothing (~65 ms). */
+const RESEND_INPUTS = 8;
 
 export type ClientStatus = 'connecting' | 'lobby' | 'racing' | 'rejected' | 'closed';
 
@@ -78,10 +80,12 @@ export class ClientGame {
     if (me && this.predicting()) me.car.step(input, dt, this.track);
   }
 
-  /** Send queued inputs (call once per frame). */
+  /** Send queued inputs (call once per frame), with the last few the host hasn't acknowledged. */
   flush(): void {
     if (this.outbox.length === 0) return;
-    this.conn.send({ t: 'input', inputs: this.outbox });
+    const first = this.outbox[0].seq;
+    const again = this.pending.filter((p) => p.seq < first).slice(-RESEND_INPUTS);
+    this.conn.sendFast({ t: 'input', inputs: [...again, ...this.outbox].map((p) => packInput(p.seq, p.input)) });
     this.outbox = [];
   }
 
@@ -126,7 +130,7 @@ export class ClientGame {
         this.status = 'lobby';
         break;
       case 'ping':
-        this.conn.send({ t: 'pong', n: msg.n });
+        this.conn.sendFast({ t: 'pong', n: msg.n });
         break;
       case 'net':
         this.net = msg.net;
@@ -178,6 +182,9 @@ export class ClientGame {
   private onSnap(time: number, cars: CarSnap[], sc: SafetyCarSnap | undefined): void {
     const world = this.world;
     if (!world || !this.track) return;
+    // The fast channel can deliver out of order: a snapshot older than the last one is stale.
+    const last = this.snaps[this.snaps.length - 1];
+    if (last && time <= last.time) return;
     this.syncClock(time);
     this.snaps.push({ time, cars: new Map(cars.map((c) => [c.id, c])), sc });
     while (this.snaps.length > 30) this.snaps.shift();
