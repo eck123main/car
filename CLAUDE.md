@@ -105,7 +105,8 @@ so nobody else can post under an account (guests can't insert account ids). Gues
   pops on lift-off, limiter bounce), turbo, ERS whine, wind, tyre squeal, kerb/gravel rumble,
   hits, and beeps: DRS available, DRS flap open/close, pit limiter on/off, each start light.
   Muted while paused, in a hidden tab or off the game screen.
-- `src/app/settings.ts` (`f1td.settings`): sound on/off, volume, engine sounds, beeps, and the
+- `src/app/settings.ts` (`f1td.settings`): sound on/off, volume, engine sounds (**off by default**
+  until the engine sound is improved; players opt in), beeps, and the
   **big live delta** (top centre, green ahead / red behind, against your best or the ghost).
   On the welcome screen (Settings) and in the Esc menu.
 

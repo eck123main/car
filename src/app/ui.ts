@@ -76,7 +76,7 @@ function settingsPanel(): HTMLElement {
     oninput: () => updateSettings({ volume: Number(volume.value) / 100 }),
   });
   box.append(el('span', {}, 'Volume'), volume);
-  check('Engine, wind and tyre sounds', 'engine');
+  check('Engine, wind and tyre sounds (work in progress)', 'engine');
   check('DRS, ERS and start light beeps', 'effects');
   check('Big live delta (top centre)', 'delta');
   return box;
