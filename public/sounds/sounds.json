@@ -1,5 +1,6 @@
 {
   "engine": [
+    { "file": "engine-onboard.wav", "rpm": 9500 },
     { "file": "engine-low.mp3", "rpm": 6000 },
     { "file": "engine-mid.mp3", "rpm": 9000 },
     { "file": "engine-high.mp3", "rpm": 12000 }

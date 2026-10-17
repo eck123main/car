@@ -85,9 +85,12 @@ type OneShot = 'drsOpen' | 'drsClose' | 'drsAvailable' | 'light' | 'shift' | 'cr
 
 interface EngineSample {
   rpm: number;
-  src: AudioBufferSourceNode;
+  voices: { src: AudioBufferSourceNode; detune: number }[];
   gain: GainNode;
 }
+
+/** Detune (as a playback rate factor) of each copy of a recorded engine loop. */
+const VOICE_DETUNE = [1, 1.006, 0.993];
 
 /**
  * How loud each engine loop plays at these revs (loops sorted by their revs): a crossfade
@@ -141,6 +144,11 @@ export class GameAudio {
   private sampleGain!: GainNode;
   private readonly oneShots = new Map<OneShot, AudioBuffer>();
   private lastGear = 1;
+  /** Slow random drift of the recorded engine's pitch (-1..1) and level. */
+  private wander = 0;
+  private flutter = 0;
+  /** Seconds left of the dip at an upshift. */
+  private shiftCut = 0;
 
   private rpm = IDLE_RPM;
   private last: SoundFrame | null = null;
@@ -276,14 +284,22 @@ export class GameAudio {
     const ctx = this.ctx!;
     const engines = await Promise.all((manifest.engine ?? []).map(async (e) => ({ rpm: e.rpm, buffer: await load(e.file) })));
     for (const e of engines.filter((e) => e.buffer).sort((a, b) => a.rpm - b.rpm)) {
-      const src = ctx.createBufferSource();
-      src.buffer = e.buffer;
-      src.loop = true;
       const gain = ctx.createGain();
       gain.gain.value = 0;
-      src.connect(gain).connect(this.sampleFilter);
-      src.start(0, Math.random() * e.buffer!.duration);
-      this.engineSamples.push({ rpm: e.rpm, src, gain });
+      gain.connect(this.sampleFilter);
+      // Each loop plays as a few slightly detuned copies from different points: they drift
+      // in and out of step, so the loop never repeats exactly the same way.
+      const voices = VOICE_DETUNE.map((detune) => {
+        const src = ctx.createBufferSource();
+        src.buffer = e.buffer;
+        src.loop = true;
+        const level = ctx.createGain();
+        level.gain.value = 1 / VOICE_DETUNE.length;
+        src.connect(level).connect(gain);
+        src.start(0, Math.random() * e.buffer!.duration);
+        return { src, detune };
+      });
+      this.engineSamples.push({ rpm: e.rpm, voices, gain });
     }
     for (const key of ['drsOpen', 'drsClose', 'drsAvailable', 'light', 'shift', 'crash'] as const) {
       const b = await load(manifest[key]);
@@ -381,25 +397,36 @@ export class GameAudio {
     set(this.engineFilter.frequency, 500 + f.throttle * 2600 + (this.rpm / SHIFT_RPM) * 1500);
     set(this.turbo.src.frequency, 2200 + this.rpm * 0.25);
     set(this.turbo.gain.gain, synth * f.throttle * (this.rpm / SHIFT_RPM) ** 2 * 0.012);
+    // Upshifts: the ignition cut is a short dip in the sound.
+    const gear = gearFor(kmh);
+    const upshift = prev !== null && gear > this.lastGear && f.throttle > 0.5 && !f.stopped;
+    if (upshift) {
+      this.play('shift', 0.8);
+      this.shiftCut = 0.06;
+    }
+    this.lastGear = gear;
+    this.shiftCut = Math.max(0, this.shiftCut - dt);
     if (recorded) {
+      // Never quite steady: the pitch and level wander a little at random, like a real engine
+      // under changing load, and the copies drift against each other.
+      this.wander = Math.max(-1, Math.min(1, this.wander + (Math.random() - 0.5) * 6 * dt - this.wander * dt));
+      this.flutter += (Math.random() - 0.5) * 0.6 - this.flutter * 0.2;
       // Recorded loops: sped up or slowed down to the revs, crossfaded between recordings.
-      const revs = Math.max(IDLE_RPM, this.rpm);
+      const revs = Math.max(IDLE_RPM, this.rpm) * (1 + 0.012 * this.wander);
       const mix = engineMix(
         this.engineSamples.map((e) => e.rpm),
         revs,
       );
       this.engineSamples.forEach((e, i) => {
-        set(e.src.playbackRate, Math.max(0.3, Math.min(2.5, revs / e.rpm)), 0.015);
+        const rate = Math.max(0.3, Math.min(2.5, revs / e.rpm));
+        for (const v of e.voices) set(v.src.playbackRate, rate * v.detune, 0.015);
         set(e.gain.gain, mix[i]);
       });
-      set(this.sampleGain.gain, on * (0.45 + 0.55 * f.throttle) * 0.8);
-      // Off the throttle the engine sounds duller.
-      set(this.sampleFilter.frequency, 1200 + f.throttle * 14000);
+      const level = (0.45 + 0.55 * f.throttle) * (1 + 0.06 * this.flutter) * (this.shiftCut > 0 ? 0.35 : 1);
+      set(this.sampleGain.gain, on * level * 0.8, this.shiftCut > 0 ? 0.008 : 0.03);
+      // Off the throttle the engine sounds duller; high revs sound brighter.
+      set(this.sampleFilter.frequency, 1000 + f.throttle * 9000 + (revs / SHIFT_RPM) * 5000);
     }
-    // Upshifts.
-    const gear = gearFor(kmh);
-    if (prev && gear > this.lastGear && f.throttle > 0.5 && !f.stopped) this.play('shift', 0.8);
-    this.lastGear = gear;
     // MGU-K whine while ERS deploys, pitched to the car's speed.
     set(this.ers.src.frequency, 900 + kmh * 9);
     set(this.ers.gain.gain, f.ersActive && !f.stopped ? 0.025 : 0, 0.08);
