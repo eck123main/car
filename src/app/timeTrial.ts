@@ -64,10 +64,20 @@ export class TimeTrialDriver implements GameDriver {
   ) {
     this.tt = new TimeTrial(track, trackId, name, TIME_TRIAL_COLOR);
     this.tt.onLap = (lap) => this.lapDone(lap);
-    const pb = loadPersonalGhost(trackId);
+    const pb = loadPersonalGhost(trackId, this.player);
     if (pb) {
       this.personal = this.load(pb);
       this.best = pb.time;
+    } else {
+      // Signed in on another device, or a new browser: our best ghost is on the leaderboard.
+      store
+        .ghostOf(trackId, this.player)
+        .then((g) => {
+          if (!g || (this.personal && this.personal.ghost.time <= g.time)) return;
+          this.personal = this.load(g);
+          if (this.best === null || g.time < this.best) this.best = g.time;
+        })
+        .catch((err) => console.warn(err));
     }
     void this.refresh();
     this.unwatch = store.watch(trackId, () => void this.refresh());
@@ -115,7 +125,7 @@ export class TimeTrialDriver implements GameDriver {
       return;
     }
     this.best = lap.time;
-    savePersonalGhost(lap.ghost);
+    savePersonalGhost(lap.ghost, this.player);
     this.personal = this.load(lap.ghost);
     const isRecord = lap.time < (this.board[0]?.time ?? Infinity);
     const entry: TimeEntry = { player: this.player, name: this.tt.me.name, time: lap.time, sectors: lap.sectors };
@@ -125,6 +135,9 @@ export class TimeTrialDriver implements GameDriver {
       : { text: `PERSONAL BEST ${formatLapTime(lap.time)} · P${position}`, color: '#2ecc40', until: now + 5 };
     // Show it straight away; the saved board replaces this once it's back.
     this.board = [...this.board.filter((e) => e.player !== this.player), entry].sort((a, b) => a.time - b.time);
+    // Beat the player whose ghost we chose: race the next one up instead (our own at the top).
+    const chosen = this.board.find((e) => e.player === this.ghostChoice);
+    if (chosen && chosen.time >= lap.time) this.ghostChoice = this.nextTarget();
     this.store
       .submit(this.trackId, entry, lap.ghost)
       .then(() => this.refresh())
@@ -145,8 +158,16 @@ export class TimeTrialDriver implements GameDriver {
   /** The ghost being raced: a player id, 'personal' or 'off'. */
   private ghostKey(): string {
     if (this.ghostChoice !== 'auto') return this.ghostChoice;
-    // The fastest player who isn't us; if nobody else has a time, our own best.
-    return this.board.find((e) => e.player !== this.player)?.player ?? 'personal';
+    // The record holder's lap: our own best once we hold the record (or nobody else has a time).
+    const leader = this.board[0];
+    return leader && leader.player !== this.player ? leader.player : 'personal';
+  }
+
+  /** The player just ahead of us on the board, or our own best if nobody is. */
+  private nextTarget(): string {
+    const mine = this.board.findIndex((e) => e.player === this.player);
+    const ahead = mine === -1 ? this.board[this.board.length - 1] : this.board[mine - 1];
+    return ahead?.player ?? 'personal';
   }
 
   private ghostLabel(): string {

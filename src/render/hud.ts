@@ -4,11 +4,10 @@ import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
 import { COMPOUNDS } from '../sim/tyres';
 import type { PitAdvice } from '../sim/strategy';
 import type { Racer, DrsHint } from '../sim/world';
+import { gearFor } from '../audio/sound';
 
 /** Side of the minimap square (CSS px); the damage panel sits under it. */
 export const MINIMAP_SIZE = 260;
-
-const GEAR_SPEEDS_KMH = [0, 85, 125, 160, 195, 230, 265, 300];
 
 /** Draws in CSS pixels; expects ctx already scaled by devicePixelRatio. */
 export function drawHud(
@@ -129,12 +128,6 @@ export class Minimap {
   }
 }
 
-function gearFor(kmh: number): number {
-  let g = 1;
-  for (let i = 1; i < GEAR_SPEEDS_KMH.length; i++) if (kmh > GEAR_SPEEDS_KMH[i]) g = i + 1;
-  return g;
-}
-
 function panel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
   ctx.fillStyle = 'rgba(10,10,14,0.7)';
   ctx.beginPath();
@@ -213,6 +206,36 @@ export function drawTiming(ctx: CanvasRenderingContext2D, timer: LapTimer, now: 
   ctx.fillText(last ? formatLapTime(last.time) + (last.valid ? '' : '  deleted') : '-', x + 60, y + 92);
   ctx.fillStyle = SECTOR_COLORS.best;
   ctx.fillText(timer.bestLap ? formatLapTime(timer.bestLap.time) : '-', x + 60, y + 112);
+}
+
+/**
+ * The live delta, big and top centre like on an F1 broadcast: green when ahead of the
+ * reference lap, red when behind.
+ */
+export function drawBigDelta(ctx: CanvasRenderingContext2D, delta: number, width: number, y: number): void {
+  const ahead = delta <= 0;
+  const text = `${ahead ? '-' : '+'}${Math.abs(delta).toFixed(3)}`;
+  const w = 150;
+  const h = 38;
+  const x = width / 2 - w / 2;
+  ctx.fillStyle = 'rgba(10,10,14,0.8)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 6);
+  ctx.fill();
+  ctx.fillStyle = ahead ? '#1fa83a' : '#d62a2a';
+  ctx.beginPath();
+  ctx.roundRect(x, y, 8, h, [6, 0, 0, 6]);
+  ctx.fill();
+  // How far ahead/behind, as a bar from the middle (full at 1 s).
+  const share = Math.min(1, Math.abs(delta));
+  const mid = x + 8 + (w - 8) / 2;
+  const half = (w - 16) / 2;
+  ctx.fillRect(ahead ? mid - half * share : mid, y + h - 5, half * share, 3);
+  ctx.font = 'bold 24px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = ahead ? '#5dff7a' : '#ff6060';
+  ctx.fillText(text, x + 8 + (w - 8) / 2, y + 27);
+  ctx.textAlign = 'left';
 }
 
 export interface Toast {

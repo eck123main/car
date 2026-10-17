@@ -77,9 +77,35 @@ alone: DRS free in every zone, ERS, no other cars.
   "NEW RECORD: name" notice if the record fell. Fallback reload every 30 s of driving; the local
   board uses the `storage` event between tabs.
 - **Ghosts** (`src/sim/ghost.ts`): every personal best is uploaded with a 20 Hz recording, so
-  any player's best can be raced. Default: the fastest player who isn't you. **G** cycles the
-  top 5 other players, your best, off. Drawn see-through in cyan (`GHOST_COLOR`; the player
+  any player's best can be raced. Default: the record lap, which is **your own best once you
+  hold the record**. Beating the ghost you picked moves you on to the next player up. **G** cycles
+  the top 5 other players, your best, off. Signed in, your best ghost also loads from the board on
+  a new device. Drawn see-through in cyan (`GHOST_COLOR`; the player
   is red). The timing delta is against the ghost shown.
+
+## Accounts
+
+`src/net/accounts.ts`, schema `supabase/accounts.sql` (run after `time_trial.sql`). Username +
+password only, **no email** (Supabase email sending was a pain), so passwords can't be reset:
+after signing up or changing a password a "Save your password now" screen must be confirmed.
+Rules (client and database): username 3-16 of `A-Z a-z 0-9 _ . -`, password 8-72 chars with a
+letter and a number. Passwords are bcrypt-hashed in Postgres (pgcrypto); sign-in returns a
+random session token (stored hashed), kept in `f1td.account`. The tables are closed to the public
+key; everything goes through RPC functions (`sign_up`, `sign_in`, `sign_out`, `whoami`,
+`change_password`, `submit_lap`). Ten wrong passwords lock an account for 5 minutes. Signed in,
+`playerId()` is the account id, the name is the username, and laps are saved with `submit_lap`
+so nobody else can post under an account (guests can't insert account ids). Guests still play.
+
+## Sound & settings
+
+- `src/audio/sound.ts`: all sound is synthesized with Web Audio (no files) and follows the car
+  the camera is on: V6 engine (revs from speed and gear, drop on upshifts, rev on the grid,
+  pops on lift-off, limiter bounce), turbo, ERS whine, wind, tyre squeal, kerb/gravel rumble,
+  hits, and beeps: DRS available, DRS flap open/close, pit limiter on/off, each start light.
+  Muted while paused, in a hidden tab or off the game screen.
+- `src/app/settings.ts` (`f1td.settings`): sound on/off, volume, engine sounds, beeps, and the
+  **big live delta** (top centre, green ahead / red behind, against your best or the ghost).
+  On the welcome screen (Settings) and in the Esc menu.
 
 ## Driving & physics
 

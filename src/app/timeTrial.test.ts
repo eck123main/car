@@ -49,3 +49,36 @@ describe('Time trial leaderboard', () => {
     expect(watchers).toHaveLength(0);
   });
 });
+
+describe('Time trial ghost', () => {
+  /** A finished lap as the time trial reports it (a short ghost along the start). */
+  const lap = (time: number) => {
+    const s = new Track(TRACKS.test).samples;
+    const pts = s.slice(0, 5);
+    return { time, sectors: [], ghost: { track: 'test', name: 'Me', time, dt: 0.05, x: pts.map((p) => p.x), y: pts.map((p) => p.y), h: pts.map(() => 0) } };
+  };
+  type View = { ghostKey(): string; lapDone(l: ReturnType<typeof lap>): void; player: string };
+
+  it("races the record holder's ghost, then our own once we take the record", async () => {
+    const { store } = sharedBoard();
+    const driver = new TimeTrialDriver(new Track(TRACKS.test), 'test', 'Me', store);
+    await settle();
+    const view = driver as unknown as View;
+    expect(view.ghostKey()).toBe('other');
+    view.lapDone(lap(51));
+    expect(view.ghostKey()).toBe('other');
+    view.lapDone(lap(49));
+    expect(view.ghostKey()).toBe('personal');
+  });
+
+  it('moves on to the next player up after beating the chosen ghost', async () => {
+    const { store, someoneSets } = sharedBoard();
+    someoneSets({ player: 'third', name: 'Bob', time: 53, sectors: [] });
+    const driver = new TimeTrialDriver(new Track(TRACKS.test), 'test', 'Me', store, 'third');
+    await settle();
+    const view = driver as unknown as View;
+    expect(view.ghostKey()).toBe('third');
+    view.lapDone(lap(52));
+    expect(view.ghostKey()).toBe('other');
+  });
+});

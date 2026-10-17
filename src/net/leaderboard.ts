@@ -1,5 +1,6 @@
 import { RealtimeClient, type RealtimeChannel } from '@supabase/realtime-js';
 import { isGhost, type Ghost } from '../sim/ghost';
+import { accounts } from './accounts';
 
 /** One player's best lap on a track. */
 export interface TimeEntry {
@@ -32,8 +33,10 @@ export interface Leaderboard {
 
 const PLAYER_KEY = 'f1td.player';
 
-/** This browser's player id (made up once and remembered). */
+/** The signed-in account's id, else this browser's guest id (made up once and remembered). */
 export function playerId(): string {
+  const account = accounts()?.account();
+  if (account) return account.id;
   try {
     let id = localStorage.getItem(PLAYER_KEY);
     if (!id) {
@@ -146,12 +149,19 @@ export class SupabaseLeaderboard implements Leaderboard {
   }
 
   async submit(track: string, entry: TimeEntry, ghost: Ghost | null): Promise<void> {
-    const res = await fetch(`${this.url}/rest/v1/time_trial`, {
-      method: 'POST',
-      headers: { apikey: this.key, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ track, ...entry, ghost }),
-    });
-    if (!res.ok) throw new Error(`Leaderboard: ${res.status} ${await res.text()}`);
+    const service = accounts();
+    const account = service?.account();
+    if (service && account && account.id === entry.player) {
+      // Signed in: the database puts the lap under the account (nobody else can).
+      await service.rpc('submit_lap', { p_token: account.token, p_track: track, p_time: entry.time, p_sectors: entry.sectors, p_ghost: ghost });
+    } else {
+      const res = await fetch(`${this.url}/rest/v1/time_trial`, {
+        method: 'POST',
+        headers: { apikey: this.key, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ track, ...entry, ghost }),
+      });
+      if (!res.ok) throw new Error(`Leaderboard: ${res.status} ${await res.text()}`);
+    }
     // Tell everyone on this track (an announcement that doesn't arrive just waits for their next poll).
     void this.channels
       .get(track)
@@ -209,12 +219,17 @@ export function leaderboard(): Leaderboard {
   return shared;
 }
 
-/** Personal best ghosts are always kept locally, whatever the leaderboard is. */
-export function loadPersonalGhost(track: string): Ghost | null {
-  const g = read<unknown>(browserKv, `f1td.tt.pb.${track}`);
+/** Where a player's personal best ghost is kept (guests keep the original key). */
+function personalKey(track: string, player: string): string {
+  return accounts()?.account()?.id === player ? `f1td.tt.pb.${player}.${track}` : `f1td.tt.pb.${track}`;
+}
+
+/** Personal best ghosts are always kept locally too, whatever the leaderboard is. */
+export function loadPersonalGhost(track: string, player = playerId()): Ghost | null {
+  const g = read<unknown>(browserKv, personalKey(track, player));
   return isGhost(g) ? g : null;
 }
 
-export function savePersonalGhost(ghost: Ghost): void {
-  write(browserKv, `f1td.tt.pb.${ghost.track}`, ghost);
+export function savePersonalGhost(ghost: Ghost, player = playerId()): void {
+  write(browserKv, personalKey(ghost.track, player), ghost);
 }

@@ -2,6 +2,8 @@ import { ClientDriver, GameScreen, HostDriver, PracticeDriver, type GameDriver }
 import { TimeTrialDriver } from './app/timeTrial';
 import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
+import { accounts } from './net/accounts';
+import { gameAudio } from './audio/sound';
 import { recommendedStartTyre } from './sim/strategy';
 import { Keyboard, Mouse } from './game/input';
 import { ClientGame } from './net/client';
@@ -51,7 +53,16 @@ function home(): void {
 }
 
 function welcome(joining: boolean): void {
-  showWelcome({ joining, onJoin: join, onHost: (n) => host(n, false), onBots: (n) => host(n, true), onPractice: practice, onTimeTrial: timeTrial });
+  showWelcome({
+    joining,
+    onJoin: join,
+    onHost: (n) => host(n, false),
+    onBots: (n) => host(n, true),
+    onPractice: practice,
+    onTimeTrial: timeTrial,
+    accounts: accounts(),
+    onBack: () => welcome(joining),
+  });
 }
 
 function runGame(
@@ -307,6 +318,17 @@ async function join(name: string): Promise<void> {
     clearInterval(watch);
     client.close();
   };
+}
+
+// Browsers only allow sound once the player has clicked or pressed a key.
+for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, () => gameAudio().unlock(), { capture: true });
+// A remembered sign-in may have ended (signed out elsewhere): check, and refresh the start screen.
+const service = accounts();
+const remembered = service?.account();
+if (service && remembered) {
+  void service.verify().then(() => {
+    if (service.account() !== remembered && !game && document.querySelector('.account-bar')) welcome(joinCode !== null);
+  });
 }
 
 welcome(joinCode !== null);

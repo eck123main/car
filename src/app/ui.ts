@@ -3,9 +3,11 @@ import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
 import { ALL_COMPOUNDS, COMPOUNDS, type Compound } from '../sim/tyres';
 import { formatLapTime } from '../render/hud';
 import { playerId, type Leaderboard } from '../net/leaderboard';
+import { passwordOk, passwordRules, usernameProblem, type AccountService } from '../net/accounts';
 import { pingColor, pingText } from '../render/ping';
 import type { RaceSettings, Standing, Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
+import { settings, updateSettings, type Settings } from './settings';
 
 const root = document.getElementById('ui') as HTMLDivElement;
 
@@ -57,6 +59,29 @@ function controlsHelp(): HTMLElement {
   return box;
 }
 
+/** Sound and HUD options; changes apply (and are remembered) straight away. */
+function settingsPanel(): HTMLElement {
+  const box = el('div', { class: 'settings' });
+  const s = settings();
+  const check = (label: string, key: keyof Omit<Settings, 'volume'>) => {
+    const input = el('input', { type: 'checkbox', checked: s[key], onchange: () => updateSettings({ [key]: input.checked }) });
+    box.append(el('span', {}, label), input);
+  };
+  check('Sound', 'sound');
+  const volume = el('input', {
+    type: 'range',
+    min: '0',
+    max: '100',
+    value: String(Math.round(s.volume * 100)),
+    oninput: () => updateSettings({ volume: Number(volume.value) / 100 }),
+  });
+  box.append(el('span', {}, 'Volume'), volume);
+  check('Engine, wind and tyre sounds', 'engine');
+  check('DRS, ERS and start light beeps', 'effects');
+  check('Big live delta (top centre)', 'delta');
+  return box;
+}
+
 const NAME_KEY = 'f1td.name';
 
 function savedName(): string {
@@ -82,12 +107,21 @@ export interface WelcomeActions {
   onBots: (name: string) => void;
   onPractice: (name: string) => void;
   onTimeTrial: (name: string) => void;
+  /** Accounts, if this build has a database. */
+  accounts: AccountService | null;
+  /** Show this screen again (after signing in or out). */
+  onBack: () => void;
 }
 
-/** First screen: enter a name, then join (from an invite link), host, or practise. */
+/** First screen: enter a name (or sign in), then join (from an invite link), host, or practise. */
 export function showWelcome(a: WelcomeActions): void {
+  const account = a.accounts?.account() ?? null;
   const name = el('input', { type: 'text', class: 'big', placeholder: 'Your name', maxLength: 16, value: savedName() });
   const go = (fn: (n: string) => void) => () => {
+    if (account) {
+      fn(account.username);
+      return;
+    }
     const n = name.value.trim();
     if (!n) {
       name.focus();
@@ -105,6 +139,24 @@ export function showWelcome(a: WelcomeActions): void {
         el('button', { onclick: go(a.onPractice) }, 'Practice solo'),
       ];
   name.addEventListener('keydown', (e) => e.key === 'Enter' && buttons[0].click());
+  const service = a.accounts;
+  let accountBar: HTMLElement | null = null;
+  if (service && account) {
+    accountBar = el(
+      'div',
+      { class: 'account-bar' },
+      el('span', {}, 'Signed in as ', el('b', {}, account.username)),
+      el('button', { class: 'small', onclick: () => showAccount(service, a.onBack) }, 'Account'),
+    );
+  } else if (service) {
+    accountBar = el(
+      'div',
+      { class: 'account-bar' },
+      el('span', { class: 'muted' }, 'Playing as a guest'),
+      el('button', { class: 'small', onclick: () => showSignIn(service, a.onBack) }, 'Sign in'),
+      el('button', { class: 'small', onclick: () => showSignUp(service, a.onBack) }, 'Create account'),
+    );
+  }
   show(
     el(
       'div',
@@ -113,15 +165,226 @@ export function showWelcome(a: WelcomeActions): void {
         'div',
         { class: 'card' },
         el('h1', { innerHTML: 'F1 <span>Top-Down</span>' }),
-        el('p', { class: 'sub' }, a.joining ? "You've been invited to a race." : 'Race your friends. Share a link, no sign-up.'),
-        name,
+        el('p', { class: 'sub' }, a.joining ? "You've been invited to a race." : 'Race your friends. Share a link, no sign-up needed.'),
+        accountBar,
+        account ? null : name,
         el('div', { class: 'buttons' }, ...buttons),
+        el('details', {}, el('summary', {}, 'Settings'), settingsPanel()),
         el('h2', {}, 'Controls'),
         controlsHelp(),
       ),
     ),
   );
-  name.focus();
+  if (!account) name.focus();
+}
+
+/** A labelled input for the account forms. */
+function field(label: string, input: HTMLInputElement): HTMLElement {
+  return el('label', { class: 'field' }, el('span', {}, label), input);
+}
+
+/** Live checklist of the password rules. Returns whether they're all met. */
+function rulesList(password: HTMLInputElement, confirm: HTMLInputElement): { box: HTMLElement; update: () => boolean } {
+  const box = el('ul', { class: 'rules' });
+  const update = () => {
+    const rules = [...passwordRules(password.value), { text: 'Both passwords match', ok: password.value !== '' && password.value === confirm.value }];
+    box.replaceChildren(...rules.map((r) => el('li', { class: r.ok ? 'ok' : '' }, `${r.ok ? '✓' : '•'} ${r.text}`)));
+    return rules.every((r) => r.ok);
+  };
+  update();
+  return { box, update };
+}
+
+/** An account form: runs `submit`, showing its error if it fails. */
+function accountForm(button: HTMLButtonElement, error: HTMLElement, submit: () => Promise<void>, ...children: (Node | null)[]): HTMLFormElement {
+  return el(
+    'form',
+    {
+      onsubmit: async (e: Event) => {
+        e.preventDefault();
+        if (button.disabled) return;
+        button.disabled = true;
+        error.textContent = '';
+        try {
+          await submit();
+        } catch (err) {
+          error.textContent = (err as Error).message;
+          button.disabled = false;
+        }
+      },
+    },
+    ...children,
+  );
+}
+
+function card(title: string, sub: string, ...children: (Node | null)[]): HTMLElement {
+  return el('div', { class: 'screen' }, el('div', { class: 'card' }, el('h1', {}, title), el('p', { class: 'sub' }, sub), ...children));
+}
+
+/** Sign in with a username and password. */
+export function showSignIn(service: AccountService, onDone: () => void): void {
+  const user = el('input', { type: 'text', autocomplete: 'username', maxLength: 16, required: true });
+  const pass = el('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const error = el('p', { class: 'error' });
+  const submit = el('button', { class: 'primary', type: 'submit' }, 'Sign in');
+  const form = accountForm(
+    submit,
+    error,
+    async () => {
+      await service.signIn(user.value.trim(), pass.value);
+      onDone();
+    },
+    field('Username', user),
+    field('Password', pass),
+    error,
+    el('div', { class: 'buttons' }, submit, el('button', { type: 'button', onclick: onDone }, 'Back')),
+  );
+  show(
+    card(
+      'Sign in',
+      'Your time trial laps are saved under your account, on any device.',
+      form,
+      el('p', { class: 'muted' }, "Forgot your password? Accounts have no email, so it can't be reset. You can make a new account."),
+    ),
+  );
+  user.focus();
+}
+
+/** Make an account: username and password (with rules), then a reminder to save the password. */
+export function showSignUp(service: AccountService, onDone: () => void): void {
+  const user = el('input', { type: 'text', autocomplete: 'username', maxLength: 16, required: true, value: savedName() });
+  const pass = el('input', { type: 'password', autocomplete: 'new-password', required: true });
+  const confirm = el('input', { type: 'password', autocomplete: 'new-password', required: true });
+  const userNote = el('p', { class: 'muted' });
+  const error = el('p', { class: 'error' });
+  const submit = el('button', { class: 'primary', type: 'submit' }, 'Create account');
+  const rules = rulesList(pass, confirm);
+  const check = () => {
+    const problem = usernameProblem(user.value.trim());
+    userNote.textContent = problem && user.value ? `Username: ${problem}` : '';
+    submit.disabled = !rules.update() || problem !== null;
+  };
+  for (const i of [user, pass, confirm]) i.addEventListener('input', check);
+  check();
+  const form = accountForm(
+    submit,
+    error,
+    async () => {
+      const acc = await service.signUp(user.value.trim(), pass.value);
+      showSavePassword(acc.username, pass.value, onDone);
+    },
+    field('Username', user),
+    userNote,
+    field('Password', pass),
+    field('Confirm password', confirm),
+    rules.box,
+    error,
+    el('div', { class: 'buttons' }, submit, el('button', { type: 'button', onclick: onDone }, 'Back')),
+  );
+  show(card('Create account', 'Just a username and a password, no email. Your username is your name on the leaderboard.', form));
+  user.focus();
+}
+
+/**
+ * Shown right after a password is set: it can't be reset, so the player has to confirm they
+ * saved it before going on.
+ */
+function showSavePassword(username: string, password: string, onDone: () => void): void {
+  const shown = el('input', { type: 'password', readOnly: true, value: password });
+  const reveal = el(
+    'button',
+    {
+      type: 'button',
+      onclick: () => {
+        shown.type = shown.type === 'password' ? 'text' : 'password';
+        reveal.textContent = shown.type === 'password' ? 'Show' : 'Hide';
+      },
+    },
+    'Show',
+  );
+  const copy = el(
+    'button',
+    {
+      type: 'button',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(password);
+          copy.textContent = 'Copied';
+        } catch {
+          shown.type = 'text';
+          shown.select();
+        }
+      },
+    },
+    'Copy',
+  );
+  const cont = el('button', { class: 'primary', disabled: true, onclick: onDone }, 'Continue');
+  const saved = el('input', { type: 'checkbox', onchange: () => (cont.disabled = !saved.checked) });
+  show(
+    card(
+      'Save your password now',
+      `Account: ${username}`,
+      el(
+        'div',
+        { class: 'warn' },
+        el('b', {}, 'Important: '),
+        'accounts have no email, so a forgotten password can NOT be reset or recovered. ' +
+          'Write it down or save it in your password manager before you go on.',
+      ),
+      el('div', { class: 'invite', style: 'margin-top:14px' }, shown, reveal, copy),
+      el('label', { class: 'confirm' }, saved, 'I have saved my password somewhere safe'),
+      el('div', { class: 'buttons' }, cont),
+    ),
+  );
+}
+
+/** Signed in: change the password or sign out. */
+export function showAccount(service: AccountService, onDone: () => void): void {
+  const acc = service.account();
+  if (!acc) {
+    onDone();
+    return;
+  }
+  // Hidden, so a password manager knows which account the new password is for.
+  const user = el('input', { type: 'text', autocomplete: 'username', value: acc.username, readOnly: true, style: 'display:none' });
+  const old = el('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const pass = el('input', { type: 'password', autocomplete: 'new-password', required: true });
+  const confirm = el('input', { type: 'password', autocomplete: 'new-password', required: true });
+  const error = el('p', { class: 'error' });
+  const submit = el('button', { class: 'primary', type: 'submit' }, 'Change password');
+  const rules = rulesList(pass, confirm);
+  const check = () => (submit.disabled = !rules.update() || old.value === '');
+  for (const i of [old, pass, confirm]) i.addEventListener('input', check);
+  check();
+  const form = accountForm(
+    submit,
+    error,
+    async () => {
+      if (!passwordOk(pass.value)) return;
+      await service.changePassword(old.value, pass.value);
+      showSavePassword(acc.username, pass.value, onDone);
+    },
+    user,
+    field('Current password', old),
+    field('New password', pass),
+    field('Confirm new password', confirm),
+    rules.box,
+    error,
+    el('div', { class: 'buttons' }, submit),
+  );
+  const signOut = async () => {
+    await service.signOut();
+    onDone();
+  };
+  show(
+    card(
+      acc.username,
+      'Time trial laps you set while signed in are saved under this name.',
+      el('h2', {}, 'Change password'),
+      form,
+      el('div', { class: 'buttons' }, el('button', { onclick: signOut }, 'Sign out'), el('button', { onclick: onDone }, 'Back')),
+    ),
+  );
 }
 
 export function showMessage(title: string, text: string, button?: { label: string; onClick: () => void }): void {
@@ -387,6 +650,8 @@ export function showPauseMenu(
           extra ? el('button', { onclick: extra.onClick }, extra.label) : null,
           el('button', { onclick: onLeave }, leaveLabel),
         ),
+        el('h2', {}, 'Settings'),
+        settingsPanel(),
         el('h2', {}, 'Controls'),
         controlsHelp(),
       ),
@@ -484,7 +749,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
     table.replaceChildren();
     status.textContent = 'Loading times…';
     const ghostOption = (value: string, text: string) => el('option', { value }, text);
-    ghost.replaceChildren(ghostOption('auto', 'Fastest player'), ghostOption('personal', 'Your best lap'), ghostOption('off', 'No ghost'));
+    ghost.replaceChildren(ghostOption('auto', 'Record lap (yours once you hold the record)'), ghostOption('personal', 'Your best lap'), ghostOption('off', 'No ghost'));
     try {
       const rows = await m.board.top(track, 10);
       if (shownFor !== track) return;

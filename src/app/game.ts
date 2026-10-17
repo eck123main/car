@@ -1,3 +1,4 @@
+import { gameAudio, loudestSurface } from '../audio/sound';
 import { Keyboard, LocalControls, type Mouse } from '../game/input';
 import type { ClientGame, Pose } from '../net/client';
 import { HostGame } from '../net/host';
@@ -6,7 +7,7 @@ import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
 import { drawCar } from '../render/drawCar';
-import { drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
+import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawOwnPing } from '../render/ping';
@@ -16,6 +17,7 @@ import { drawLights, drawNameTag, drawSessionBanner, drawSpectating, drawTower }
 import { TileCache } from '../render/tiles';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
+import { settings } from './settings';
 import { cycle, isSpectating, watchable } from './spectate';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import type { Track } from '../track/track';
@@ -295,7 +297,10 @@ export class GameScreen {
     if (this.controls.mouse?.active) this.canvas.style.cursor = 'crosshair';
     this.last = performance.now();
     window.addEventListener('resize', this.resize);
+    document.addEventListener('visibilitychange', this.updateMute);
     this.resize();
+    gameAudio().unlock();
+    this.updateMute();
     requestAnimationFrame(this.frame);
     // Hidden tabs get no animation frames, but the race must go on (especially on the
     // host, which runs it for everyone). A worker timer keeps simulating meanwhile.
@@ -310,12 +315,20 @@ export class GameScreen {
     this.ticker?.terminate();
     this.ticker = null;
     window.removeEventListener('resize', this.resize);
+    document.removeEventListener('visibilitychange', this.updateMute);
+    this.updateMute();
     this.canvas.style.cursor = '';
   }
+
+  /** Sound only while the game is on screen and not paused. */
+  private updateMute = (): void => {
+    gameAudio().setMuted(!this.running || this.paused || document.hidden);
+  };
 
   /** While paused the menu is open: inputs go idle but the race carries on (it's online). */
   setPaused(paused: boolean): void {
     this.paused = paused;
+    this.updateMute();
   }
 
   /** C: switch between the fixed map and a map that turns so you always drive up. */
@@ -520,7 +533,28 @@ export class GameScreen {
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);
     drawRacerStatus(ctx, me, w, h, advice);
-    drawTiming(ctx, me.timer, now, spectating ? null : this.driver.delta());
+    const delta = spectating ? null : this.driver.delta();
+    drawTiming(ctx, me.timer, now, delta);
+    if (settings().delta && delta !== null && me.timer.valid && me.timer.currentTime(now) !== null) drawBigDelta(ctx, delta, w, 52);
+    gameAudio().update(
+      {
+        carId: me.id,
+        x: me.car.x,
+        y: me.car.y,
+        speed: me.car.speed,
+        throttle: me.car.throttle,
+        brake: me.car.brake,
+        sliding: me.car.sliding,
+        surface: loudestSurface(me.car.surfaceFront, me.car.surfaceRear),
+        drsOpen: me.drsOpen,
+        drsAvailable: me.drsHint === 'press',
+        ersActive: me.ersActive,
+        limiter: me.input.limiter,
+        stopped: me.car.retired || me.frozen,
+        lights: session?.phase === 'lights' || session?.phase === 'grid' ? session.lights : 0,
+      },
+      dt,
+    );
     if (session) {
       drawSessionBanner(ctx, session, own ?? me, now, w);
       if (spectating) drawSpectating(ctx, me.name, me.color, w);
