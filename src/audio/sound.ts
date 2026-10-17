@@ -2,7 +2,8 @@ import { settings, onSettings, type Settings } from '../app/settings';
 import type { SurfaceType } from '../track/types';
 
 /**
- * Game sound, all made up on the fly with Web Audio (no sound files): an F1 V6 engine that
+ * Game sound. Recordings dropped into `public/sounds/` (listed in `sounds.json` there) are
+ * used when present; anything missing is made up on the fly with Web Audio: an F1 V6 engine that
  * follows speed, gear and throttle, wind, tyre squeal, kerb and gravel rumble, and the
  * cockpit beeps (DRS available / open / closed, start lights, pit limiter). It only ever
  * follows one car: the one the camera is on.
@@ -66,6 +67,46 @@ interface Loop<S extends AudioScheduledSourceNode = AudioBufferSourceNode> {
   gain: GainNode;
 }
 
+/** `public/sounds/sounds.json`: which files to use. Missing files are skipped. */
+interface SoundManifest {
+  /** Steady engine loops, each recorded at about these revs. */
+  engine?: { file: string; rpm: number }[];
+  drsOpen?: string;
+  drsClose?: string;
+  drsAvailable?: string;
+  light?: string;
+  shift?: string;
+  crash?: string;
+  squeal?: string;
+  wind?: string;
+}
+
+type OneShot = 'drsOpen' | 'drsClose' | 'drsAvailable' | 'light' | 'shift' | 'crash';
+
+interface EngineSample {
+  rpm: number;
+  src: AudioBufferSourceNode;
+  gain: GainNode;
+}
+
+/**
+ * How loud each engine loop plays at these revs (loops sorted by their revs): a crossfade
+ * between the two loops either side.
+ */
+export function engineMix(loopRpms: number[], rpm: number): number[] {
+  const w = loopRpms.map(() => 0);
+  if (w.length === 0) return w;
+  if (rpm <= loopRpms[0]) w[0] = 1;
+  else if (rpm >= loopRpms[w.length - 1]) w[w.length - 1] = 1;
+  else {
+    const i = loopRpms.findIndex((r) => r > rpm);
+    const f = (rpm - loopRpms[i - 1]) / (loopRpms[i] - loopRpms[i - 1]);
+    w[i - 1] = Math.cos((f * Math.PI) / 2);
+    w[i] = Math.sin((f * Math.PI) / 2);
+  }
+  return w;
+}
+
 const SURFACE_RANK: Record<SurfaceType, number> = { asphalt: 0, pit: 0, kerb: 1, grass: 2, gravel: 3, wall: 0 };
 
 /** The rougher of the two axles' surfaces (what you'd hear). */
@@ -93,6 +134,13 @@ export class GameAudio {
   private rumble!: Loop;
   private rumbleFilter!: BiquadFilterNode;
   private drsAir!: Loop;
+
+  // Recordings from public/sounds (empty until loaded, or if there are none).
+  private engineSamples: EngineSample[] = [];
+  private sampleFilter!: BiquadFilterNode;
+  private sampleGain!: GainNode;
+  private readonly oneShots = new Map<OneShot, AudioBuffer>();
+  private lastGear = 1;
 
   private rpm = IDLE_RPM;
   private last: SoundFrame | null = null;
@@ -192,7 +240,84 @@ export class GameAudio {
     airFilter.frequency.value = 3500;
     this.drsAir = this.noiseLoop(airFilter, this.fxBus);
 
+    this.sampleGain = ctx.createGain();
+    this.sampleGain.gain.value = 0;
+    this.sampleFilter = ctx.createBiquadFilter();
+    this.sampleFilter.type = 'lowpass';
+    this.sampleFilter.connect(this.sampleGain).connect(this.engineBus);
+
     this.applySettings(settings());
+    void this.loadSamples();
+  }
+
+  /** Use whatever recordings are in public/sounds. */
+  private async loadSamples(): Promise<void> {
+    const base = `${import.meta.env.BASE_URL}sounds/`;
+    let manifest: SoundManifest;
+    try {
+      const res = await fetch(`${base}sounds.json`);
+      if (!res.ok) return;
+      manifest = (await res.json()) as SoundManifest;
+    } catch {
+      return;
+    }
+    const load = async (file: string | undefined): Promise<AudioBuffer | null> => {
+      if (!file) return null;
+      try {
+        const res = await fetch(base + file);
+        // (The dev server answers a missing file with the page itself.)
+        if (!res.ok || res.headers.get('content-type')?.includes('text/html')) return null;
+        return await this.ctx!.decodeAudioData(await res.arrayBuffer());
+      } catch (err) {
+        console.warn(`Sound ${file}:`, err);
+        return null;
+      }
+    };
+    const ctx = this.ctx!;
+    const engines = await Promise.all((manifest.engine ?? []).map(async (e) => ({ rpm: e.rpm, buffer: await load(e.file) })));
+    for (const e of engines.filter((e) => e.buffer).sort((a, b) => a.rpm - b.rpm)) {
+      const src = ctx.createBufferSource();
+      src.buffer = e.buffer;
+      src.loop = true;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(gain).connect(this.sampleFilter);
+      src.start(0, Math.random() * e.buffer!.duration);
+      this.engineSamples.push({ rpm: e.rpm, src, gain });
+    }
+    for (const key of ['drsOpen', 'drsClose', 'drsAvailable', 'light', 'shift', 'crash'] as const) {
+      const b = await load(manifest[key]);
+      if (b) this.oneShots.set(key, b);
+    }
+    // Recorded loops replace the made-up noise.
+    for (const [file, loop] of [
+      [manifest.squeal, this.squeal],
+      [manifest.wind, this.wind],
+    ] as const) {
+      const b = await load(file);
+      if (!b) continue;
+      loop.src.stop();
+      const src = ctx.createBufferSource();
+      src.buffer = b;
+      src.loop = true;
+      src.connect(loop.gain);
+      src.start(0, Math.random() * b.duration);
+      loop.src = src;
+    }
+  }
+
+  /** Play a recording if there is one. Returns false if not (use the made-up sound). */
+  private play(key: OneShot, volume = 1): boolean {
+    const b = this.oneShots.get(key);
+    if (!b) return false;
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    const g = ctx.createGain();
+    g.gain.value = volume;
+    src.connect(g).connect(key === 'shift' ? this.engineBus : this.fxBus);
+    src.start();
+    return true;
   }
 
   private tone(type: OscillatorType, freq: number, out: AudioNode): Loop<OscillatorNode> {
@@ -250,10 +375,31 @@ export class GameAudio {
     this.oscs.forEach((o, i) => set(o.frequency, fire * ratios[i], 0.015));
     const on = f.stopped ? 0 : 1;
     const load = 0.35 + 0.65 * f.throttle;
-    set(this.engineGain.gain, on * load * (0.16 + 0.1 * (this.rpm / SHIFT_RPM)));
+    const recorded = this.engineSamples.length > 0;
+    const synth = recorded ? 0 : on;
+    set(this.engineGain.gain, synth * load * (0.16 + 0.1 * (this.rpm / SHIFT_RPM)));
     set(this.engineFilter.frequency, 500 + f.throttle * 2600 + (this.rpm / SHIFT_RPM) * 1500);
     set(this.turbo.src.frequency, 2200 + this.rpm * 0.25);
-    set(this.turbo.gain.gain, on * f.throttle * (this.rpm / SHIFT_RPM) ** 2 * 0.012);
+    set(this.turbo.gain.gain, synth * f.throttle * (this.rpm / SHIFT_RPM) ** 2 * 0.012);
+    if (recorded) {
+      // Recorded loops: sped up or slowed down to the revs, crossfaded between recordings.
+      const revs = Math.max(IDLE_RPM, this.rpm);
+      const mix = engineMix(
+        this.engineSamples.map((e) => e.rpm),
+        revs,
+      );
+      this.engineSamples.forEach((e, i) => {
+        set(e.src.playbackRate, Math.max(0.3, Math.min(2.5, revs / e.rpm)), 0.015);
+        set(e.gain.gain, mix[i]);
+      });
+      set(this.sampleGain.gain, on * (0.45 + 0.55 * f.throttle) * 0.8);
+      // Off the throttle the engine sounds duller.
+      set(this.sampleFilter.frequency, 1200 + f.throttle * 14000);
+    }
+    // Upshifts.
+    const gear = gearFor(kmh);
+    if (prev && gear > this.lastGear && f.throttle > 0.5 && !f.stopped) this.play('shift', 0.8);
+    this.lastGear = gear;
     // MGU-K whine while ERS deploys, pitched to the car's speed.
     set(this.ers.src.frequency, 900 + kmh * 9);
     set(this.ers.gain.gain, f.ersActive && !f.stopped ? 0.025 : 0, 0.08);
@@ -278,21 +424,25 @@ export class GameAudio {
 
     // Hits: a sudden loss of speed far beyond braking.
     const drop = this.lastSpeed - f.speed;
-    if (prev && !jumped && drop > 3 + 40 * dt) this.thud(Math.min(1, drop / 20));
+    if (prev && !jumped && drop > 3 + 40 * dt) {
+      const level = Math.min(1, drop / 20);
+      if (!this.play('crash', level)) this.thud(level);
+    }
     this.lastSpeed = f.speed;
 
     if (prev) {
-      if (f.drsAvailable && !prev.drsAvailable && !f.drsOpen) this.beeps([1760, 1760], 0.07, 0.09);
-      if (f.drsOpen && !prev.drsOpen) {
+      if (f.drsAvailable && !prev.drsAvailable && !f.drsOpen && !this.play('drsAvailable')) this.beeps([1760, 1760], 0.07, 0.09);
+      if (f.drsOpen && !prev.drsOpen && !this.play('drsOpen')) {
         this.clack(1);
         this.sweep(1000, 1700, 0.14);
       }
-      if (!f.drsOpen && prev.drsOpen) {
+      // No closing sound recorded: the opening one again, if there is one.
+      if (!f.drsOpen && prev.drsOpen && !this.play('drsClose') && !this.play('drsOpen', 0.7)) {
         this.clack(0.7);
         this.sweep(1500, 900, 0.12);
       }
       if (f.limiter !== prev.limiter) this.beeps(f.limiter ? [880, 1320] : [1320, 880], 0.06, 0.08);
-      if (f.lights > prev.lights) this.beeps([700], 0.18, 0.1);
+      if (f.lights > prev.lights && !this.play('light')) this.beeps([700], 0.18, 0.1);
     }
     this.last = f;
   }

@@ -1,0 +1,15 @@
+{
+  "engine": [
+    { "file": "engine-low.mp3", "rpm": 6000 },
+    { "file": "engine-mid.mp3", "rpm": 9000 },
+    { "file": "engine-high.mp3", "rpm": 12000 }
+  ],
+  "drsOpen": "drs-open.mp3",
+  "drsClose": "drs-close.mp3",
+  "drsAvailable": "drs-beep.mp3",
+  "light": "start-light.mp3",
+  "shift": "gear-shift.mp3",
+  "crash": "crash.mp3",
+  "squeal": "tyre-squeal.mp3",
+  "wind": "wind.mp3"
+}

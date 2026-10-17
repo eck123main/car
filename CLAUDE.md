@@ -98,7 +98,9 @@ so nobody else can post under an account (guests can't insert account ids). Gues
 
 ## Sound & settings
 
-- `src/audio/sound.ts`: all sound is synthesized with Web Audio (no files) and follows the car
+- `src/audio/sound.ts`: recordings in `public/sounds/` (named in `sounds.json`, see its README) are
+  used when present (engine loops pitched to the revs and crossfaded); anything missing is
+  synthesized with Web Audio. Sound follows the car
   the camera is on: V6 engine (revs from speed and gear, drop on upshifts, rev on the grid,
   pops on lift-off, limiter bounce), turbo, ERS whine, wind, tyre squeal, kerb/gravel rumble,
   hits, and beeps: DRS available, DRS flap open/close, pit limiter on/off, each start light.
