@@ -12,7 +12,7 @@ import { connectToHost, createHost } from './net/peer';
 import { OfflineTransport } from './net/transport';
 import { Track } from './track/track';
 import type { TrackDef } from './track/types';
-import { DEFAULT_TRACK, loadCustomTrack, TRACKS } from './tracks';
+import { DEFAULT_TRACK, loadCustomTrack, trackChoices, TRACKS } from './tracks';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const keyboard = new Keyboard(window);
@@ -28,7 +28,7 @@ function trackDef(id: string): TrackDef | undefined {
 }
 
 function trackList(): { id: string; name: string }[] {
-  const list = Object.entries(TRACKS).map(([id, t]) => ({ id, name: t.name }));
+  const list = trackChoices();
   const custom = loadCustomTrack();
   if (custom) list.push({ id: 'custom', name: `${custom.name} (from editor)` });
   return list;
@@ -165,6 +165,7 @@ function timeTrial(name: string): void {
     tracks: trackList().filter((t) => t.id !== 'custom' && t.id !== 'test'),
     track: TRACKS[last] ? last : DEFAULT_TRACK,
     board: leaderboard(),
+    signedIn: leaderboard().global && !!accounts()?.account(),
     onBack: home,
     onDrive: (id, ghost) => {
       try {

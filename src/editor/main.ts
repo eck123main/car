@@ -2,7 +2,7 @@ import { TrackGraphics } from '../render/trackGraphics';
 import { parseTrackDef, trackFromGeoJson, trackToJson } from '../track/io';
 import { Track } from '../track/track';
 import type { TrackDef } from '../track/types';
-import { CUSTOM_TRACK_KEY, TRACKS } from '../tracks';
+import { CUSTOM_TRACK_KEY, trackChoices, TRACKS } from '../tracks';
 
 type Pt = [number, number];
 
@@ -379,7 +379,7 @@ pitSide.addEventListener('change', () => {
 });
 
 const builtin = $<HTMLSelectElement>('builtin');
-for (const [id, t] of Object.entries(TRACKS)) builtin.add(new Option(t.name, id));
+for (const { id, name } of trackChoices()) builtin.add(new Option(name, id));
 builtin.addEventListener('change', () => {
   const t = TRACKS[builtin.value];
   if (t) setDef(structuredClone(t));
