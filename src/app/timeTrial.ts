@@ -1,8 +1,10 @@
 import type { Keyboard } from '../game/input';
+import { accounts } from '../net/accounts';
 import { loadPersonalGhost, playerId, savePersonalGhost, type Leaderboard, type TimeEntry } from '../net/leaderboard';
 import type { Pose } from '../net/client';
 import { formatLapTime } from '../render/hud';
-import { drawInvalidPrompt, drawLeaderboard, drawNotice, GHOST_COLOR } from '../render/timeTrialHud';
+import { drawInvalidPrompt, drawLeaderboard, drawMedals, drawNotice, GHOST_COLOR } from '../render/timeTrialHud';
+import { betterMedal, MEDAL_COLORS, MEDAL_NAMES, medalFor, medalTimes, type MedalTimes } from '../sim/medals';
 import { ghostDelta, ghostPose, ghostTrace, type Ghost } from '../sim/ghost';
 import type { SessionEvent } from '../sim/session';
 import { TimeTrial, type TimeTrialLap } from '../sim/timeTrial';
@@ -54,6 +56,8 @@ export class TimeTrialDriver implements GameDriver {
   private best: number | null = null;
   private lastRefresh = 0;
   private readonly unwatch: () => void;
+  /** This track's medal times (none on the test circuit). */
+  private readonly medals: MedalTimes | null;
 
   constructor(
     private readonly track: Track,
@@ -61,7 +65,10 @@ export class TimeTrialDriver implements GameDriver {
     name: string,
     private readonly store: Leaderboard,
     private ghostChoice: GhostChoice = 'auto',
+    /** Medals are only earned signed in, so they're kept with the account's laps. */
+    private readonly signedIn = store.global && !!accounts()?.account(),
   ) {
+    this.medals = medalTimes(trackId);
     this.tt = new TimeTrial(track, trackId, name, TIME_TRIAL_COLOR);
     this.tt.onLap = (lap) => this.lapDone(lap);
     const pb = loadPersonalGhost(trackId, this.player);
@@ -124,6 +131,9 @@ export class TimeTrialDriver implements GameDriver {
       this.notice = { text: `${formatLapTime(lap.time)} · +${off.toFixed(3)} to your best`, color: '#ffffff', until: now + 4 };
       return;
     }
+    const medalBefore = this.medals ? medalFor(this.best, this.medals) : null;
+    const medal = this.medals ? medalFor(lap.time, this.medals) : null;
+    const newMedal = betterMedal(medal, medalBefore) ? medal : null;
     this.best = lap.time;
     savePersonalGhost(lap.ghost, this.player);
     this.personal = this.load(lap.ghost);
@@ -133,6 +143,12 @@ export class TimeTrialDriver implements GameDriver {
     this.notice = isRecord
       ? { text: `NEW RECORD! ${formatLapTime(lap.time)}`, color: '#b84dff', until: now + 5 }
       : { text: `PERSONAL BEST ${formatLapTime(lap.time)} · P${position}`, color: '#2ecc40', until: now + 5 };
+    if (newMedal && this.signedIn) {
+      this.notice.text += ` · ${MEDAL_NAMES[newMedal].toUpperCase()} MEDAL!`;
+      if (!isRecord) this.notice.color = MEDAL_COLORS[newMedal];
+    } else if (newMedal) {
+      this.notice.text += ` · ${MEDAL_NAMES[newMedal]} time (sign in to earn medals)`;
+    }
     // Show it straight away; the saved board replaces this once it's back.
     this.board = [...this.board.filter((e) => e.player !== this.player), entry].sort((a, b) => a.time - b.time);
     // Beat the player whose ghost we chose: race the next one up instead (our own at the top).
@@ -201,7 +217,7 @@ export class TimeTrialDriver implements GameDriver {
   }
 
   drawOverlay(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-    drawLeaderboard(ctx, {
+    const bottom = drawLeaderboard(ctx, {
       rows: this.board,
       me: this.player,
       state: this.boardState,
@@ -209,6 +225,7 @@ export class TimeTrialDriver implements GameDriver {
       trackName: this.track.name,
       ghost: this.ghostLabel(),
     });
+    if (this.medals) drawMedals(ctx, bottom + 8, { times: this.medals, best: this.best, signedIn: this.signedIn });
     const now = this.tt.world.time;
     const inv = this.tt.invalidAt;
     if (inv !== null && now - inv < PROMPT_TIME) drawInvalidPrompt(ctx, this.tt.invalidReason, width, height);

@@ -20,6 +20,8 @@ export interface Leaderboard {
   readonly global: boolean;
   /** Best lap per player on a track, fastest first. */
   top(track: string, limit?: number): Promise<TimeEntry[]>;
+  /** A player's best lap time on each of these tracks (tracks without one are left out). */
+  bestsOf(player: string, tracks: string[]): Promise<Record<string, number>>;
   /** A player's best lap as a ghost, if there is one. */
   ghostOf(track: string, player: string): Promise<Ghost | null>;
   /** Save a personal best lap with its ghost (so whoever holds the record has one). */
@@ -81,6 +83,15 @@ export class LocalLeaderboard implements Leaderboard {
     return (read<TimeEntry[]>(this.kv, `f1td.tt.${track}`) ?? []).slice(0, limit);
   }
 
+  async bestsOf(player: string, tracks: string[]): Promise<Record<string, number>> {
+    const out: Record<string, number> = {};
+    for (const track of tracks) {
+      const mine = read<TimeEntry[]>(this.kv, `f1td.tt.${track}`)?.find((e) => e.player === player);
+      if (mine) out[track] = mine.time;
+    }
+    return out;
+  }
+
   async ghostOf(track: string, player: string): Promise<Ghost | null> {
     const g = read<unknown>(this.kv, `f1td.tt.ghost.${track}.${player}`);
     return isGhost(g) ? g : null;
@@ -137,6 +148,13 @@ export class SupabaseLeaderboard implements Leaderboard {
       `time_trial_best?select=player,name,time,sectors&track=eq.${encodeURIComponent(track)}&order=time.asc&limit=${limit}`,
     );
     return rows.map((r) => ({ ...r, sectors: Array.isArray(r.sectors) ? r.sectors : [] }));
+  }
+
+  async bestsOf(player: string, tracks: string[]): Promise<Record<string, number>> {
+    const rows = await this.get<{ track: string; time: number }[]>(`time_trial_best?select=track,time&player=eq.${encodeURIComponent(player)}`);
+    const out: Record<string, number> = {};
+    for (const r of rows) if (tracks.includes(r.track)) out[r.track] = r.time;
+    return out;
   }
 
   async ghostOf(track: string, player: string): Promise<Ghost | null> {

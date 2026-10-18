@@ -83,6 +83,18 @@ alone: DRS free in every zone, ERS, no other cars.
   a new device. Drawn see-through in cyan (`GHOST_COLOR`; the player
   is red). The timing delta is against the ghost shown.
 
+- **Medals** (`src/sim/medals.ts`, times in `src/tracks/medals.json`): Author / Gold / Silver /
+  Bronze per track, like Trackmania. Gold/silver/bronze are author +4% / +10% / +20%. **Only
+  signed-in players earn them**: a medal is worked out from the account's best lap on the board
+  (`Leaderboard.bestsOf`), so it is kept with the account on any device, with no extra tables.
+  Guests see the times and "sign in to earn medals". Shown in the time trial menu (per track, a
+  count of all medals, medal next to each track name) and under the leaderboard in game (✓ won,
+  gap to the next one); a lap that wins a better medal says so. Times come from
+  `npx tsx scripts/medal-times.ts` (see its header: author = 0.80 x the Hard bot's lap, kept 1.5-3%
+  under the world record where there is one). It only fills in tracks without medals: once players
+  chase a time it shouldn't move. Note: good players are ~20% faster than the Hard bot (they carry
+  far more corner speed), so bot laps alone are not a pace reference.
+
 ## Accounts
 
 `src/net/accounts.ts`, schema `supabase/accounts.sql` (run after `time_trial.sql`). Username +
@@ -335,6 +347,10 @@ The timing tower is always shown (no Tab needed).
   (`Car.trackIndex`, `Track.query` hint; kept through resets and while held still), and
   cars on different stretches of the lap never collide (`onOtherStretches`: one goes over
   the bridge, the other under). Bots ignore cars on other stretches too.
+  **10 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
+  (0.6 scale, 18.5 m: its hairpin folded onto itself at 0.5), Nürburgring, Sepang, Istanbul Park,
+  Portimão, Paul Ricard (the GeoJSON ran backwards; reversed to the real clockwise direction),
+  Mugello, Estoril, Indianapolis (F1 road course). Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
   `scripts/import-track.ts` (see its header).
   For DRS zones on new tracks, use the full-throttle sections from

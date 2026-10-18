@@ -1,4 +1,5 @@
 import type { TimeEntry } from '../net/leaderboard';
+import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, nextMedal, type Medal, type MedalTimes } from '../sim/medals';
 import { formatLapTime } from './hud';
 
 /** Ghost cars are always this colour, so they never look like the player's own car. */
@@ -17,8 +18,8 @@ export interface BoardView {
 
 const ROWS_SHOWN = 10;
 
-/** Time trial leaderboard, left side under the timing panel. */
-export function drawLeaderboard(ctx: CanvasRenderingContext2D, v: BoardView): void {
+/** Time trial leaderboard, left side under the timing panel. Returns where it ends (y). */
+export function drawLeaderboard(ctx: CanvasRenderingContext2D, v: BoardView): number {
   const x = 20;
   let y = 190;
   const w = 280;
@@ -79,6 +80,75 @@ export function drawLeaderboard(ctx: CanvasRenderingContext2D, v: BoardView): vo
     ctx.fillStyle = '#ffd400';
     ctx.fillText(`Next: ${target.name.slice(0, 10)} ${formatLapTime(target.time)}`, x + w - 12, y + 20);
     ctx.textAlign = 'left';
+  }
+  return y + 44;
+}
+
+export interface MedalView {
+  times: MedalTimes;
+  /** Our best lap on this track. */
+  best: number | null;
+  /** Only signed-in players earn medals. */
+  signedIn: boolean;
+}
+
+/** A medal: a disc in its colour, filled when won. */
+export function drawMedalIcon(ctx: CanvasRenderingContext2D, medal: Medal, x: number, y: number, r: number, won: boolean): void {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.lineWidth = 2;
+  if (won) {
+    ctx.fillStyle = MEDAL_COLORS[medal];
+    ctx.fill();
+  } else {
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = MEDAL_COLORS[medal];
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** The track's medal times under the leaderboard: which are won, and how far off the next one is. */
+export function drawMedals(ctx: CanvasRenderingContext2D, top: number, v: MedalView): void {
+  const x = 20;
+  const w = 280;
+  const rowH = 20;
+  const h = 32 + MEDALS.length * rowH + (v.signedIn ? 6 : 22);
+  ctx.fillStyle = 'rgba(10,10,14,0.7)';
+  ctx.beginPath();
+  ctx.roundRect(x, top, w, h, 8);
+  ctx.fill();
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('MEDALS', x + 12, top + 22);
+  const have = v.signedIn ? medalFor(v.best, v.times) : null;
+  const next = v.signedIn ? nextMedal(v.best, v.times) : null;
+  let y = top + 30;
+  for (const m of MEDALS) {
+    const won = have !== null && MEDALS.indexOf(m) >= MEDALS.indexOf(have);
+    drawMedalIcon(ctx, m, x + 20, y + rowH / 2, 6, won);
+    ctx.textAlign = 'left';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillStyle = won ? MEDAL_COLORS[m] : '#ccc';
+    ctx.fillText(MEDAL_NAMES[m], x + 34, y + 15);
+    ctx.font = '13px ui-monospace, monospace';
+    ctx.fillText(formatLapTime(v.times[m]), x + 110, y + 15);
+    ctx.textAlign = 'right';
+    if (won) {
+      ctx.fillText('✓', x + w - 12, y + 15);
+    } else if (m === next && v.best !== null) {
+      // How far off the next medal our best is.
+      ctx.fillStyle = '#ffd400';
+      ctx.fillText(`+${(v.best - v.times[m]).toFixed(3)}`, x + w - 12, y + 15);
+    }
+    y += rowH;
+  }
+  ctx.textAlign = 'left';
+  if (!v.signedIn) {
+    ctx.fillStyle = '#8a8d96';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('Sign in to earn medals', x + 12, y + 14);
   }
 }
 

@@ -59,6 +59,13 @@
       table.results th { text-align: left; font-size: 11px; color: #8a8d96; font-weight: 600; padding: 6px 6px; text-transform: uppercase; }
       table.results td { padding: 7px 6px; border-top: 1px solid #23242a; }
       table.results tr.me td { background: rgba(255,255,255,0.06); }
+      .medals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      @media (max-width: 560px) { .medals { grid-template-columns: repeat(2, 1fr); } }
+      .medal { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border: 1px solid #2c2d33; border-radius: 8px; color: #9a9da6; font-size: 12px; }
+      .medal i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--medal); opacity: 0.6; box-sizing: border-box; }
+      .medal b { color: #ddd; font-variant-numeric: tabular-nums; font-size: 14px; }
+      .medal.won { border-color: var(--medal); color: var(--medal); }
+      .medal.won i { background: var(--medal); opacity: 1; }
       .tyres { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 14px; }
       @media (max-width: 560px) { .tyres { grid-template-columns: repeat(2, 1fr); } }
       button.tyre { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; text-align: center; border: 2px solid #34363d; }

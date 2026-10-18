@@ -7,6 +7,7 @@ import { passwordOk, passwordRules, usernameProblem, type AccountService } from 
 import { pingColor, pingText } from '../render/ping';
 import type { RaceSettings, Standing, Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
+import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } from '../sim/medals';
 import { settings, updateSettings, type Settings } from './settings';
 
 const root = document.getElementById('ui') as HTMLDivElement;
@@ -729,6 +730,8 @@ export interface TimeTrialMenu {
   tracks: { id: string; name: string }[];
   track: string;
   board: Leaderboard;
+  /** Signed in: medals are earned (and shown as won). */
+  signedIn: boolean;
   /** Track id, and whose ghost to race (see GhostChoice). */
   onDrive: (track: string, ghost: string) => void;
   onBack: () => void;
@@ -737,15 +740,71 @@ export interface TimeTrialMenu {
 /** Time trial: pick a track, see its leaderboard, drive. */
 export function showTimeTrialMenu(m: TimeTrialMenu): void {
   const select = el('select', { style: 'width:100%' });
-  for (const t of m.tracks) select.append(el('option', { value: t.id, selected: t.id === m.track }, t.name));
+  const options = new Map<string, HTMLOptionElement>();
+  for (const t of m.tracks) {
+    const o = el('option', { value: t.id, selected: t.id === m.track }, t.name);
+    options.set(t.id, o);
+    select.append(o);
+  }
   const table = el('table', { class: 'results' });
   const status = el('p', { class: 'muted' });
   const ghost = el('select', { style: 'width:100%' });
+  const medalBox = el('div', { class: 'medals' });
+  const medalSummary = el('p', { class: 'muted' });
   const me = playerId();
+  /** Our best time per track (signed in only: guests don't earn medals). */
+  let bests: Record<string, number> = {};
+  const showMedals = () => {
+    const times = medalTimes(select.value);
+    const best = bests[select.value];
+    const won = m.signedIn && times ? medalFor(best, times) : null;
+    medalBox.replaceChildren(
+      ...(times
+        ? MEDALS.map((medal) => {
+            const have = won !== null && MEDALS.indexOf(medal) >= MEDALS.indexOf(won);
+            return el(
+              'div',
+              { class: `medal${have ? ' won' : ''}`, style: `--medal:${MEDAL_COLORS[medal]}` },
+              el('i', {}),
+              el('span', {}, MEDAL_NAMES[medal]),
+              el('b', {}, formatLapTime(times[medal])),
+            );
+          })
+        : []),
+    );
+    if (!m.signedIn) {
+      medalSummary.textContent = 'Sign in (on the start screen) to earn medals. They are kept with your account.';
+      return;
+    }
+    const counts = new Map<Medal, number>(MEDALS.map((x) => [x, 0]));
+    for (const t of m.tracks) {
+      const tt = medalTimes(t.id);
+      const got = tt ? medalFor(bests[t.id], tt) : null;
+      if (got) counts.set(got, counts.get(got)! + 1);
+    }
+    const yours = best === undefined ? 'No lap here yet.' : `Your best here: ${formatLapTime(best)}.`;
+    medalSummary.textContent = `${yours} Your medals: ${MEDALS.map((x) => `${counts.get(x)} ${MEDAL_NAMES[x]}`).join(' · ')}`;
+  };
+  if (m.signedIn) {
+    m.board
+      .bestsOf(me, m.tracks.map((t) => t.id))
+      .then((b) => {
+        bests = b;
+        // Each track's medal next to its name.
+        for (const t of m.tracks) {
+          const times = medalTimes(t.id);
+          const got = times ? medalFor(b[t.id], times) : null;
+          options.get(t.id)!.textContent = got ? `${t.name}  ·  ${MEDAL_NAMES[got]}` : t.name;
+        }
+        showMedals();
+      })
+      .catch((err) => console.warn(err));
+  }
   let shownFor = '';
   const load = async () => {
     const track = select.value;
     shownFor = track;
+    showMedals();
     table.replaceChildren();
     status.textContent = 'Loading times…';
     const ghostOption = (value: string, text: string) => el('option', { value }, text);
@@ -790,6 +849,9 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
             "Beat the times below and race the record holder's ghost.",
         ),
         select,
+        el('h2', {}, 'Medals'),
+        medalBox,
+        medalSummary,
         el('h2', {}, 'Ghost to race'),
         ghost,
         el('p', { class: 'muted' }, 'Press G while driving to switch ghost.'),
