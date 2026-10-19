@@ -37,7 +37,7 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 1. **Welcome → lobby**: opening an invite link shows a welcome screen; the player enters a
    name, gets a colour assigned automatically and joins the lobby. The lobby owner (host)
    picks track, laps, weather, qualifying on/off + release gap, mandatory stop, safety car,
-  tyre wear, no contact, then starts.
+   tyre wear, no contact, then starts.
 2. **Qualifying**: each player gets **one timed flying lap**. Fastest time takes pole.
    - All players are on track together but **ghosted (no car-to-car collisions)**.
    - Players are released **one at a time, 10–15 s apart** (configurable). Each player
