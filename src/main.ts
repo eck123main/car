@@ -4,6 +4,7 @@ import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTimeTr
 import { leaderboard } from './net/leaderboard';
 import { accounts } from './net/accounts';
 import { gameAudio } from './audio/sound';
+import type { GameMode } from './sim/session';
 import { recommendedStartTyre } from './sim/strategy';
 import { Keyboard, Mouse } from './game/input';
 import { ClientGame } from './net/client';
@@ -58,6 +59,7 @@ function welcome(joining: boolean): void {
     onJoin: join,
     onHost: (n) => host(n, false),
     onBots: (n) => host(n, true),
+    onParty: (n) => host(n, true, 'party'),
     onPractice: practice,
     onTimeTrial: timeTrial,
     accounts: accounts(),
@@ -189,12 +191,13 @@ function timeTrial(name: string): void {
 // ---------- Hosting
 
 /** Host a lobby. Offline: nobody can join (racing bots on your own, no internet needed). */
-async function host(name: string, offline: boolean): Promise<void> {
+async function host(name: string, offline: boolean, mode: GameMode = 'classic'): Promise<void> {
   if (!offline) showMessage('Creating lobby…', 'Connecting to the matchmaking server.');
   let hostGame: HostGame;
   try {
     const transport = offline ? new OfflineTransport() : await createHost();
     hostGame = new HostGame(transport, name, trackDef);
+    if (mode !== 'classic') hostGame.updateSettings({ mode });
     // A bots race starts with a few opponents ready to go.
     if (offline) for (const d of ['hard', 'medium', 'medium', 'easy', 'easy'] as const) hostGame.addBot(d);
     // Dev server only: the race is reachable from the browser console, for testing.

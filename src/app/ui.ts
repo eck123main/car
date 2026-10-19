@@ -111,6 +111,8 @@ export interface WelcomeActions {
   onJoin: (name: string) => void;
   onHost: (name: string) => void;
   onBots: (name: string) => void;
+  /** Party mode (item boxes) against bots. */
+  onParty: (name: string) => void;
   onPractice: (name: string) => void;
   onTimeTrial: (name: string) => void;
   /** Accounts, if this build has a database. */
@@ -141,6 +143,7 @@ export function showWelcome(a: WelcomeActions): void {
     : [
         el('button', { class: 'primary', onclick: go(a.onHost) }, 'Create lobby'),
         el('button', { onclick: go(a.onBots) }, 'Race against bots'),
+        el('button', { onclick: go(a.onParty) }, 'Party race (items)'),
         el('button', { onclick: go(a.onTimeTrial) }, 'Time trial'),
         el('button', { onclick: go(a.onPractice) }, 'Practice solo'),
       ];
