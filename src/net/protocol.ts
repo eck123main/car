@@ -1,14 +1,15 @@
 import type { TimerState } from '../game/lapTimer';
 import type { SafetyCarPhase, SafetyCarSnap } from '../sim/safetyCar';
 import type { Difficulty } from '../sim/ai/botDriver';
+import type { ItemKind } from '../sim/items';
 import type { PitPhase } from '../sim/pit';
-import type { PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
+import type { GameMode, PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
 import type { Compound } from '../sim/tyres';
 import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -68,6 +69,17 @@ export interface CarSnap {
   next: Compound;
   /** Last input sequence number from this car's player that the host has applied. */
   ack: number;
+  /** Party mode, only sent while there is something: item held, effects left (boost, rainbow, hooked; s), who hooked us, push (N). */
+  it?: ItemKind | null;
+  fx?: [number, number, number];
+  hookBy?: string | null;
+  push?: number;
+}
+
+/** Party mode: boxes that are gone for now (by index in placeItemBoxes) and rockets in flight [x, y, heading, speed]. */
+export interface ItemsSnap {
+  off: number[];
+  rockets: [number, number, number, number][];
 }
 
 export interface TimingSnap extends TimerState {
@@ -79,6 +91,7 @@ export interface TimingSnap extends TimerState {
 }
 
 export interface SessionSnap {
+  mode: GameMode;
   phase: SessionPhase;
   lights: number;
   raceStart: number;
@@ -121,7 +134,7 @@ export type HostMessage =
   | { t: 'reject'; reason: string }
   | { t: 'lobby'; lobby: LobbyState }
   | { t: 'start'; track: TrackDef; settings: RaceSettings; players: PlayerInfo[] }
-  | { t: 'snap'; time: number; cars: CarSnap[]; sc?: SafetyCarSnap }
+  | { t: 'snap'; time: number; cars: CarSnap[]; sc?: SafetyCarSnap; items?: ItemsSnap }
   | { t: 'state'; time: number; session: SessionSnap; timing: TimingSnap[] }
   | { t: 'events'; time: number; events: SessionEvent[] }
   /** Sent about once a second; the client answers with a pong to measure the round trip. */

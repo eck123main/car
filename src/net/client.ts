@@ -1,9 +1,10 @@
+import { placeItemBoxes, type ItemView } from '../sim/items';
 import type { SafetyCarSnap } from '../sim/safetyCar';
 import type { SessionEvent } from '../sim/session';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import { parseTrackDef } from '../track/io';
 import { Track } from '../track/track';
-import { PROTOCOL_VERSION, type CarSnap, type HostMessage, type LobbyState, type NetInfo, type SessionSnap } from './protocol';
+import { PROTOCOL_VERSION, type CarSnap, type HostMessage, type ItemsSnap, type LobbyState, type NetInfo, type SessionSnap } from './protocol';
 import { applyCarPhysics, applyCarStatus, applyTiming, packInput } from './snapshot';
 import type { Connection } from './transport';
 
@@ -40,6 +41,9 @@ export class ClientGame {
   /** Estimated host clock minus local clock (s). */
   private clockOffset: number | null = null;
   private snaps: { time: number; cars: Map<string, CarSnap>; sc?: SafetyCarSnap }[] = [];
+  /** Party mode: where the boxes are (worked out from the track, like the host does) and the latest item state. */
+  private boxLayout: { x: number; y: number }[] | null = null;
+  private items: { time: number; snap: ItemsSnap } | null = null;
   private pending: { seq: number; input: PlayerInput }[] = [];
   private outbox: { seq: number; input: PlayerInput }[] = [];
   private seq = 0;
@@ -152,6 +156,8 @@ export class ClientGame {
         this.world = new RaceWorld(this.track, { drsRule: 'race', wetness: 0 });
         for (const p of msg.players) this.world.addRacer(p.id, p.name, p.color);
         this.snaps = [];
+        this.boxLayout = null;
+        this.items = null;
         this.pending = [];
         this.latestOwn = null;
         this.clockOffset = null;
@@ -160,6 +166,7 @@ export class ClientGame {
       }
       case 'snap':
         this.onSnap(msg.time, msg.cars, msg.sc);
+        if (msg.items && (!this.items || msg.time > this.items.time)) this.items = { time: msg.time, snap: msg.items };
         break;
       case 'state':
         this.syncClock(msg.time);
@@ -219,6 +226,19 @@ export class ClientGame {
     } else {
       this.offset = { x: 0, y: 0 };
     }
+  }
+
+  /** Party mode: boxes and rockets to draw, drawn as far behind as the other cars. */
+  itemView(): ItemView | null {
+    if (this.session?.mode !== 'party' || !this.track) return null;
+    this.boxLayout ??= placeItemBoxes(this.track);
+    const snap = this.items?.snap;
+    const off = new Set(snap?.off ?? []);
+    const ahead = this.items ? this.serverTime() - INTERPOLATION_DELAY - this.items.time : 0;
+    return {
+      boxes: this.boxLayout.filter((_, i) => !off.has(i)),
+      rockets: (snap?.rockets ?? []).map(([x, y, h, v]) => ({ x: x + Math.cos(h) * v * ahead, y: y + Math.sin(h) * v * ahead, heading: h })),
+    };
   }
 
   /** Where to draw the safety car this frame (blended like the other cars), if it is out. */

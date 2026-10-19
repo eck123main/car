@@ -1,7 +1,8 @@
 import { GRID_MAX_TIME, type Session } from '../sim/session';
 import { Tyres, type Compound } from '../sim/tyres';
 import type { PlayerInput, Racer } from '../sim/world';
-import type { CarSnap, PackedInput, SessionSnap, TimingSnap } from './protocol';
+import type { ItemSystem } from '../sim/items';
+import type { CarSnap, ItemsSnap, PackedInput, SessionSnap, TimingSnap } from './protocol';
 
 /**
  * Round for sending. Full-precision numbers are ~18 characters of JSON each; millimetres and
@@ -46,11 +47,26 @@ export function carSnap(r: Racer, ack: number): CarSnap {
     limiter: r.input.limiter,
     next: r.input.nextTyre,
     ack,
+    ...itemFields(r),
+  };
+}
+
+/** Party mode car fields, only while there's something to send. */
+function itemFields(r: Racer): Partial<CarSnap> {
+  const s = r.items;
+  if (!s.held && s.boost <= 0 && s.star <= 0 && s.hooked <= 0) return {};
+  return { it: s.held, fx: [round(s.boost, 2), round(s.star, 2), round(s.hooked, 2)], hookBy: s.hookedBy, push: Math.round(r.car.push) };
+}
+
+export function itemsSnap(items: ItemSystem, time: number): ItemsSnap {
+  return {
+    off: items.boxes.flatMap((b, i) => (time < b.respawnAt ? [i] : [])),
+    rockets: items.rockets.map((m) => [round(m.x, 2), round(m.y, 2), round(m.heading, 4), round(m.speed, 1)]),
   };
 }
 
 const TYRE_ORDER: Compound[] = ['soft', 'medium', 'hard', 'inter', 'wet'];
-const FLAGS = ['drs', 'ers', 'limiter', 'reset', 'ready'] as const;
+const FLAGS = ['drs', 'ers', 'limiter', 'reset', 'ready', 'useItem'] as const;
 
 /** An input in a few bytes, for the 120-a-second stream from each player to the host. */
 export function packInput(seq: number, input: PlayerInput): PackedInput {
@@ -78,6 +94,7 @@ export function unpackInput(p: unknown): { seq: number; input: PlayerInput } | n
       limiter: flag('limiter'),
       reset: flag('reset'),
       ready: flag('ready'),
+      useItem: flag('useItem'),
       nextTyre: TYRE_ORDER[tyre] ?? 'medium',
     },
   };
@@ -102,6 +119,7 @@ export function applyCarPhysics(r: Racer, s: CarSnap): void {
   c.extraPower = s.power;
   c.speedLimit = s.limit;
   c.allowReverse = s.reverse;
+  c.push = s.push ?? 0;
 }
 
 /** Copy everything else the HUD shows. */
@@ -118,6 +136,9 @@ export function applyCarStatus(r: Racer, s: CarSnap): void {
   r.pit.phase = s.pit;
   r.pit.stopEnds = s.pitEnds;
   r.input = { ...r.input, limiter: s.limiter, nextTyre: s.next };
+  r.items.held = s.it ?? null;
+  [r.items.boost, r.items.star, r.items.hooked] = s.fx ?? [0, 0, 0];
+  r.items.hookedBy = s.hookBy ?? null;
 }
 
 export function timingSnap(session: Session, r: Racer): TimingSnap {
@@ -140,6 +161,7 @@ export function applyTiming(r: Racer, t: TimingSnap): void {
 
 export function sessionSnap(session: Session): SessionSnap {
   return {
+    mode: session.settings.mode,
     phase: session.phase,
     lights: session.lights,
     raceStart: session.raceStart,

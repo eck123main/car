@@ -69,6 +69,8 @@ export class Car {
   extraPower = 0;
   /** Pit limiter speed (m/s), or null when off. */
   speedLimit: number | null = null;
+  /** Party mode: a straight push (N) forwards (boost) or back (pulled by a hook), beyond the engine and tyres. */
+  push = 0;
   /** Holding the brake at a standstill reverses the car, except on the grid. */
   allowReverse = true;
 
@@ -215,6 +217,8 @@ export class Car {
     // --- Resistance: aero drag, rolling resistance and surface drag.
     let fxTotal = fx;
     let fyTotal = fy;
+    // A pull back only slows the car, never reverses it.
+    if (this.push > 0 || (this.push < 0 && vx > 5)) fxTotal += this.push;
     if (speed > 1e-3) {
       const drag = p.dragCoef * this.dragFactor * (1 + 0.35 * sides + 0.1 * dmg.frontWing) * v2;
       const surfaceDrag = surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed;

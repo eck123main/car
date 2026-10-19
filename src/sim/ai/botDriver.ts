@@ -1,5 +1,6 @@
 import { F1_CAR } from '../../physics/carParams';
 import type { Track } from '../../track/track';
+import { HOOK_RANGE } from '../items';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
 import { onOtherStretches } from '../collisions';
 import { safetyCarProfile, SC_SLOW_CAR } from '../safetyCar';
@@ -103,6 +104,9 @@ export class BotDriver {
   private defenceLateral: number | null = null;
   /** The one defensive move allowed on this straight has been made. */
   private defended = false;
+  /** Party mode: when we got the item we hold, and whether we pressed use last step. */
+  private itemSince = 0;
+  private usedLast = false;
 
   constructor(
     private readonly track: Track,
@@ -278,6 +282,9 @@ export class BotDriver {
     target *= 1 - Math.min(0.15, Math.abs(this.deviation) * 0.02);
     if (ctx.phase === 'qualifying' && me.timer.lapStart === null) target *= 0.85; // out-lap
     target = Math.min(target, speedCap);
+    // Boosted (party mode): ride it out on the straight rather than braking it away.
+    const boosted = me.items.boost > 0 || me.items.star > 0;
+    if (boosted && this.straightAhead(q.index, 40)) target = Math.max(target, speed + 1);
     const err = target - speed;
     const throttle = err > 0.3 ? 1 : err > -0.3 ? 0.4 : 0;
     // Never brake at a standstill: that would reverse.
@@ -287,7 +294,52 @@ export class BotDriver {
     const straight = Math.abs(this.line.curvature[q.index]) < 1 / 300 && speed > 35;
     const useErs = this.skill.ers && straight && throttle === 1 && (me.ers > 0.85 || me.drsOpen || this.attacking);
 
-    return { ...base, throttle, brake, steer, drs: true, ers: useErs };
+    const want = ctx.phase === 'race' && this.wantsItem(me, world, q.index);
+    const useItem = want && !this.usedLast;
+    this.usedLast = useItem;
+    return { ...base, throttle, brake, steer, drs: true, ers: useErs, useItem };
+  }
+
+  /** No real corner in the next `samples` track samples. */
+  private straightAhead(index: number, samples: number): boolean {
+    const n = this.track.samples.length;
+    for (let k = 0; k < samples; k++) if (Math.abs(this.line.curvature[(index + k) % n]) > 1 / 300) return false;
+    return true;
+  }
+
+  /** Party mode: is now a good moment for the item we hold? */
+  private wantsItem(me: Racer, world: RaceWorld, index: number): boolean {
+    const item = me.items.held;
+    if (!item) {
+      this.itemSince = world.time;
+      return false;
+    }
+    // Hold it a moment, like a person would.
+    if (world.time - this.itemSince < 1 + this.reaction * 4) return false;
+    const car = me.car;
+    switch (item) {
+      case 'star':
+        return true;
+      case 'boost':
+        return this.straightAhead(index, 60);
+      case 'hook': {
+        const mine = raceProgress(me, this.track.length);
+        return world.racers.some((o) => {
+          const gap = raceProgress(o, this.track.length) - mine;
+          return o !== me && !o.frozen && gap > 5 && gap < HOOK_RANGE;
+        });
+      }
+      case 'rocket':
+        // A car close ahead, almost dead in line with our nose.
+        return world.racers.some((o) => {
+          if (o === me || o.frozen) return false;
+          const dx = o.car.x - car.x;
+          const dy = o.car.y - car.y;
+          const ahead = dx * Math.cos(car.heading) + dy * Math.sin(car.heading);
+          const side = -dx * Math.sin(car.heading) + dy * Math.cos(car.heading);
+          return ahead > 8 && ahead < 90 && Math.abs(side) < 1.2 + ahead * 0.015;
+        });
+    }
   }
 
   /**

@@ -37,6 +37,8 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
       return null;
     case 'reset':
       return { text: e.note.toUpperCase(), color: '#ffffff', until };
+    case 'item':
+      return { text: e.text.toUpperCase(), color: '#ff66ff', until: now + 2.5 };
     case 'penalty':
       return { text: `+${e.penalty.seconds}s PENALTY: ${e.penalty.reason}`, color: '#ff4136', until: now + 5 };
     case 'safetyCar':

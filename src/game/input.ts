@@ -129,6 +129,7 @@ export class LocalControls {
       limiter: this.limiter,
       nextTyre: this.nextTyre,
       reset: this.keyboard.wasPressed('KeyR'),
+      useItem: this.keyboard.isDown(['KeyE']),
       ready: this.ready || this.keyboard.isDown(['Enter', 'NumpadEnter']),
     };
   }

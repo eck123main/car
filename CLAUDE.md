@@ -53,6 +53,29 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 6. **Results**: finishing order, gaps, fastest lap, penalties. The host can **Play again**
    (same lobby and settings, straight into a new weekend) or go back to the lobby.
 
+## Party mode
+
+Lobby setting **Mode: Party** (`RaceSettings.mode`, default `classic`): the normal race weekend
+plus Mario Kart style items (`src/sim/items.ts`, drawing `src/render/items.ts`).
+- **Boxes**: 2-4 rows across the track (3-5 boxes each), spread round the lap on the straightest
+  stretch near each share of the lap, clear of the start line and of places where another part of
+  the track is close (`placeItemBoxes`; clients work the layout out themselves). A box comes back
+  4 s after it is hit. You hold **one item**; driving through a box while holding one just breaks it.
+- **E** uses it (on the press). Odds by place (`itemOdds`): the leader only gets boost/rocket;
+  further back, more hooks and rainbows.
+- **Boost**: 1.5 s straight push (`Car.push`) and less drag, beats normal top speed.
+- **Rocket**: flies straight from the nose (car speed + 45 m/s, 4 s max); ends harmlessly in a
+  wall; a car it hits is **knocked out**: stopped, ghosted, and restarted on the centreline after
+  2 s (`Session.knockOut`, via the reset queue). Keeps any item it held.
+- **Hook**: pulls the next car up the road (within 250 m) back for 1.5 s, drawn as a green line.
+  Kept if nobody is in range.
+- **Rainbow**: 6 s, car flashes through the colours, a gentler boost, rockets and hooks don't
+  affect it, and any car it touches is knocked out.
+- Bots use them (`BotDriver.wantsItem`): rainbow at once, boost on a straight, rocket with a
+  car dead ahead within 90 m, hook with a car in reach. Items only work in the race phase.
+- Network: held item/effects/push in `CarSnap` (only when non-empty), boxes gone + rockets in
+  the snapshot (`ItemsSnap`), `useItem` input flag, toasts via `item` events.
+
 ## Time trial mode
 
 "Time trial" on the welcome screen (`src/app/timeTrial.ts`, rules in `src/sim/timeTrial.ts`).
@@ -196,6 +219,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
+| Use item (party mode) | **E** | Fires on the press |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 | Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |

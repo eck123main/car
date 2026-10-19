@@ -7,6 +7,7 @@ import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
 import { drawCar } from '../render/drawCar';
+import { drawHookLine, drawItemBoxes, drawItemSlot, drawRockets, rainbowColor } from '../render/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
@@ -19,6 +20,7 @@ import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { settings } from './settings';
 import { cycle, isSpectating, watchable } from './spectate';
+import type { ItemView } from '../sim/items';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import type { Track } from '../track/track';
 
@@ -54,6 +56,8 @@ export interface GameDriver {
   recoverAt(): number | null;
   /** Where to draw the safety car this frame, if it is out. */
   safetyCar(alpha: number): Pose | null;
+  /** Party mode: item boxes and rockets to draw. */
+  items?(): ItemView | null;
   /** Every player's connection to the host (online games). */
   net(): readonly NetInfo[];
   /** See-through cars to race against (time trial ghosts). */
@@ -174,6 +178,10 @@ export class HostDriver implements GameDriver {
     return { x: sc.prevX + (sc.x - sc.prevX) * alpha, y: sc.prevY + (sc.y - sc.prevY) * alpha, heading: sc.prevHeading + dh * alpha };
   }
   constructor(private readonly host: HostGame) {}
+  items() {
+    const s = this.host.session;
+    return s?.items ? s.items.view(s.world.time) : null;
+  }
   net() {
     return this.host.net;
   }
@@ -219,6 +227,9 @@ export class ClientDriver implements GameDriver {
   }
   safetyCar() {
     return this.client.session?.safetyCar ? this.client.safetyCarPose() : null;
+  }
+  items() {
+    return this.client.itemView();
   }
   world() {
     return this.client.world;
@@ -482,6 +493,8 @@ export class GameScreen {
     this.gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
     drawPitBoxes(ctx, world);
     const session = this.driver.session();
+    const items = this.driver.items?.() ?? null;
+    if (items) drawItemBoxes(ctx, items, this.driver.now());
     const ghosts = session?.phase === 'qualifying';
     // Time trial ghosts, under the real cars.
     for (const g of this.driver.ghostCars?.() ?? []) {
@@ -498,7 +511,8 @@ export class GameScreen {
       // Ghosts: everyone in qualifying, and cars parked after finishing (others pass through them).
       const parked = r.frozen && (session?.phase === 'race' || session?.phase === 'finished');
       ctx.globalAlpha = ((ghosts || parked) && r !== me) || passing.has(r.id) ? 0.45 : 1;
-      drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, r.color, {
+      const paint = r.items.star > 0 ? rainbowColor(this.driver.now(), r.id) : r.color;
+      drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, paint, {
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         rainLight: world.options.wetness >= 0.3,
@@ -506,6 +520,13 @@ export class GameScreen {
       });
       ctx.globalAlpha = 1;
       if (r !== me) drawNameTag(ctx, r.name, p.x, p.y, r.color);
+    }
+    if (items) {
+      drawRockets(ctx, items, this.driver.now());
+      for (const r of world.racers) {
+        const from = r.items.hookedBy ? poses.get(r.items.hookedBy) : undefined;
+        if (from && r.items.hooked > 0) drawHookLine(ctx, from, poses.get(r.id)!);
+      }
     }
     const sc = this.driver.safetyCar(alpha);
     if (sc) {
@@ -564,6 +585,7 @@ export class GameScreen {
       if (session.phase === 'lights' || session.phase === 'grid') drawLights(ctx, session.lights, w);
     }
     if (!spectating) drawPitStatus(ctx, world, me, w, advice);
+    if (session?.mode === 'party' && !spectating) drawItemSlot(ctx, me.items.held, w, now);
     drawToasts(ctx, this.toasts, now, w);
     this.driver.drawOverlay?.(ctx, w, h);
     // Our own ping, for players who joined (the host's is zero).

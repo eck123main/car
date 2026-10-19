@@ -3,6 +3,7 @@ import { Car, type DriverInput } from '../physics/car';
 import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
 import { resolveCollisions } from './collisions';
+import { applyItemEffects, newItemState, type ItemState } from './items';
 import { newPitState, PIT_SPEED_LIMIT, PIT_SPEEDING_PENALTY, updatePit, type PitEvent, type PitState } from './pit';
 import { type Compound, Tyres, tyreLife } from './tyres';
 
@@ -22,6 +23,8 @@ export interface PlayerInput extends DriverInput {
   reset?: boolean;
   /** On the grid: happy with the starting tyres, ready to go. */
   ready?: boolean;
+  /** Party mode: use the item you're holding (fires on the press). */
+  useItem?: boolean;
 }
 
 export const IDLE_INPUT: PlayerInput = {
@@ -94,6 +97,8 @@ export interface Racer {
   collisionWarnings: number;
   /** Recent track positions, oldest first (host only). */
   trail: TrailPoint[];
+  /** Party mode: the item held and effects running. */
+  items: ItemState;
 }
 
 export interface Penalty {
@@ -180,6 +185,7 @@ export class RaceWorld {
       frozen: false,
       collisionWarnings: 0,
       trail: [],
+      items: newItemState(),
     };
     this.racers.push(racer);
     return racer;
@@ -250,6 +256,7 @@ export class RaceWorld {
     r.penalties = [];
     r.collisionWarnings = 0;
     r.trail = [];
+    r.items = newItemState();
   }
 
   addPenalty(r: Racer, seconds: number, reason: string, events: WorldEvent[]): void {
@@ -287,6 +294,7 @@ export class RaceWorld {
     car.dragFactor = (r.drsOpen ? DRS_DRAG : 1) * (1 - SLIPSTREAM_MAX * r.slipstream);
     car.extraPower = r.ersActive ? ERS_POWER : 0;
     car.speedLimit = input.limiter ? PIT_SPEED_LIMIT : null;
+    applyItemEffects(r.items, car, dt);
 
     const x0 = car.x;
     const y0 = car.y;

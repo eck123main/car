@@ -161,6 +161,40 @@ describe('Online race', () => {
     expect(clientDrag).toBeLessThan(0.7);
   });
 
+  it('party mode: the client sees the boxes, its item and the rocket it fires', () => {
+    const { host, join, tick } = setup(0.05);
+    const c = join('Alice');
+    for (let i = 0; i < 20; i++) tick();
+    host.updateSettings({ mode: 'party', trackId: 'silverstone', qualifying: false, laps: 3 });
+    host.start();
+    for (let i = 0; i < 20; i++) tick();
+    let fired = false;
+    let sawRocket = false;
+    let sawItem = false;
+    let boxes = 0;
+    for (let t = 0; t < 15; t += DT) {
+      const session = host.session!;
+      const waiting = session.phase === 'grid' || session.phase === 'lights';
+      const mine = session.world.racer(c.id!)!;
+      // Hand the client a rocket once racing, and have it fire after it has seen it.
+      if (session.phase === 'race' && !fired && !mine.items.held) mine.items.held = 'rocket';
+      host.step(DT, { ...IDLE_INPUT, ready: true });
+      sawItem ||= c.me?.items.held === 'rocket';
+      const use = sawItem && !fired && t > 8;
+      c.step(DT, { ...(c.me && c.track ? botInput(c.track, c.me, { hold: waiting }) : IDLE_INPUT), ready: true, useItem: use });
+      if (use && session.items!.rockets.length > 0) fired = true;
+      c.flush();
+      tick();
+      const view = c.itemView();
+      boxes = Math.max(boxes, view?.boxes.length ?? 0);
+      sawRocket ||= (view?.rockets.length ?? 0) > 0;
+    }
+    expect(boxes).toBe(host.session!.items!.boxes.length);
+    expect(sawItem).toBe(true);
+    expect(fired).toBe(true);
+    expect(sawRocket).toBe(true);
+  });
+
   it('shows the safety car and its rules to a client', () => {
     const { host, join, tick } = setup(0.05);
     const c = join('Alice');

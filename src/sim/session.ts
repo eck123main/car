@@ -1,12 +1,16 @@
 import type { Track } from '../track/track';
+import { ItemSystem, KNOCKOUT_WAIT, newItemState, type ItemHit } from './items';
 import { SafetyCar, SC_LEAD, SC_SLOW_CAR } from './safetyCar';
 import { DRY_COMPOUNDS } from './tyres';
 import { penaltyTime, raceProgress, RaceWorld, type PlayerInput, type Racer, type WorldEvent } from './world';
 
 export type Weather = 'dry' | 'wet' | 'rain' | 'drying';
+/** 'classic': a normal F1 race. 'party': the same, plus Mario Kart style item boxes. */
+export type GameMode = 'classic' | 'party';
 
 /** Chosen by the lobby host. */
 export interface RaceSettings {
+  mode: GameMode;
   trackId: string;
   laps: number;
   qualifying: boolean;
@@ -24,6 +28,7 @@ export interface RaceSettings {
 }
 
 export const DEFAULT_SETTINGS: RaceSettings = {
+  mode: 'classic',
   trackId: 'silverstone',
   laps: 5,
   qualifying: true,
@@ -77,6 +82,8 @@ export interface Standing {
 export type SessionEvent =
   | WorldEvent
   | { kind: 'reset'; racerId: string; note: string }
+  /** Party mode: something an item did to (or for) this driver. */
+  | { kind: 'item'; racerId: string; text: string }
   | { kind: 'phase'; phase: SessionPhase }
   | { kind: 'finished'; racerId: string; position: number }
   /** Safety car out, coming in this lap, gone in (restart at the line), and racing again. */
@@ -135,6 +142,8 @@ export class Session {
   readonly ready = new Set<string>();
   /** The safety car, while it is on track. */
   safetyCar: SafetyCar | null = null;
+  /** Party mode: item boxes, held items and rockets. */
+  readonly items: ItemSystem | null;
   /**
    * Cars that may not overtake: everyone while the safety car is out, then each car until
    * it crosses the line at the restart.
@@ -159,6 +168,7 @@ export class Session {
     players: PlayerInfo[],
   ) {
     this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false, collisions: false });
+    this.items = settings.mode === 'party' ? new ItemSystem(track) : null;
     for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium');
     this.world.options.wetness = this.wetnessAt(0);
     this.phase = settings.qualifying ? 'qualifying' : 'grid';
@@ -332,6 +342,11 @@ export class Session {
       if (r.pit.phase !== 'out') this.lastInPits.set(r.id, now);
     }
     this.updateSafetyCar(dt, worldEvents, events);
+    if (this.items) {
+      for (const hit of this.items.step(this.world.racers, now, dt)) this.knockOut(hit, events);
+      for (const n of this.items.notes) events.push({ kind: 'item', ...n });
+      this.items.notes = [];
+    }
 
     const everyoneDone = this.world.racers.every((r) => this.finishTimes.has(r.id) || r.car.retired);
     // Everyone still running (lapped cars too) finishes the next time they cross the line;
@@ -634,6 +649,19 @@ export class Session {
     this.recovering.set(r.id, this.world.time + RESET_WAIT);
     r.frozen = true;
     events.push({ kind: 'reset', racerId: r.id, note: `Recovering: back on track in ${RESET_WAIT} s` });
+  }
+
+  /** Party mode: hit by a rocket or a rainbow car. The car stops and restarts after a moment. */
+  private knockOut(hit: ItemHit, events: SessionEvent[]): void {
+    const r = hit.victim;
+    if (this.recovering.has(r.id) || this.finishTimes.has(r.id)) return;
+    this.recovering.set(r.id, this.world.time + KNOCKOUT_WAIT);
+    r.frozen = true;
+    // Effects end; an item you were holding is kept.
+    r.items = { ...newItemState(), held: r.items.held };
+    const what = hit.how === 'rocket' ? 'rocket' : 'rainbow';
+    events.push({ kind: 'item', racerId: r.id, text: `Hit by ${hit.by.name}'s ${what}!` });
+    events.push({ kind: 'item', racerId: hit.by.id, text: `Your ${what} got ${r.name}!` });
   }
 
   private finishResets(events: SessionEvent[]): void {

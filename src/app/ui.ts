@@ -5,7 +5,12 @@ import { formatLapTime } from '../render/hud';
 import { playerId, type Leaderboard } from '../net/leaderboard';
 import { passwordOk, passwordRules, usernameProblem, type AccountService } from '../net/accounts';
 import { pingColor, pingText } from '../render/ping';
-import { SHORT_RACE_LAPS, type RaceSettings, type Standing, type Weather } from '../sim/session';
+import { SHORT_RACE_LAPS, type GameMode, type RaceSettings, type Standing, type Weather } from '../sim/session';
+
+const MODES: Record<GameMode, string> = {
+  classic: 'F1 race',
+  party: 'Party: item boxes (E to use)',
+};
 import type { RaceWorld } from '../sim/world';
 import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } from '../sim/medals';
 import { settings, updateSettings, type Settings } from './settings';
@@ -503,6 +508,8 @@ export function showLobby(v: LobbyView): void {
   const trackName = v.tracks.find((t) => t.id === s.trackId)?.name ?? s.trackId;
 
   if (v.isHost) {
+    const mode = el('select', { onchange: () => v.onSettings({ mode: mode.value as GameMode }) });
+    for (const [id, label] of Object.entries(MODES)) mode.add(new Option(label, id, false, id === s.mode));
     const track = el('select', { onchange: () => v.onSettings({ trackId: track.value }) });
     for (const t of v.tracks) track.add(new Option(t.name, t.id, false, t.id === s.trackId));
     const laps = el('input', {
@@ -522,6 +529,7 @@ export function showLobby(v: LobbyView): void {
     const ghost = el('input', { type: 'checkbox', checked: s.noContact, onchange: () => v.onSettings({ noContact: ghost.checked }) });
     const gap = el('select', { onchange: () => v.onSettings({ releaseGap: Number(gap.value) }) });
     for (const g of [10, 15]) gap.add(new Option(`${g} s`, String(g), false, g === s.releaseGap));
+    row('Mode', mode);
     row('Track', track);
     row('Laps', laps);
     row('Weather', weather);
@@ -532,6 +540,7 @@ export function showLobby(v: LobbyView): void {
     row(`Tyre wear (off under ${SHORT_RACE_LAPS} laps without a stop)`, wear);
     row('No contact (cars pass through)', ghost);
   } else {
+    row('Mode', MODES[s.mode] ?? MODES.classic);
     row('Track', trackName);
     row('Laps', String(s.laps));
     row('Weather', WEATHER[s.weather]);
