@@ -38,6 +38,7 @@ export function adviceFor(world: RaceWorld, r: Racer, session: SessionSnap | nul
     damage: r.car.damage,
     wetness: world.options.wetness,
     safetyCar: racing && session.safetyCar === 'deployed',
+    tyreWear: session?.tyreWear ?? true,
   });
 }
 

@@ -85,6 +85,10 @@ export interface SessionSnap {
   laps: number;
   /** The one-stop / two-compound rule applies this race. */
   mandatoryStop: boolean;
+  /** Tyres wear this race. */
+  tyreWear: boolean;
+  /** Cars pass through each other this race. */
+  noContact: boolean;
   wetness: number;
   standings: Standing[];
   quali: [string, QualiEntry][];

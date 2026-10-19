@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Track } from '../track/track';
 import { TRACKS } from '../tracks';
-import { Tyres } from './tyres';
+import { CLIFF, PUSHING_LOAD, Tyres, tyreLife } from './tyres';
 import { IDLE_INPUT, PIT_SPEED_LIMIT, RaceWorld, type PlayerInput, type Racer } from './world';
 
 const DT = 1 / 120;
@@ -56,18 +56,31 @@ describe('Tyres', () => {
     expect(t.grip(0)).toBeLessThan(half * 0.85);
   });
 
-  it('wear depends on how hard you drive', () => {
+  it('wear depends a little on how hard you drive', () => {
     const lap = (load: number, sliding = false, offTrack = false) => {
       const t = new Tyres('medium');
       t.update(2000, 2000, 0, load, sliding, offTrack);
       return t.wear;
     };
-    expect(lap(0.9)).toBeGreaterThan(lap(0.55) * 1.6); // pushing hard
-    expect(lap(0.3)).toBeLessThan(lap(0.55) * 0.75); // looking after them
-    expect(lap(0.55, true)).toBeGreaterThan(lap(0.55) * 2); // sliding / locking up
+    expect(lap(0)).toBeCloseTo(lap(PUSHING_LOAD) * 0.75); // looking after them saves 25%
+    expect(lap(0.55, true)).toBeGreaterThan(lap(0.55)); // sliding / locking up
     expect(lap(0.55, false, true)).toBeGreaterThan(lap(0.55)); // off the track
-    // A normal racing lap uses about one lap of the compound's life.
-    expect(lap(0.55)).toBeCloseTo(1 / 7, 1);
+    // Never more than 1.5x however badly you treat them.
+    expect(lap(1.2, true, true)).toBeLessThanOrEqual(lap(PUSHING_LOAD) * 1.5 + 1e-9);
+    // A lap at the limit uses exactly one lap of the listed life: mediums reach the cliff in 6.
+    expect(lap(PUSHING_LOAD)).toBeCloseTo(CLIFF / 6, 6);
+  });
+
+  it('tyres last a share of the race, but never less than 4 / 6 / 9 laps', () => {
+    expect([tyreLife('soft', 3), tyreLife('medium', 3), tyreLife('hard', 3)]).toEqual([4, 6, 9]);
+    expect(tyreLife('soft', null)).toBe(4);
+    expect(tyreLife('soft', 12)).toBe(6);
+    expect(tyreLife('medium', 12)).toBe(9);
+    expect(tyreLife('hard', 12)).toBeGreaterThan(12);
+    expect(tyreLife('soft', 12, false)).toBe(Infinity);
+    const t = new Tyres('soft');
+    t.update(1e6, 2000, 0, 1, true, true, Infinity);
+    expect(t.wear).toBe(0);
   });
 
   it('each compound wears at its own rate', () => {

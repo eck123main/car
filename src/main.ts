@@ -128,7 +128,9 @@ function openTyrePicker(g: GameScreen, driver: GameDriver): () => void {
         selected: g.controls.nextTyre,
         ready: s?.ready.includes(driver.meId) ?? false,
         endsIn: (s?.gridEndsAt ?? 0) - driver.now(),
-        recommended: recommendedStartTyre(wet, s?.laps ?? 5, s?.mandatoryStop ?? false),
+        recommended: recommendedStartTyre(wet, s?.laps ?? 5, s?.mandatoryStop ?? false, s?.tyreWear ?? true),
+        laps: s?.laps ?? 5,
+        tyreWear: s?.tyreWear ?? true,
         note: s?.mandatoryStop
           ? 'Dry race: you must also use a second dry compound at your pit stop.'
           : 'Pick the tyres you start the race on.',

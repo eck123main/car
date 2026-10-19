@@ -1,7 +1,5 @@
-import { COMPOUNDS, DRY_COMPOUNDS, type Compound } from './tyres';
+import { DRY_COMPOUNDS, tyreLife, type Compound } from './tyres';
 
-/** Pit before the tyres reach the wear cliff (75%), with a little margin. */
-const USABLE_LIFE = 0.75;
 const WORN = 0.7;
 const DAMAGED = 0.3;
 /** Under the safety car, tyres this worn are worth changing. */
@@ -23,6 +21,8 @@ export interface StrategyInput {
   wetness: number;
   /** The safety car is out: a stop costs far less time. */
   safetyCar?: boolean;
+  /** Tyres wear this race (default yes). */
+  tyreWear?: boolean;
 }
 
 export interface PitAdvice {
@@ -78,8 +78,9 @@ function mandatoryWindow(s: StrategyInput): [number, number] | null {
 
   // The second stint goes on the chosen tyres, or the most durable different compound.
   const next = s.nextTyre !== s.compound && DRY_COMPOUNDS.includes(s.nextTyre) ? s.nextTyre : s.compound === 'hard' ? 'medium' : 'hard';
-  const lifeNow = Math.floor(COMPOUNDS[s.compound].lifeLaps * USABLE_LIFE * (1 - s.wear));
-  const lifeNext = Math.floor(COMPOUNDS[next].lifeLaps * USABLE_LIFE);
+  const wear = s.tyreWear !== false;
+  const lifeNow = Math.floor(Math.min(s.laps, tyreLife(s.compound, s.laps, wear)) * (1 - s.wear / 0.75));
+  const lifeNext = Math.floor(Math.min(s.laps, tyreLife(next, s.laps, wear)));
   const lastAllowed = s.laps - 1;
   const latest = Math.min(lastAllowed, s.currentLap - 1 + Math.max(1, lifeNow));
   const earliest = Math.max(1, s.laps - lifeNext);
@@ -88,11 +89,11 @@ function mandatoryWindow(s: StrategyInput): [number, number] | null {
 }
 
 /** A sensible starting tyre for the weather and race length. */
-export function recommendedStartTyre(wetness: number, laps: number, mandatoryStop: boolean): Compound {
+export function recommendedStartTyre(wetness: number, laps: number, mandatoryStop: boolean, tyreWear = true): Compound {
   if (wetness >= 0.7) return 'wet';
   if (wetness >= 0.35) return 'inter';
   // With a compulsory stop, start on something quick and switch later.
   if (mandatoryStop) return laps <= 6 ? 'soft' : 'medium';
   // No stop needed: the fastest tyre that lasts the whole race.
-  return (DRY_COMPOUNDS.find((c) => COMPOUNDS[c].lifeLaps * USABLE_LIFE >= laps) ?? 'hard') as Compound;
+  return (DRY_COMPOUNDS.find((c) => tyreLife(c, laps, tyreWear) >= laps) ?? 'hard') as Compound;
 }

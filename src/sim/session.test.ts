@@ -196,4 +196,24 @@ describe('Grid and finish', () => {
     expect(slow.lapsDown).toBeGreaterThanOrEqual(1);
     expect(slow.position).toBe(3);
   }, 60_000);
+
+  it('wears tyres only when the host wants it and the race is long enough to matter', () => {
+    const wear = (settings: Partial<RaceSettings>) => {
+      const { session } = run({ qualifying: false, ...settings }, {}, 'race', 60);
+      return [session.tyreWear, session.world.options.tyreWear, session.world.options.raceLaps];
+    };
+    expect(wear({ laps: 8 })).toEqual([true, true, 8]);
+    expect(wear({ laps: 8, tyreWear: false })[0]).toBe(false);
+    // Under 5 laps: off unless there's a stop to make.
+    expect(wear({ laps: 4, mandatoryStop: false })[0]).toBe(false);
+    expect(wear({ laps: 4, mandatoryStop: true })[0]).toBe(true);
+    expect(wear({ laps: 4, mandatoryStop: true, weather: 'wet' })[0]).toBe(false);
+  });
+
+  it('lets cars pass through each other with no contact on, keeping the slipstream', () => {
+    const { session } = run({ qualifying: false, laps: 3, noContact: true }, {}, 'race', 60);
+    expect(session.world.options.collisions).toBe(false);
+    expect(session.world.options.slipstream).toBe(true);
+    expect(run({ qualifying: false, laps: 3 }, {}, 'race', 60).session.world.options.collisions).toBe(true);
+  });
 });

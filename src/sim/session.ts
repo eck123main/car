@@ -17,6 +17,10 @@ export interface RaceSettings {
   releaseGap: number;
   /** A big crash brings out the safety car. */
   safetyCar: boolean;
+  /** Tyres wear (always off in races under 5 laps without a mandatory stop). */
+  tyreWear: boolean;
+  /** Cars pass through each other in the race (slipstream and DRS still work). */
+  noContact: boolean;
 }
 
 export const DEFAULT_SETTINGS: RaceSettings = {
@@ -27,7 +31,12 @@ export const DEFAULT_SETTINGS: RaceSettings = {
   mandatoryStop: true,
   releaseGap: 10,
   safetyCar: true,
+  tyreWear: true,
+  noContact: false,
 };
+
+/** Races shorter than this with no stop to make are too short for tyre wear to matter. */
+export const SHORT_RACE_LAPS = 5;
 
 export interface PlayerInfo {
   id: string;
@@ -278,7 +287,9 @@ export class Session {
     });
     this.world.options.drsRule = 'race';
     this.world.options.slipstream = true;
-    this.world.options.collisions = true;
+    this.world.options.collisions = !this.settings.noContact;
+    this.world.options.raceLaps = this.settings.laps;
+    this.world.options.tyreWear = this.tyreWear;
     this.phaseStart = this.world.time;
   }
 
@@ -345,6 +356,16 @@ export class Session {
 
   private isDryRace(): boolean {
     return this.settings.weather === 'dry';
+  }
+
+  /** The two-compound rule applies this race. */
+  get mandatoryStop(): boolean {
+    return this.settings.mandatoryStop && this.isDryRace();
+  }
+
+  /** Do tyres wear this race? Off by the host, or in a short race with no stop to make. */
+  get tyreWear(): boolean {
+    return this.settings.tyreWear !== false && (this.settings.laps >= SHORT_RACE_LAPS || this.mandatoryStop);
   }
 
   /** Distance covered since the start: laps plus distance into the current lap. */

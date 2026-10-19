@@ -490,12 +490,14 @@ export class GameScreen {
       ctx.globalAlpha = 1;
       drawNameTag(ctx, g.label, g.x, g.y, g.color);
     }
+    // No contact: cars passing through each other turn see-through (yours too) while they overlap.
+    const passing = session?.noContact && session.phase !== 'qualifying' ? overlapping(world.racers, poses) : new Set<string>();
     // Draw other cars first so the local car is always on top.
     for (const r of [...world.racers.filter((r) => r !== me), me]) {
       const p = poses.get(r.id)!;
       // Ghosts: everyone in qualifying, and cars parked after finishing (others pass through them).
       const parked = r.frozen && (session?.phase === 'race' || session?.phase === 'finished');
-      ctx.globalAlpha = (ghosts || parked) && r !== me ? 0.45 : 1;
+      ctx.globalAlpha = ((ghosts || parked) && r !== me) || passing.has(r.id) ? 0.45 : 1;
       drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, r.color, {
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
@@ -579,4 +581,25 @@ function startTicker(onTick: () => void): Worker | null {
   } catch {
     return null;
   }
+}
+
+/** Cars whose bodies overlap another car's (or nearly), by their drawn poses. */
+function overlapping(racers: readonly Racer[], poses: ReadonlyMap<string, { x: number; y: number; heading: number }>): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i < racers.length; i++) {
+    for (let j = i + 1; j < racers.length; j++) {
+      const a = poses.get(racers[i].id)!;
+      const b = poses.get(racers[j].id)!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const along = Math.abs(dx * Math.cos(a.heading) + dy * Math.sin(a.heading));
+      const across = Math.abs(-dx * Math.sin(a.heading) + dy * Math.cos(a.heading));
+      const p = racers[i].car.params;
+      if (along < p.length + 0.5 && across < p.width + 0.4) {
+        out.add(racers[i].id);
+        out.add(racers[j].id);
+      }
+    }
+  }
+  return out;
 }

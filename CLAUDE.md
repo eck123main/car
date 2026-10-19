@@ -36,7 +36,8 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 
 1. **Welcome → lobby**: opening an invite link shows a welcome screen; the player enters a
    name, gets a colour assigned automatically and joins the lobby. The lobby owner (host)
-   picks track, laps, weather, qualifying on/off + release gap, mandatory stop, then starts.
+   picks track, laps, weather, qualifying on/off + release gap, mandatory stop, safety car,
+  tyre wear, no contact, then starts.
 2. **Qualifying**: each player gets **one timed flying lap**. Fastest time takes pole.
    - All players are on track together but **ghosted (no car-to-car collisions)**.
    - Players are released **one at a time, 10–15 s apart** (configurable). Each player
@@ -165,9 +166,18 @@ Top-down 2D car physics that feels like an F1 car:
   map.** Press **C** for the optional rotating view (the map turns so you always drive up),
   remembered between games. The rotating view must stay opt-in: a turning map is
   disorienting for some players and can cause motion sickness.
-- **Tyres**: **Soft / Medium / Hard / Intermediate / Wet** (`src/sim/tyres.ts`). Life in
-  laps (S 4, M 7, H 11, I 8, W 10, scaled to track length). Grip drops slowly with wear,
-  then sharply past 75% (the cliff). Rain tyres wear double on a dry track.
+- **Tyres**: **Soft / Medium / Hard / Intermediate / Wet** (`src/sim/tyres.ts`). Life (laps to
+  the 75% cliff, `tyreLife`) is a **share of the race** so every race length has a strategy:
+  S 50%, M 75%, H 110%, I 80%, W 100%, but **never under S 4 / M 6 / H 9 / I 6 / W 7.5 laps**
+  (also the life outside races). Dry grip S 1.025 / M 1.0 / H 0.975. Grip drops slowly with
+  wear, then sharply past the cliff. A lap at the limit (`PUSHING_LOAD`) wears exactly the
+  listed rate, so the life shown is what a fast player gets; gentle driving saves up to 25%,
+  sliding / going off cost a little (max 1.5x). Rain tyres wear double on a dry track.
+  **Balance** (`npx tsx scripts/tyre-strategy.ts`, test `tyreBalance.test.ts`): with the
+  two-compound rule all one-stop pairings are within ~0-3 s; without it the best no-stop
+  tyre wins (softs only in races of ~5 laps), as a stop costs 15-27 s.
+  **Host setting "Tyre wear"** (on by default); always off in races under 5 laps without a
+  mandatory stop (`Session.tyreWear`).
 - **Brake boards** (100 / 50 m) are drawn before slow corners that follow a fast stretch.
 - **[OPEN]** Fuel load / car getting lighter over the race? (Probably skip at first.)
 - **ERS boost** button with a battery meter (see Controls).
@@ -270,6 +280,10 @@ The timing tower is always shown (no Tab needed).
 
 - Cars collide with each other (oriented-box SAT + impulses with spin) and with walls.
   Car-to-car hits count 60% as hard as wall hits for damage. Off in qualifying (ghosts).
+- **No contact** (host setting, off by default): in the race, cars pass through each other (no
+  hits, damage or collision penalties); slipstream, DRS and the safety car still work. Cars
+  overlapping another one are drawn see-through (yours too) while they pass (`overlapping` in
+  `src/app/game.ts`).
 - **Carrying too much speed into a corner should end badly**: the car runs wide,
   off the track onto grass/gravel (which slows it hard and has little grip), and can
   end up in the wall.

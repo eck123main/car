@@ -1,11 +1,11 @@
 import type { LobbyState, NetInfo } from '../net/protocol';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
-import { ALL_COMPOUNDS, COMPOUNDS, type Compound } from '../sim/tyres';
+import { ALL_COMPOUNDS, COMPOUNDS, tyreLife, type Compound } from '../sim/tyres';
 import { formatLapTime } from '../render/hud';
 import { playerId, type Leaderboard } from '../net/leaderboard';
 import { passwordOk, passwordRules, usernameProblem, type AccountService } from '../net/accounts';
 import { pingColor, pingText } from '../render/ping';
-import type { RaceSettings, Standing, Weather } from '../sim/session';
+import { SHORT_RACE_LAPS, type RaceSettings, type Standing, type Weather } from '../sim/session';
 import type { RaceWorld } from '../sim/world';
 import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } from '../sim/medals';
 import { settings, updateSettings, type Settings } from './settings';
@@ -518,6 +518,8 @@ export function showLobby(v: LobbyView): void {
     const quali = el('input', { type: 'checkbox', checked: s.qualifying, onchange: () => v.onSettings({ qualifying: quali.checked }) });
     const stop = el('input', { type: 'checkbox', checked: s.mandatoryStop, onchange: () => v.onSettings({ mandatoryStop: stop.checked }) });
     const sc = el('input', { type: 'checkbox', checked: s.safetyCar, onchange: () => v.onSettings({ safetyCar: sc.checked }) });
+    const wear = el('input', { type: 'checkbox', checked: s.tyreWear, onchange: () => v.onSettings({ tyreWear: wear.checked }) });
+    const ghost = el('input', { type: 'checkbox', checked: s.noContact, onchange: () => v.onSettings({ noContact: ghost.checked }) });
     const gap = el('select', { onchange: () => v.onSettings({ releaseGap: Number(gap.value) }) });
     for (const g of [10, 15]) gap.add(new Option(`${g} s`, String(g), false, g === s.releaseGap));
     row('Track', track);
@@ -527,6 +529,8 @@ export function showLobby(v: LobbyView): void {
     row('Qualifying gap between cars', gap);
     row('Mandatory pit stop (dry)', stop);
     row('Safety car (after big crashes)', sc);
+    row(`Tyre wear (off under ${SHORT_RACE_LAPS} laps without a stop)`, wear);
+    row('No contact (cars pass through)', ghost);
   } else {
     row('Track', trackName);
     row('Laps', String(s.laps));
@@ -534,6 +538,8 @@ export function showLobby(v: LobbyView): void {
     row('Qualifying', s.qualifying ? `Yes, ${s.releaseGap} s apart` : 'No (grid in join order)');
     row('Mandatory pit stop', s.mandatoryStop ? 'Yes' : 'No');
     row('Safety car', s.safetyCar ? 'Yes' : 'No');
+    row('Tyre wear', s.tyreWear ? 'Yes' : 'No');
+    row('No contact', s.noContact ? 'Yes' : 'No');
   }
 
   const start = el('button', { class: 'primary', onclick: v.onStart }, 'Start');
@@ -670,6 +676,9 @@ export interface TyrePickerState {
   note: string;
   /** Names of drivers not ready yet. */
   waitingFor: string[];
+  /** Race length and whether tyres wear, for how long each set lasts. */
+  laps: number;
+  tyreWear: boolean;
 }
 
 /**
@@ -678,9 +687,12 @@ export interface TyrePickerState {
  */
 export function showTyrePicker(state: () => TyrePickerState, onPick: (c: Compound) => void, onReady: () => void): () => void {
   const cards = new Map<Compound, HTMLElement>();
+  const lives = new Map<Compound, HTMLElement>();
   const grid = el('div', { class: 'tyres' });
   for (const c of ALL_COMPOUNDS) {
     const info = COMPOUNDS[c];
+    const life = el('div', { class: 'muted' });
+    lives.set(c, life);
     const bars = (label: string, value: number) =>
       el('div', { class: 'tyre-bar' }, el('span', {}, label), el('i', { style: `width:${Math.round(value * 100)}%` }));
     const card = el(
@@ -688,9 +700,9 @@ export function showTyrePicker(state: () => TyrePickerState, onPick: (c: Compoun
       { class: 'tyre', onclick: () => onPick(c), title: `${info.name} (key ${ALL_COMPOUNDS.indexOf(c) + 1})` },
       el('div', { class: 'badge', style: `border-color:${info.color};color:${info.color}` }, info.letter),
       el('b', {}, info.name),
-      bars('Dry', info.dryGrip / 1.05),
-      bars('Wet', info.wetGrip / 1.05),
-      el('div', { class: 'muted' }, `Lasts ~${Math.round(info.lifeLaps * 0.75)} laps`),
+      bars('Dry', info.dryGrip / 1.025),
+      bars('Wet', info.wetGrip / 1.025),
+      life,
       el('div', { class: 'rec' }, 'Recommended'),
     );
     cards.set(c, card);
@@ -711,6 +723,10 @@ export function showTyrePicker(state: () => TyrePickerState, onPick: (c: Compoun
     for (const [c, card] of cards) {
       card.classList.toggle('selected', c === s.selected);
       card.classList.toggle('recommended', c === s.recommended);
+    }
+    for (const [c, life] of lives) {
+      const laps = tyreLife(c, s.laps, s.tyreWear);
+      life.textContent = !s.tyreWear ? 'No tyre wear' : laps >= s.laps ? 'Lasts the race' : `Lasts ~${Math.round(laps)} laps`;
     }
     note.textContent = s.note;
     ready.disabled = s.ready;

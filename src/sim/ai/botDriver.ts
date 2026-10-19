@@ -5,7 +5,7 @@ import { onOtherStretches } from '../collisions';
 import { safetyCarProfile, SC_SLOW_CAR } from '../safetyCar';
 import type { Session } from '../session';
 import { pitAdvice } from '../strategy';
-import { COMPOUNDS, DRY_COMPOUNDS, type Compound } from '../tyres';
+import { DRY_COMPOUNDS, tyreLife, type Compound } from '../tyres';
 import { IDLE_INPUT, raceProgress, type PlayerInput, type RaceWorld, type Racer } from '../world';
 import { racingLine, speedProfile, type RacingLine } from './racingLine';
 
@@ -37,6 +37,8 @@ export interface BotContext {
   raceStart: number;
   laps: number | null;
   mandatoryStop: boolean;
+  /** Tyres wear this race (default yes). */
+  tyreWear?: boolean;
   /** The safety car, if it's on track: where it is (race distance) and how fast it's going. */
   safetyCar?: { progress: number; speed: number; comingIn: boolean } | null;
   /** Cars that may not overtake (safety car out, or the restart before the line). */
@@ -50,7 +52,8 @@ export function botContext(session: Session): BotContext {
     phase: session.phase,
     raceStart: session.raceStart,
     laps: session.settings.laps,
-    mandatoryStop: session.settings.mandatoryStop && session.settings.weather === 'dry',
+    mandatoryStop: session.mandatoryStop,
+    tyreWear: session.tyreWear,
     safetyCar: sc ? { progress: sc.progress, speed: sc.speed, comingIn: sc.phase === 'inThisLap' } : null,
     noOvertaking: session.noOvertaking,
   };
@@ -168,6 +171,7 @@ export class BotDriver {
       damage: car.damage,
       wetness: world.options.wetness,
       safetyCar: ctx.phase === 'race' && !!ctx.safetyCar && !ctx.safetyCar.comingIn,
+      tyreWear: ctx.tyreWear,
     });
     const noOvertaking = ctx.phase === 'race' && (ctx.noOvertaking?.has(me.id) ?? false);
 
@@ -488,7 +492,7 @@ export class BotDriver {
     const used = new Set(me.compoundsUsed);
     // Second stint: a compound that lasts the distance and satisfies the two-compound rule.
     const options = DRY_COMPOUNDS.filter((c) => !(ctx.mandatoryStop && used.size === 1 && used.has(c)));
-    const lasting = options.filter((c) => COMPOUNDS[c].lifeLaps * 0.75 >= lapsLeft);
+    const lasting = options.filter((c) => tyreLife(c, ctx.laps, ctx.tyreWear !== false) >= lapsLeft);
     this.nextTyre = (lasting[0] ?? options[options.length - 1] ?? 'hard') as Compound;
     return this.nextTyre;
   }

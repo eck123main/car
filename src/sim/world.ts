@@ -4,7 +4,7 @@ import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
 import { resolveCollisions } from './collisions';
 import { newPitState, PIT_SPEED_LIMIT, PIT_SPEEDING_PENALTY, updatePit, type PitEvent, type PitState } from './pit';
-import { type Compound, Tyres } from './tyres';
+import { type Compound, Tyres, tyreLife } from './tyres';
 
 export { PIT_SPEED_LIMIT } from './pit';
 
@@ -123,6 +123,10 @@ export interface WorldOptions {
   collisions?: boolean;
   /** DRS off for everyone (safety car, and the lap after the restart). */
   drsDisabled?: boolean;
+  /** Race length, which sets how long tyres last (null/absent = not a race). */
+  raceLaps?: number | null;
+  /** Tyres wear (host setting; off in short races without a stop). */
+  tyreWear?: boolean;
 }
 
 export type WorldEvent = (
@@ -288,7 +292,8 @@ export class RaceWorld {
     const y0 = car.y;
     car.step(input, dt, this.track);
     const offTrack = ['grass', 'gravel'].includes(car.surfaceFront) || ['grass', 'gravel'].includes(car.surfaceRear);
-    r.tyres.update(Math.hypot(car.x - x0, car.y - y0), this.track.length, this.options.wetness, car.tyreLoad, car.sliding, offTrack);
+    const life = tyreLife(r.tyres.compound, this.options.raceLaps ?? null, this.options.tyreWear !== false);
+    r.tyres.update(Math.hypot(car.x - x0, car.y - y0), this.track.length, this.options.wetness, car.tyreLoad, car.sliding, offTrack, life);
 
     for (const e of r.timer.update(this.time, dt, car)) events.push({ ...e, racerId: r.id });
     this.updateDrs(r, prevS);
