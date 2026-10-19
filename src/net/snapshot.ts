@@ -54,15 +54,16 @@ export function carSnap(r: Racer, ack: number): CarSnap {
 /** Party mode car fields, only while there's something to send. */
 function itemFields(r: Racer): Partial<CarSnap> {
   const s = r.items;
-  if (!s.held && s.boost <= 0 && s.star <= 0 && s.hooked <= 0 && s.slip <= 0) return {};
-  return { it: s.held, fx: [round(s.boost, 2), round(s.star, 2), round(s.hooked, 2), round(s.slip, 2)], hookBy: s.hookedBy, push: Math.round(r.car.push) };
+  const fx = [s.boost, s.star, s.hooked, s.slip, s.shield, s.zap, s.magnet, s.ghost].map((v) => round(v, 2)) as NonNullable<CarSnap['fx']>;
+  if (!s.held && fx.every((v) => v <= 0)) return {};
+  return { it: s.held, n: s.charges, fx, hookBy: s.hookedBy, magTo: s.magnetTo, push: Math.round(r.car.push) };
 }
 
 export function itemsSnap(items: ItemSystem, time: number): ItemsSnap {
   return {
     off: items.boxes.flatMap((b, i) => (time < b.respawnAt ? [i] : [])),
-    rockets: items.rockets.map((m) => [round(m.x, 2), round(m.y, 2), round(m.heading, 4), round(m.speed, 1)]),
-    drops: items.drops.map((d) => [d.kind, round(d.x, 2), round(d.y, 2), round(d.heading, 3)]),
+    rockets: items.rockets.map((m) => [round(m.x, 2), round(m.y, 2), round(m.heading, 4), round(m.speed, 1), m.kind]),
+    drops: items.drops.map((d) => [d.kind, round(d.x, 2), round(d.y, 2), round(d.heading, 3), d.owner]),
   };
 }
 
@@ -138,8 +139,11 @@ export function applyCarStatus(r: Racer, s: CarSnap): void {
   r.pit.stopEnds = s.pitEnds;
   r.input = { ...r.input, limiter: s.limiter, nextTyre: s.next };
   r.items.held = s.it ?? null;
-  [r.items.boost, r.items.star, r.items.hooked, r.items.slip] = s.fx ?? [0, 0, 0, 0];
-  r.items.hookedBy = s.hookBy ?? null;
+  const s2 = r.items;
+  [s2.boost, s2.star, s2.hooked, s2.slip, s2.shield, s2.zap, s2.magnet, s2.ghost] = s.fx ?? [0, 0, 0, 0, 0, 0, 0, 0];
+  s2.charges = s.n ?? 0;
+  s2.hookedBy = s.hookBy ?? null;
+  s2.magnetTo = s.magTo ?? null;
 }
 
 export function timingSnap(session: Session, r: Racer): TimingSnap {

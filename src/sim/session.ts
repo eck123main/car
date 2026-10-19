@@ -1,5 +1,5 @@
 import type { Track } from '../track/track';
-import { ItemSystem, KNOCKOUT_WAIT, newItemState, type ItemHit } from './items';
+import { HIT_NAMES, ItemSystem, KNOCKOUT_WAIT, newItemState, type ItemHit } from './items';
 import { SafetyCar, SC_LEAD, SC_SLOW_CAR } from './safetyCar';
 import { DRY_COMPOUNDS } from './tyres';
 import { penaltyTime, raceProgress, RaceWorld, type PlayerInput, type Racer, type WorldEvent } from './world';
@@ -659,7 +659,7 @@ export class Session {
     r.frozen = true;
     // Effects end; an item you were holding is kept.
     r.items = { ...newItemState(), held: r.items.held };
-    const what = hit.how === 'star' ? 'rainbow' : hit.how === 'barrier' ? 'tyre barrier' : 'rocket';
+    const what = HIT_NAMES[hit.how];
     if (hit.by === r) {
       events.push({ kind: 'item', racerId: r.id, text: `Hit your own ${what}!` });
       return;

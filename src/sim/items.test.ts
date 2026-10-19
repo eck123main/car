@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Track } from '../track/track';
 import { REAL_TRACK_IDS, TRACKS } from '../tracks';
 import { BotDriver, botContext } from './ai/botDriver';
-import { BOX_RESPAWN, HOOK_TIME, ItemSystem, itemOdds, placeItemBoxes, rollItem } from './items';
+import { BOX_RESPAWN, HOOK_TIME, ITEM_KINDS, ItemSystem, itemOdds, placeItemBoxes, rollItem, ZAP_TIME } from './items';
 import { DEFAULT_SETTINGS, Session } from './session';
 import { RaceWorld, type PlayerInput, type Racer } from './world';
 
@@ -100,8 +100,13 @@ describe('Item boxes', () => {
       for (let i = 0; i < 1000; i++) c[rollItem(back, i / 1000)] = (c[rollItem(back, i / 1000)] ?? 0) + 1;
       return c;
     };
-    expect(Object.keys(counts(0)).sort()).toEqual(['barrier', 'boost', 'oil', 'rocket']);
-    expect(Object.keys(counts(1)).sort()).toEqual(['barrier', 'boost', 'hook', 'oil', 'rocket', 'star']);
+    // The leader never gets the catch-up items.
+    const leader = Object.keys(counts(0));
+    for (const k of ['hook', 'magnet', 'homing', 'blue', 'lightning', 'teleport', 'star', 'ghost']) expect(leader).not.toContain(k);
+    expect(leader).toContain('shield');
+    // Everything turns up for someone.
+    expect(Object.keys(counts(1)).length + 0).toBeGreaterThanOrEqual(12);
+    expect(new Set([...Object.keys(counts(0)), ...Object.keys(counts(0.5)), ...Object.keys(counts(1))]).size).toBe(ITEM_KINDS.length);
     // Things to drop are mostly for the front.
     expect(itemOdds(0).barrier).toBeGreaterThan(itemOdds(1).barrier);
   });
@@ -213,6 +218,143 @@ describe('Items', () => {
     const { a: a2, b: b2, step: step2 } = pair(4, 40, 0.5);
     a2.items.star = 6;
     expect(step2().map((h) => [h.victim.id, h.how])).toEqual([[b2.id, 'star']]);
+  });
+});
+
+describe('More items', () => {
+  it('triple rockets: three shots, one per press', () => {
+    const { a, items, step } = pair(300);
+    a.items.held = 'triple';
+    a.items.charges = 3;
+    for (let k = 0; k < 3; k++) {
+      step({ a: { useItem: true } });
+      step();
+    }
+    expect(items.rockets.length).toBe(3);
+    expect(a.items.held).toBeNull();
+  });
+
+  it('a homing rocket follows the track to the car ahead, round the corners', () => {
+    // The target (driven by a bot) is well up the road.
+    const { world, a, b, items } = pair(250, 50, 5);
+    const bot = new BotDriver(track, b.id, 'hard');
+    const ctx = { phase: 'practice' as const, raceStart: 0, laps: null, mandatoryStop: false };
+    a.items.held = 'homing';
+    const hits = [];
+    for (let t = 0; t < 12 && hits.length === 0; t += DT) {
+      world.step(DT, new Map([['a', { ...CRUISE, throttle: 0, brake: 1, useItem: t === 0 }], ['b', bot.drive(world, ctx, DT)]]));
+      hits.push(...items.step(world.racers, world.time, DT));
+      if (t === 0) expect(items.rockets[0].target).toBe(b.id);
+    }
+    expect(hits.map((h) => [h.victim.id, h.how])).toEqual([[b.id, 'homing']]);
+  });
+
+  it('a blue shell goes for the leader, past the car in between', () => {
+    const world = new RaceWorld(track, { drsRule: 'race', wetness: 0, collisions: false });
+    const [a, mid, lead] = ['a', 'm', 'l'].map((id) => world.addRacer(id, id.toUpperCase(), 'red'));
+    const s = straightStart(track) + 20;
+    placeAt(track, a, s, 50);
+    placeAt(track, mid, s + 60, 50);
+    placeAt(track, lead, s + 200, 50, 4);
+    for (const r of world.racers) r.timer.lapsCompleted = 1;
+    const items = new ItemSystem(track);
+    for (const box of items.boxes) box.respawnAt = Infinity;
+    a.items.held = 'blue';
+    const hits = [];
+    for (let t = 0; t < 10 && hits.length === 0; t += DT) {
+      world.step(DT, new Map(world.racers.map((r) => [r.id, { ...CRUISE, useItem: r === a && t === 0 }])));
+      hits.push(...items.step(world.racers, world.time, DT));
+    }
+    expect(hits.map((h) => [h.victim.id, h.how])).toEqual([[lead.id, 'blue']]);
+  });
+
+  it('a shield blocks one hit, then it is gone', () => {
+    const { a, b, items, step } = pair(60);
+    b.items.shield = 10;
+    a.items.held = 'triple';
+    a.items.charges = 3;
+    const hits = [...step({ a: { useItem: true } })];
+    for (let t = 0; t < 2 && items.rockets.length > 0; t += DT) hits.push(...step());
+    expect(hits).toEqual([]);
+    expect(b.items.shield).toBe(0);
+    step({ a: { useItem: true } });
+    for (let t = 0; t < 2 && items.rockets.length > 0; t += DT) hits.push(...step());
+    expect(hits.map((h) => h.victim.id)).toEqual([b.id]);
+  });
+
+  it('lightning slows every car ahead, not the ones behind', () => {
+    const { a, b, step } = pair(100);
+    b.items.held = 'lightning';
+    step({ b: { useItem: true } });
+    expect(b.items.zap).toBe(0);
+    expect(a.items.zap).toBe(0);
+    a.items.held = 'lightning';
+    step({ a: { useItem: true } });
+    expect(b.items.zap).toBeCloseTo(ZAP_TIME, 1);
+  });
+
+  it('magnet pulls you up to the car ahead', () => {
+    const run = (magnet: boolean) => {
+      const { a, step } = pair(100, 45);
+      if (magnet) a.items.held = 'magnet';
+      step({ a: { useItem: magnet } });
+      for (let t = 0; t < 2; t += DT) step();
+      return a.car.speed;
+    };
+    expect(run(true)).toBeGreaterThan(run(false) + 8);
+  });
+
+  it('teleport puts you just behind the car ahead, never past a timing line', () => {
+    const { a, b, step } = pair(300);
+    a.items.held = 'teleport';
+    step({ a: { useItem: true } });
+    const gap = track.forwardDistance(track.query(a.car.x, a.car.y)!.s, track.query(b.car.x, b.car.y)!.s);
+    const toLine = track.forwardDistance(track.query(a.car.x, a.car.y)!.s, a.timer.nextLine() % track.length);
+    expect(a.items.held).toBeNull();
+    expect(gap < 30 || toLine < 10).toBe(true);
+    expect(gap).toBeLessThan(300);
+  });
+
+  it('mines go off for anyone within a few metres (even off to the side), and smoke never gets used up', () => {
+    const { a, b, items, step } = pair(30, 50, 0);
+    b.items.held = 'mine';
+    step({ b: { useItem: true } });
+    // a passes 4 m to the side of it.
+    a.car.y += 4 * Math.cos(a.car.heading);
+    a.car.x -= 4 * Math.sin(a.car.heading);
+    const hits = [];
+    for (let t = 0; t < 1.5 && hits.length === 0; t += DT) hits.push(...step());
+    expect(hits.map((h) => [h.victim.id, h.how])).toEqual([[a.id, 'mine']]);
+    b.items.held = 'smoke';
+    step({ b: { useItem: true } });
+    for (let t = 0; t < 2; t += DT) step();
+    expect(items.drops.filter((d) => d.kind === 'smoke').length).toBe(1);
+  });
+
+  it('fresh tyres: new tyres of the same compound', () => {
+    const { a, step } = pair(100);
+    a.tyres.wear = 0.6;
+    a.items.held = 'tyres';
+    step({ a: { useItem: true } });
+    expect(a.tyres.wear).toBeLessThan(0.01);
+    expect(a.tyres.compound).toBe('medium');
+  });
+
+  it('ghost: steals an item, and rockets and dropped items pass through', () => {
+    const { a, b, items, step } = pair(40);
+    b.items.held = 'rocket';
+    b.items.charges = 1;
+    a.items.held = 'ghost';
+    step({ a: { useItem: true } });
+    expect(a.items.held).toBe('rocket');
+    expect(b.items.held).toBeNull();
+    expect(a.items.ghost).toBeGreaterThan(0);
+    // b drops a barrier: a drives straight through it, and it's still there afterwards.
+    b.items.held = 'barrier';
+    const hits = [...step({ b: { useItem: true } })];
+    for (let t = 0; t < 1; t += DT) hits.push(...step());
+    expect(hits).toEqual([]);
+    expect(items.drops.length).toBe(1);
   });
 });
 

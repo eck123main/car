@@ -1,7 +1,7 @@
 import type { TimerState } from '../game/lapTimer';
 import type { SafetyCarPhase, SafetyCarSnap } from '../sim/safetyCar';
 import type { Difficulty } from '../sim/ai/botDriver';
-import type { DropKind, ItemKind } from '../sim/items';
+import type { DropKind, ItemKind, MissileKind } from '../sim/items';
 import type { PitPhase } from '../sim/pit';
 import type { GameMode, PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
 import type { Compound } from '../sim/tyres';
@@ -9,7 +9,7 @@ import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -71,19 +71,23 @@ export interface CarSnap {
   ack: number;
   /** Party mode, only sent while there is something: item held, effects left (boost, rainbow, hooked; s), who hooked us, push (N). */
   it?: ItemKind | null;
-  fx?: [number, number, number, number];
+  /** boost, rainbow, hooked, slip, shield, zap, magnet, ghost (s left). */
+  fx?: [number, number, number, number, number, number, number, number];
+  /** Shots left (triple rockets), and who the magnet pulls towards. */
+  n?: number;
+  magTo?: string | null;
   hookBy?: string | null;
   push?: number;
 }
 
 /**
  * Party mode: boxes that are gone for now (by index in placeItemBoxes), rockets in flight
- * [x, y, heading, speed] and items dropped on the track [kind, x, y, heading].
+ * [x, y, heading, speed, kind] and items dropped on the track [kind, x, y, heading, owner].
  */
 export interface ItemsSnap {
-  drops: [DropKind, number, number, number][];
+  drops: [DropKind, number, number, number, string][];
   off: number[];
-  rockets: [number, number, number, number][];
+  rockets: [number, number, number, number, MissileKind][];
 }
 
 export interface TimingSnap extends TimerState {

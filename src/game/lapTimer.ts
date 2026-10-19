@@ -121,6 +121,11 @@ export class LapTimer {
     this.valid = true;
   }
 
+  /** Lap distance of the next timing line this car must cross (sector line, or the finish at the lap length). */
+  nextLine(): number {
+    return this.sectorEnds[this.nextCheckpoint];
+  }
+
   /** Call once per physics step, after the car has moved. Returns anything worth telling the driver. */
   update(now: number, dt: number, car: Car): TimingEvent[] {
     const events: TimingEvent[] = [];

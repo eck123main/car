@@ -7,7 +7,8 @@ import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
 import { drawCar } from '../render/drawCar';
-import { drawDrops, drawHookLine, drawItemBoxes, drawItemSlot, drawRockets, rainbowColor } from '../render/items';
+import { drawCarEffects, drawDrops, drawItemBoxes, drawItemSlot, drawRockets, drawSmoke, drawTether, rainbowColor } from '../render/items';
+import { ITEM_INFO } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
@@ -496,7 +497,7 @@ export class GameScreen {
     const items = this.driver.items?.() ?? null;
     if (items) {
       drawItemBoxes(ctx, items, this.driver.now());
-      drawDrops(ctx, items);
+      drawDrops(ctx, items, this.driver.meId, this.driver.now());
     }
     const ghosts = session?.phase === 'qualifying';
     // Time trial ghosts, under the real cars.
@@ -513,7 +514,8 @@ export class GameScreen {
       const p = poses.get(r.id)!;
       // Ghosts: everyone in qualifying, and cars parked after finishing (others pass through them).
       const parked = r.frozen && (session?.phase === 'race' || session?.phase === 'finished');
-      ctx.globalAlpha = ((ghosts || parked) && r !== me) || passing.has(r.id) ? 0.45 : 1;
+      // Party mode ghosts are see-through too (faintly, to tell them apart).
+      ctx.globalAlpha = r.items.ghost > 0 ? 0.3 : ((ghosts || parked) && r !== me) || passing.has(r.id) ? 0.45 : 1;
       const paint = r.items.star > 0 ? rainbowColor(this.driver.now(), r.id) : r.color;
       drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, paint, {
         drsOpen: r.drsOpen,
@@ -522,14 +524,18 @@ export class GameScreen {
         time: world.time,
       });
       ctx.globalAlpha = 1;
+      if (items) drawCarEffects(ctx, r.items, p.x, p.y, this.driver.now());
       if (r !== me) drawNameTag(ctx, r.name, p.x, p.y, r.color);
     }
     if (items) {
       drawRockets(ctx, items, this.driver.now());
       for (const r of world.racers) {
-        const from = r.items.hookedBy ? poses.get(r.items.hookedBy) : undefined;
-        if (from && r.items.hooked > 0) drawHookLine(ctx, from, poses.get(r.id)!);
+        const hooker = r.items.hookedBy ? poses.get(r.items.hookedBy) : undefined;
+        if (hooker && r.items.hooked > 0) drawTether(ctx, hooker, poses.get(r.id)!, ITEM_INFO.hook.color);
+        const pulled = r.items.magnetTo ? poses.get(r.items.magnetTo) : undefined;
+        if (pulled && r.items.magnet > 0) drawTether(ctx, poses.get(r.id)!, pulled, ITEM_INFO.magnet.color);
       }
+      drawSmoke(ctx, items, this.driver.now());
     }
     const sc = this.driver.safetyCar(alpha);
     if (sc) {
@@ -588,7 +594,7 @@ export class GameScreen {
       if (session.phase === 'lights' || session.phase === 'grid') drawLights(ctx, session.lights, w);
     }
     if (!spectating) drawPitStatus(ctx, world, me, w, advice);
-    if (session?.mode === 'party' && !spectating) drawItemSlot(ctx, me.items.held, w, now);
+    if (session?.mode === 'party' && !spectating) drawItemSlot(ctx, me.items.held, me.items.charges, w, now);
     drawToasts(ctx, this.toasts, now, w);
     this.driver.drawOverlay?.(ctx, w, h);
     // Our own ping, for players who joined (the host's is zero).

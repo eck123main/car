@@ -1,6 +1,6 @@
 import { F1_CAR } from '../../physics/carParams';
 import type { Track } from '../../track/track';
-import { HOOK_RANGE } from '../items';
+import { HOMING_RANGE, HOOK_RANGE, MAGNET_RANGE, TELEPORT_RANGE } from '../items';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
 import { onOtherStretches } from '../collisions';
 import { safetyCarProfile, SC_SLOW_CAR } from '../safetyCar';
@@ -317,29 +317,44 @@ export class BotDriver {
     // Hold it a moment, like a person would.
     if (world.time - this.itemSince < 1 + this.reaction * 4) return false;
     const car = me.car;
+    const mine = raceProgress(me, this.track.length);
+    /** Is there a car ahead (or behind, for negative ranges) within this gap? */
+    const carWithin = (from: number, to: number) =>
+      world.racers.some((o) => {
+        const gap = raceProgress(o, this.track.length) - mine;
+        return o !== me && !o.frozen && gap > from && gap < to;
+      });
+    const waited = world.time - this.itemSince;
     switch (item) {
       case 'star':
+      case 'lightning':
         return true;
       case 'boost':
         return this.straightAhead(index, 60);
-      case 'hook': {
-        const mine = raceProgress(me, this.track.length);
-        return world.racers.some((o) => {
-          const gap = raceProgress(o, this.track.length) - mine;
-          return o !== me && !o.frozen && gap > 5 && gap < HOOK_RANGE;
-        });
-      }
+      case 'tyres':
+        return me.tyres.wear > 0.3 || waited > 15;
+      case 'hook':
+        return carWithin(5, HOOK_RANGE);
+      case 'magnet':
+        return carWithin(10, MAGNET_RANGE);
+      case 'homing':
+        return carWithin(10, HOMING_RANGE);
+      case 'teleport':
+        return carWithin(40, TELEPORT_RANGE);
+      case 'blue':
+        return carWithin(0, Infinity);
+      case 'ghost':
+        // Best when someone has something worth stealing.
+        return world.racers.some((o) => o !== me && o.items.held !== null) || waited > 10;
+      case 'shield':
       case 'oil':
-      case 'barrier': {
-        // Drop it on someone close behind, or just leave it on the track after a while.
-        const mine = raceProgress(me, this.track.length);
-        if (world.time - this.itemSince > 8) return true;
-        return world.racers.some((o) => {
-          const gap = mine - raceProgress(o, this.track.length);
-          return o !== me && !o.frozen && gap > 8 && gap < 50;
-        });
-      }
+      case 'barrier':
+      case 'mine':
+      case 'smoke':
+        // Defend against someone close behind, or just use it after a while.
+        return waited > 8 || carWithin(-50, -8);
       case 'rocket':
+      case 'triple':
         // A car close ahead, almost dead in line with our nose.
         return world.racers.some((o) => {
           if (o === me || o.frozen) return false;

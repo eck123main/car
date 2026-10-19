@@ -237,8 +237,12 @@ export class ClientGame {
     const ahead = this.items ? this.serverTime() - INTERPOLATION_DELAY - this.items.time : 0;
     return {
       boxes: this.boxLayout.filter((_, i) => !off.has(i)),
-      rockets: (snap?.rockets ?? []).map(([x, y, h, v]) => ({ x: x + Math.cos(h) * v * ahead, y: y + Math.sin(h) * v * ahead, heading: h })),
-      drops: (snap?.drops ?? []).map(([kind, x, y, heading]) => ({ kind, x, y, heading })),
+      // Straight rockets fly on between snapshots; homing ones follow the track, so they wait for the next.
+      rockets: (snap?.rockets ?? []).map(([x, y, h, v, kind]) => {
+        const t = kind === 'rocket' ? ahead : 0;
+        return { kind, x: x + Math.cos(h) * v * t, y: y + Math.sin(h) * v * t, heading: h };
+      }),
+      drops: (snap?.drops ?? []).map(([kind, x, y, heading, owner]) => ({ kind, x, y, heading, owner })),
     };
   }
 

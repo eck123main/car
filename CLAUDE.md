@@ -63,20 +63,31 @@ plus Mario Kart style items (`src/sim/items.ts`, drawing `src/render/items.ts`).
   4 s after it is hit. You hold **one item**; driving through a box while holding one just breaks it.
 - **E** uses it (on the press). Odds by place (`itemOdds`): the leader only gets boost/rocket;
   further back, more hooks and rainbows.
-- **Boost**: 2.5 s straight push (`Car.push`, 14 kN) and 30% less drag, well past normal top speed.
-- **Rocket**: flies straight from the nose (car speed + 45 m/s, 4 s max); ends harmlessly in a
-  wall; a car it hits is **knocked out**: stopped, ghosted, and restarted on the centreline after
-  2 s (`Session.knockOut`, via the reset queue). Keeps any item it held.
-- **Hook**: pulls the next car up the road (within 250 m) back for 1.5 s, drawn as a green line.
-  Kept if nobody is in range.
-- **Rainbow**: 6 s, car flashes through the colours, a gentler boost, rockets and hooks don't
-  affect it, and any car it touches is knocked out.
-- **Oil slick** / **Tyre barrier**: dropped 5.5 m behind the car; stay until someone hits them
-  (or 90 s; max 24 on track). Oil: 1.4 s of 30% grip and a drag. Barrier: knocked out like a
-  rocket. The car that dropped one can't hit it for 0.7 s; everyone else can at once. A rocket
-  that meets one destroys both; a rainbow car smashes through. Mostly given to the front runners.
+- **17 items** (`ITEM_KINDS`, odds by place in `itemOdds`: the front gets boosts, rockets and
+  defence; catch-up items only behind; lightning, blue shell and teleport are rare, near the back):
+  - **Boost** 2.5 s push (`Car.push`, 14 kN) and -30% drag, well past top speed.
+  - **Rocket** straight from the nose (car speed + 45 m/s, 4 s); harmless into a wall; **Triple
+    rockets** = 3 of them, one per press (`charges`). A hit car is **knocked out**: stopped,
+    ghosted, restarted on the centreline 2 s later (`Session.knockOut`), keeps its item.
+  - **Homing rocket** follows the track (by lap distance, lining up across it) to the car ahead
+    (600 m); **Blue shell** does the same, fast, to the leader. They only hit their target and
+    fizzle if it pits/finishes/is knocked out.
+  - **Hook** (car ahead within 250 m pulled back 1.5 s), **Magnet** (you're pushed towards the car
+    ahead, 3 s), **Lightning** (every car ahead slowed 2 s), **Teleport** (to 15 m behind the car
+    ahead within 500 m, at its speed, but never past the next timing line, `LapTimer.nextLine`,
+    or the lap wouldn't count). Items that need a target are kept until there is one.
+  - **Rainbow** 6 s: gentle boost, untouchable, knocks out cars it touches. **Ghost** 4 s:
+    untouchable, see-through, passes through cars (`collisions.ts` skips it), rockets and drops,
+    and steals a random other driver's item. **Shield** 12 s: blocks the next hit of any kind
+    (rocket, drop, hook, lightning, rainbow), then gone. **Fresh tyres**: new set of the same
+    compound (another compound would dodge the two-compound rule).
+  - Dropped 5.5 m behind (`drops`): **Oil** (1.4 s at 30% grip + drag), **Tyre barrier** and
+    hidden **Mine** (5 m blast; only its owner sees it) knock out; used up by the first car to hit
+    them; **Smoke** is a 13 m cloud drawn over the cars for 8 s. Owner can't hit its own for 0.7 s.
+    A rocket meeting a drop destroys both; rainbow smashes through; ghost passes through.
 - Bots use them (`BotDriver.wantsItem`): rainbow at once, boost on a straight, rocket with a
-  car dead ahead within 90 m, hook with a car in reach, oil/barrier with a car 8-50 m behind (or after 8 s). Items only work in the race phase.
+  car dead ahead within 90 m, targeted items with a car in reach, defence (drops, shield) with a
+  car 8-50 m behind or after 8 s, fresh tyres past 30% wear, ghost when someone holds an item. Items only work in the race phase.
 - Network: held item/effects/push in `CarSnap` (only when non-empty), boxes gone + rockets in
   the snapshot (`ItemsSnap`), `useItem` input flag, toasts via `item` events.
 

@@ -277,7 +277,8 @@ export function judge(
  */
 export function resolveCollisions(track: Track, racers: Racer[], time: number, cooldowns: Map<string, number>): Contact[] {
   const contacts: Contact[] = [];
-  const active = racers.filter((r) => !r.frozen);
+  // Frozen cars and party mode ghosts pass through everyone.
+  const active = racers.filter((r) => !r.frozen && r.items.ghost <= 0);
   for (let i = 0; i < active.length; i++) {
     for (let j = i + 1; j < active.length; j++) {
       const a = active[i];
