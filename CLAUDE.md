@@ -63,7 +63,7 @@ plus Mario Kart style items (`src/sim/items.ts`, drawing `src/render/items.ts`).
   4 s after it is hit. You hold **one item**; driving through a box while holding one just breaks it.
 - **E** uses it (on the press). Odds by place (`itemOdds`): the leader only gets boost/rocket;
   further back, more hooks and rainbows.
-- **Boost**: 1.5 s straight push (`Car.push`) and less drag, beats normal top speed.
+- **Boost**: 2.5 s straight push (`Car.push`, 14 kN) and 30% less drag, well past normal top speed.
 - **Rocket**: flies straight from the nose (car speed + 45 m/s, 4 s max); ends harmlessly in a
   wall; a car it hits is **knocked out**: stopped, ghosted, and restarted on the centreline after
   2 s (`Session.knockOut`, via the reset queue). Keeps any item it held.
@@ -71,8 +71,12 @@ plus Mario Kart style items (`src/sim/items.ts`, drawing `src/render/items.ts`).
   Kept if nobody is in range.
 - **Rainbow**: 6 s, car flashes through the colours, a gentler boost, rockets and hooks don't
   affect it, and any car it touches is knocked out.
+- **Oil slick** / **Tyre barrier**: dropped 5.5 m behind the car; stay until someone hits them
+  (or 90 s; max 24 on track). Oil: 1.4 s of 30% grip and a drag. Barrier: knocked out like a
+  rocket. The car that dropped one can't hit it for 0.7 s; everyone else can at once. A rocket
+  that meets one destroys both; a rainbow car smashes through. Mostly given to the front runners.
 - Bots use them (`BotDriver.wantsItem`): rainbow at once, boost on a straight, rocket with a
-  car dead ahead within 90 m, hook with a car in reach. Items only work in the race phase.
+  car dead ahead within 90 m, hook with a car in reach, oil/barrier with a car 8-50 m behind (or after 8 s). Items only work in the race phase.
 - Network: held item/effects/push in `CarSnap` (only when non-empty), boxes gone + rockets in
   the snapshot (`ItemsSnap`), `useItem` input flag, toasts via `item` events.
 

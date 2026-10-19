@@ -329,6 +329,16 @@ export class BotDriver {
           return o !== me && !o.frozen && gap > 5 && gap < HOOK_RANGE;
         });
       }
+      case 'oil':
+      case 'barrier': {
+        // Drop it on someone close behind, or just leave it on the track after a while.
+        const mine = raceProgress(me, this.track.length);
+        if (world.time - this.itemSince > 8) return true;
+        return world.racers.some((o) => {
+          const gap = mine - raceProgress(o, this.track.length);
+          return o !== me && !o.frozen && gap > 8 && gap < 50;
+        });
+      }
       case 'rocket':
         // A car close ahead, almost dead in line with our nose.
         return world.racers.some((o) => {

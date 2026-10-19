@@ -7,7 +7,7 @@ import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
 import { drawCar } from '../render/drawCar';
-import { drawHookLine, drawItemBoxes, drawItemSlot, drawRockets, rainbowColor } from '../render/items';
+import { drawDrops, drawHookLine, drawItemBoxes, drawItemSlot, drawRockets, rainbowColor } from '../render/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
@@ -494,7 +494,10 @@ export class GameScreen {
     drawPitBoxes(ctx, world);
     const session = this.driver.session();
     const items = this.driver.items?.() ?? null;
-    if (items) drawItemBoxes(ctx, items, this.driver.now());
+    if (items) {
+      drawItemBoxes(ctx, items, this.driver.now());
+      drawDrops(ctx, items);
+    }
     const ghosts = session?.phase === 'qualifying';
     // Time trial ghosts, under the real cars.
     for (const g of this.driver.ghostCars?.() ?? []) {

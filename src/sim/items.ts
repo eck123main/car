@@ -8,14 +8,18 @@ import { raceProgress, type Racer } from './world';
  * (if you aren't holding one already), and the box comes back a few seconds later.
  * The further back you are, the better the odds of the strong items.
  */
-export type ItemKind = 'boost' | 'rocket' | 'hook' | 'star';
-export const ITEM_KINDS: ItemKind[] = ['boost', 'rocket', 'hook', 'star'];
+export type ItemKind = 'boost' | 'rocket' | 'hook' | 'star' | 'oil' | 'barrier';
+export const ITEM_KINDS: ItemKind[] = ['boost', 'rocket', 'hook', 'star', 'oil', 'barrier'];
+/** Items dropped behind the car, which stay on the track until someone hits them. */
+export type DropKind = 'oil' | 'barrier';
 
 export const ITEM_INFO: Record<ItemKind, { name: string; color: string }> = {
   boost: { name: 'Boost', color: '#ffb000' },
   rocket: { name: 'Rocket', color: '#ff4136' },
   hook: { name: 'Hook', color: '#2ecc40' },
   star: { name: 'Rainbow', color: '#ff66ff' },
+  oil: { name: 'Oil slick', color: '#8a7cff' },
+  barrier: { name: 'Tyre barrier', color: '#ff8c1a' },
 };
 
 /** A box comes back this long (s) after it is picked up. */
@@ -23,8 +27,8 @@ export const BOX_RESPAWN = 4;
 /** A car picks up a box this close to its centre (m). */
 const PICKUP_RADIUS = 2.8;
 /** Boost: a straight shove forwards, and less drag, so it beats the normal top speed. */
-export const BOOST_TIME = 1.5;
-const BOOST_PUSH = 9000;
+export const BOOST_TIME = 2.5;
+const BOOST_PUSH = 14000;
 /** Rainbow: a longer, gentler boost; rockets can't hurt you and anyone you touch spins out. */
 export const STAR_TIME = 6;
 const STAR_PUSH = 3500;
@@ -39,6 +43,17 @@ const ROCKET_LIFE = 4;
 const ROCKET_HIT_RADIUS = 2.6;
 /** A car hit by a rocket (or a rainbow car) stops and restarts after this long (s). */
 export const KNOCKOUT_WAIT = 2;
+/** Dropped items: placed this far behind the car's centre; the car that dropped one can't hit it for a moment. */
+const DROP_BEHIND = 5.5;
+const DROP_ARM = 0.7;
+const DROP_RADIUS = 2.4;
+/** Dropped items clear themselves after this long (s), and at most this many lie on the track. */
+const DROP_LIFE = 90;
+const MAX_DROPS = 24;
+/** Oil: the car slides (little grip) and loses speed for a moment. */
+export const SLIP_TIME = 1.4;
+const SLIP_GRIP = 0.3;
+const SLIP_DRAG = 3000;
 
 export interface ItemState {
   held: ItemKind | null;
@@ -48,12 +63,14 @@ export interface ItemState {
   hooked: number;
   /** Who hooked this car (for drawing the line). */
   hookedBy: string | null;
+  /** On oil: seconds of sliding left. */
+  slip: number;
   /** The use button was down last step (items fire on the press, not while held). */
   wasPressed: boolean;
 }
 
 export function newItemState(): ItemState {
-  return { held: null, boost: 0, star: 0, hooked: 0, hookedBy: null, wasPressed: false };
+  return { held: null, boost: 0, star: 0, hooked: 0, hookedBy: null, slip: 0, wasPressed: false };
 }
 
 export interface ItemBox {
@@ -76,17 +93,29 @@ export interface Rocket {
   until: number;
 }
 
-/** What to draw: boxes that are there now, and rockets in flight. */
+export interface Drop {
+  kind: DropKind;
+  x: number;
+  y: number;
+  heading: number;
+  owner: string;
+  /** The owner can hit it from this time; gone at `until`. */
+  armedAt: number;
+  until: number;
+}
+
+/** What to draw: boxes that are there now, rockets in flight and items dropped on the track. */
 export interface ItemView {
   boxes: { x: number; y: number }[];
   rockets: { x: number; y: number; heading: number }[];
+  drops: { kind: DropKind; x: number; y: number; heading: number }[];
 }
 
 /** Someone was taken out by an item. */
 export interface ItemHit {
   victim: Racer;
   by: Racer;
-  how: 'rocket' | 'star';
+  how: 'rocket' | 'star' | 'barrier';
 }
 
 /**
@@ -157,6 +186,11 @@ export function applyItemEffects(s: ItemState, car: Car, dt: number): void {
     s.hooked = Math.max(0, s.hooked - dt);
     if (s.hooked === 0) s.hookedBy = null;
   }
+  if (s.slip > 0) {
+    car.gripFactor *= SLIP_GRIP;
+    car.push -= SLIP_DRAG;
+    s.slip = Math.max(0, s.slip - dt);
+  }
 }
 
 /** Are two cars (about) touching? Measured in a's frame, as two boxes side by side. */
@@ -185,7 +219,8 @@ function rng(seed: number): () => number {
  * rockets; the further back, the more hooks and rainbows.
  */
 export function itemOdds(back: number): Record<ItemKind, number> {
-  return { boost: 3, rocket: 3 - back, hook: back > 0 ? 1 + 3 * back : 0, star: 3.5 * back };
+  // Things to drop behind you are for defending: mostly at the front.
+  return { boost: 3, rocket: 3 - back, hook: back > 0 ? 1 + 3 * back : 0, star: 3.5 * back, oil: 2.5 - 1.5 * back, barrier: 2.5 - 1.5 * back };
 }
 
 export function rollItem(back: number, random: number): ItemKind {
@@ -203,6 +238,7 @@ export function rollItem(back: number, random: number): ItemKind {
 export class ItemSystem {
   readonly boxes: ItemBox[];
   rockets: Rocket[] = [];
+  drops: Drop[] = [];
   /** Messages for drivers (hooked someone, got hooked), taken by the session each step. */
   notes: { racerId: string; text: string }[] = [];
   private readonly random: () => number;
@@ -216,6 +252,7 @@ export class ItemSystem {
     return {
       boxes: this.boxes.filter((b) => time >= b.respawnAt),
       rockets: this.rockets.map((m) => ({ x: m.x, y: m.y, heading: m.heading })),
+      drops: this.drops.map((d) => ({ kind: d.kind, x: d.x, y: d.y, heading: d.heading })),
     };
   }
 
@@ -244,6 +281,7 @@ export class ItemSystem {
       if (press && r.items.held) this.use(r, order, time);
     }
     this.moveRockets(racers, time, dt, hits);
+    this.hitDrops(racers, time, hits);
     // A rainbow car spins out anyone it touches.
     for (const r of racers) {
       if (r.items.star <= 0 || !this.active(r)) continue;
@@ -271,6 +309,17 @@ export class ItemSystem {
         owner: r.id,
         until: time + ROCKET_LIFE,
       });
+    } else if (item === 'oil' || item === 'barrier') {
+      this.drops.push({
+        kind: item,
+        x: car.x - Math.cos(car.heading) * DROP_BEHIND,
+        y: car.y - Math.sin(car.heading) * DROP_BEHIND,
+        heading: car.heading,
+        owner: r.id,
+        armedAt: time + DROP_ARM,
+        until: time + DROP_LIFE,
+      });
+      if (this.drops.length > MAX_DROPS) this.drops.shift();
     } else {
       // Hook: the next car up the road, if it's in reach. Without one, keep the item.
       const target = this.carAhead(r, order);
@@ -300,6 +349,30 @@ export class ItemSystem {
     return best;
   }
 
+  /** Cars running into dropped items. Each one is used up by the first car to hit it. */
+  private hitDrops(racers: readonly Racer[], time: number, hits: ItemHit[]): void {
+    this.drops = this.drops.filter((d) => {
+      if (time > d.until) return false;
+      for (const r of racers) {
+        if (!this.active(r) || Math.hypot(r.car.x - d.x, r.car.y - d.y) > DROP_RADIUS) continue;
+        // The car that dropped it gets a moment to drive away from it.
+        if (r.id === d.owner && time < d.armedAt) continue;
+        // A rainbow car just smashes through.
+        if (r.items.star > 0) return false;
+        const owner = racers.find((o) => o.id === d.owner) ?? r;
+        const whose = owner === r ? 'your own' : `${owner.name}'s`;
+        if (d.kind === 'barrier') hits.push({ victim: r, by: owner, how: 'barrier' });
+        else {
+          r.items.slip = SLIP_TIME;
+          this.notes.push({ racerId: r.id, text: `Slid on ${whose} oil!` });
+          if (owner !== r) this.notes.push({ racerId: owner.id, text: `${r.name} slid on your oil!` });
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+
   private moveRockets(racers: readonly Racer[], time: number, dt: number, hits: ItemHit[]): void {
     this.rockets = this.rockets.filter((m) => {
       if (time > m.until) return false;
@@ -311,6 +384,12 @@ export class ItemSystem {
         const hit = this.track.query(m.x, m.y, m.index);
         m.index = hit?.index ?? null;
         if (!hit || this.track.wallContact(m.x, m.y, m.x, m.y, m.index)) return false;
+        // A rocket that meets something dropped on the track: both are gone.
+        const blocked = this.drops.findIndex((d) => Math.hypot(d.x - m.x, d.y - m.y) < DROP_RADIUS);
+        if (blocked >= 0) {
+          this.drops.splice(blocked, 1);
+          return false;
+        }
         for (const r of racers) {
           if (r.id === m.owner || !this.active(r)) continue;
           if (Math.hypot(r.car.x - m.x, r.car.y - m.y) > ROCKET_HIT_RADIUS) continue;

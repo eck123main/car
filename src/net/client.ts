@@ -238,6 +238,7 @@ export class ClientGame {
     return {
       boxes: this.boxLayout.filter((_, i) => !off.has(i)),
       rockets: (snap?.rockets ?? []).map(([x, y, h, v]) => ({ x: x + Math.cos(h) * v * ahead, y: y + Math.sin(h) * v * ahead, heading: h })),
+      drops: (snap?.drops ?? []).map(([kind, x, y, heading]) => ({ kind, x, y, heading })),
     };
   }
 

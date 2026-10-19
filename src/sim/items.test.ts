@@ -100,8 +100,10 @@ describe('Item boxes', () => {
       for (let i = 0; i < 1000; i++) c[rollItem(back, i / 1000)] = (c[rollItem(back, i / 1000)] ?? 0) + 1;
       return c;
     };
-    expect(Object.keys(counts(0)).sort()).toEqual(['boost', 'rocket']);
-    expect(Object.keys(counts(1)).sort()).toEqual(['boost', 'hook', 'rocket', 'star']);
+    expect(Object.keys(counts(0)).sort()).toEqual(['barrier', 'boost', 'oil', 'rocket']);
+    expect(Object.keys(counts(1)).sort()).toEqual(['barrier', 'boost', 'hook', 'oil', 'rocket', 'star']);
+    // Things to drop are mostly for the front.
+    expect(itemOdds(0).barrier).toBeGreaterThan(itemOdds(1).barrier);
   });
 });
 
@@ -156,6 +158,48 @@ describe('Items', () => {
       return b.car.speed;
     };
     expect(run(true)).toBeLessThan(run(false) - 8);
+  });
+
+  it('a tyre barrier dropped behind takes out the car that runs into it, then is gone', () => {
+    // b leads; a follows 30 m back, on b's line.
+    const { a, b, items, step } = pair(30);
+    b.items.held = 'barrier';
+    const hits = [...step({ b: { useItem: true } })];
+    expect(items.drops.length).toBe(1);
+    // b doesn't hit its own barrier as it drives away.
+    for (let t = 0; t < 2 && hits.length === 0; t += DT) hits.push(...step());
+    expect(hits.map((h) => [h.victim.id, h.by.id, h.how])).toEqual([[a.id, b.id, 'barrier']]);
+    expect(items.drops.length).toBe(0);
+  });
+
+  it('oil makes the car that hits it slide and slow down, then is gone', () => {
+    const run = (oil: boolean) => {
+      const { a, b, items, step } = pair(30);
+      if (oil) b.items.held = 'oil';
+      step({ b: { useItem: oil } });
+      let slid = false;
+      for (let t = 0; t < 2; t += DT) {
+        expect(step()).toEqual([]);
+        slid ||= a.items.slip > 0;
+      }
+      if (oil) {
+        expect(slid).toBe(true);
+        expect(items.drops.length).toBe(0);
+      }
+      return a.car.speed;
+    };
+    expect(run(true)).toBeLessThan(run(false) - 3);
+  });
+
+  it('a rocket that meets a dropped item: both are gone', () => {
+    const { a, b, items, step } = pair(80);
+    b.items.held = 'barrier';
+    step({ b: { useItem: true } });
+    a.items.held = 'rocket';
+    const hits = [...step({ a: { useItem: true } })];
+    for (let t = 0; t < 2 && items.rockets.length > 0; t += DT) hits.push(...step());
+    expect(items.drops.length).toBe(0);
+    expect(hits).toEqual([]);
   });
 
   it('rainbow: rockets bounce off, and cars it touches are taken out', () => {

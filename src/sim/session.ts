@@ -659,7 +659,11 @@ export class Session {
     r.frozen = true;
     // Effects end; an item you were holding is kept.
     r.items = { ...newItemState(), held: r.items.held };
-    const what = hit.how === 'rocket' ? 'rocket' : 'rainbow';
+    const what = hit.how === 'star' ? 'rainbow' : hit.how === 'barrier' ? 'tyre barrier' : 'rocket';
+    if (hit.by === r) {
+      events.push({ kind: 'item', racerId: r.id, text: `Hit your own ${what}!` });
+      return;
+    }
     events.push({ kind: 'item', racerId: r.id, text: `Hit by ${hit.by.name}'s ${what}!` });
     events.push({ kind: 'item', racerId: hit.by.id, text: `Your ${what} got ${r.name}!` });
   }

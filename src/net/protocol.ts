@@ -1,7 +1,7 @@
 import type { TimerState } from '../game/lapTimer';
 import type { SafetyCarPhase, SafetyCarSnap } from '../sim/safetyCar';
 import type { Difficulty } from '../sim/ai/botDriver';
-import type { ItemKind } from '../sim/items';
+import type { DropKind, ItemKind } from '../sim/items';
 import type { PitPhase } from '../sim/pit';
 import type { GameMode, PlayerInfo, QualiEntry, RaceSettings, SessionEvent, SessionPhase, Standing } from '../sim/session';
 import type { Compound } from '../sim/tyres';
@@ -9,7 +9,7 @@ import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -71,13 +71,17 @@ export interface CarSnap {
   ack: number;
   /** Party mode, only sent while there is something: item held, effects left (boost, rainbow, hooked; s), who hooked us, push (N). */
   it?: ItemKind | null;
-  fx?: [number, number, number];
+  fx?: [number, number, number, number];
   hookBy?: string | null;
   push?: number;
 }
 
-/** Party mode: boxes that are gone for now (by index in placeItemBoxes) and rockets in flight [x, y, heading, speed]. */
+/**
+ * Party mode: boxes that are gone for now (by index in placeItemBoxes), rockets in flight
+ * [x, y, heading, speed] and items dropped on the track [kind, x, y, heading].
+ */
 export interface ItemsSnap {
+  drops: [DropKind, number, number, number][];
   off: number[];
   rockets: [number, number, number, number][];
 }

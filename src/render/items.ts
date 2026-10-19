@@ -32,6 +32,41 @@ export function drawItemBoxes(ctx: CanvasRenderingContext2D, view: ItemView, tim
   });
 }
 
+/** Dropped items (world metres): oil slicks, and stacks of tyres across the road. */
+export function drawDrops(ctx: CanvasRenderingContext2D, view: ItemView): void {
+  for (const d of view.drops) {
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.heading);
+    if (d.kind === 'oil') {
+      ctx.fillStyle = 'rgba(20, 10, 40, 0.85)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 2.4, 1.7, 0, 0, Math.PI * 2);
+      ctx.ellipse(1.3, 1.1, 0.9, 0.7, 0, 0, Math.PI * 2);
+      ctx.ellipse(-1.4, -1.0, 0.8, 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(160, 140, 255, 0.7)';
+      ctx.lineWidth = 0.18;
+      ctx.beginPath();
+      ctx.ellipse(-0.4, -0.3, 1.1, 0.5, -0.3, Math.PI, Math.PI * 1.8);
+      ctx.stroke();
+    } else {
+      for (const y of [-1.3, 0, 1.3]) {
+        ctx.fillStyle = '#151515';
+        ctx.beginPath();
+        ctx.arc(0, y, 0.68, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = y === 0 ? '#ffffff' : '#ff4136';
+        ctx.lineWidth = 0.22;
+        ctx.beginPath();
+        ctx.arc(0, y, 0.45, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+}
+
 /** Rockets (world metres): a red body with a white nose and a flickering flame. */
 export function drawRockets(ctx: CanvasRenderingContext2D, view: ItemView, time: number): void {
   for (const m of view.rockets) {
@@ -114,6 +149,27 @@ function drawIcon(ctx: CanvasRenderingContext2D, item: ItemKind, s: number, time
     ctx.beginPath();
     ctx.arc(0, -0.32 * s, 0.06 * s, 0, Math.PI * 2);
     ctx.fill();
+  } else if (item === 'oil') {
+    // A drop of oil.
+    ctx.moveTo(0, -0.34 * s);
+    ctx.bezierCurveTo(0.12 * s, -0.12 * s, 0.26 * s, 0.02 * s, 0.26 * s, 0.12 * s);
+    ctx.arc(0, 0.12 * s, 0.26 * s, 0, Math.PI);
+    ctx.bezierCurveTo(-0.26 * s, 0.02 * s, -0.12 * s, -0.12 * s, 0, -0.34 * s);
+    ctx.fill();
+  } else if (item === 'barrier') {
+    // Three tyres.
+    for (const dx of [-0.24, 0, 0.24]) {
+      ctx.beginPath();
+      ctx.arc(dx * s, 0, 0.11 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.035 * s;
+    for (const dx of [-0.24, 0, 0.24]) {
+      ctx.beginPath();
+      ctx.arc(dx * s, 0, 0.06 * s, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   } else {
     // Rainbow: a star in shifting colours.
     ctx.fillStyle = rainbowColor(time, 'icon');
