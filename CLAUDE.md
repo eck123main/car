@@ -404,7 +404,7 @@ The timing tower is always shown (no Tab needed).
   (0.6 scale, 18.5 m: its hairpin folded onto itself at 0.5), Nürburgring, Sepang, Istanbul Park,
   Portimão, Paul Ricard (the GeoJSON ran backwards; reversed to the real clockwise direction),
   Mugello, Estoril, Indianapolis (F1 road course), Magny-Cours (0.6 scale: at 0.5
-  the Adelaide hairpin's walls reached the next straight), Sochi, Jacarepaguá, Buenos Aires (0.6
+  its walls reached another part of the track), Sochi, Jacarepaguá, Buenos Aires (0.6
   scale, DRS was worth too little at 0.5), Kyalami (current anticlockwise layout, 3 DRS zones),
   Watkins Glen. Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
