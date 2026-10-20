@@ -4,9 +4,11 @@ import albertPark from './albert-park.json';
 import bahrain from './bahrain.json';
 import baku from './baku.json';
 import barcelona from './barcelona.json';
+import buddh from './buddh.json';
 import buenosAires from './buenos-aires.json';
 import cota from './cota.json';
 import estoril from './estoril.json';
+import fuji from './fuji.json';
 import hockenheim from './hockenheim.json';
 import hungaroring from './hungaroring.json';
 import imola from './imola.json';
@@ -38,8 +40,10 @@ import sochi from './sochi.json';
 import spa from './spa.json';
 import suzuka from './suzuka.json';
 import testCircuit from './test-circuit.json';
+import valencia from './valencia.json';
 import watkinsGlen from './watkins-glen.json';
 import yasMarina from './yas-marina.json';
+import yeongam from './yeongam.json';
 import zandvoort from './zandvoort.json';
 
 /**
@@ -88,6 +92,10 @@ export const TRACKS: Record<string, TrackDef> = {
   'buenos-aires': parseTrackDef(buenosAires),
   kyalami: parseTrackDef(kyalami),
   'watkins-glen': parseTrackDef(watkinsGlen),
+  fuji: parseTrackDef(fuji),
+  valencia: parseTrackDef(valencia),
+  yeongam: parseTrackDef(yeongam),
+  buddh: parseTrackDef(buddh),
   test: parseTrackDef(testCircuit),
 };
 

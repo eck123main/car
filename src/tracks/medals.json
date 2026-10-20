@@ -38,5 +38,9 @@
   "jacarepagua": {"author":39.22,"gold":40.79,"silver":43.15,"bronze":47.07},
   "buenos-aires": {"author":41.28,"gold":42.94,"silver":45.41,"bronze":49.54},
   "kyalami": {"author":36.3,"gold":37.76,"silver":39.93,"bronze":43.56},
-  "watkins-glen": {"author":37.62,"gold":39.13,"silver":41.39,"bronze":45.15}
+  "watkins-glen": {"author":37.62,"gold":39.13,"silver":41.39,"bronze":45.15},
+  "fuji": {"author":36.72,"gold":38.19,"silver":40.4,"bronze":44.07},
+  "valencia": {"author":39.08,"gold":40.65,"silver":42.99,"bronze":46.9},
+  "yeongam": {"author":46.68,"gold":48.55,"silver":51.35,"bronze":56.02},
+  "buddh": {"author":42.37,"gold":44.07,"silver":46.61,"bronze":50.85}
 }

@@ -400,13 +400,15 @@ The timing tower is always shown (no Tab needed).
   (`Car.trackIndex`, `Track.query` hint; kept through resets and while held still), and
   cars on different stretches of the lap never collide (`onOtherStretches`: one goes over
   the bridge, the other under). Bots ignore cars on other stretches too.
-  **16 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
+  **20 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
   (0.6 scale, 18.5 m: its hairpin folded onto itself at 0.5), Nürburgring, Sepang, Istanbul Park,
   Portimão, Paul Ricard (the GeoJSON ran backwards; reversed to the real clockwise direction),
   Mugello, Estoril, Indianapolis (F1 road course), Magny-Cours (0.6 scale: at 0.5
   its walls reached another part of the track), Sochi, Jacarepaguá, Buenos Aires (0.6
   scale, DRS was worth too little at 0.5), Kyalami (current anticlockwise layout, 3 DRS zones),
-  Watkins Glen. Menus list tracks **A-Z by name** (`trackChoices`).
+  Watkins Glen, and four traced from OpenStreetMap (not in bacinger's data): Fuji, Valencia
+  (street circuit; two short gaps in the OSM ways bridged straight), Yeongam (Korea), Buddh (India).
+  Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
   `scripts/import-track.ts` (see its header).
   For DRS zones on new tracks, use the full-throttle sections from
