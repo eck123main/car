@@ -32,5 +32,11 @@
   "paul-ricard": {"author":42.33,"gold":44.03,"silver":46.57,"bronze":50.8},
   "mugello": {"author":38.13,"gold":39.66,"silver":41.95,"bronze":45.76},
   "estoril": {"author":34.03,"gold":35.4,"silver":37.44,"bronze":40.84},
-  "indianapolis": {"author":29.92,"gold":31.12,"silver":32.92,"bronze":35.91}
+  "indianapolis": {"author":29.92,"gold":31.12,"silver":32.92,"bronze":35.91},
+  "magny-cours": {"author":38.93,"gold":40.49,"silver":42.83,"bronze":46.72},
+  "sochi": {"author":44.87,"gold":46.67,"silver":49.36,"bronze":53.85},
+  "jacarepagua": {"author":39.22,"gold":40.79,"silver":43.15,"bronze":47.07},
+  "buenos-aires": {"author":41.28,"gold":42.94,"silver":45.41,"bronze":49.54},
+  "kyalami": {"author":36.3,"gold":37.76,"silver":39.93,"bronze":43.56},
+  "watkins-glen": {"author":37.62,"gold":39.13,"silver":41.39,"bronze":45.15}
 }

@@ -400,10 +400,12 @@ The timing tower is always shown (no Tab needed).
   (`Car.trackIndex`, `Track.query` hint; kept through resets and while held still), and
   cars on different stretches of the lap never collide (`onOtherStretches`: one goes over
   the bridge, the other under). Bots ignore cars on other stretches too.
-  **10 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
+  **16 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
   (0.6 scale, 18.5 m: its hairpin folded onto itself at 0.5), Nürburgring, Sepang, Istanbul Park,
   Portimão, Paul Ricard (the GeoJSON ran backwards; reversed to the real clockwise direction),
-  Mugello, Estoril, Indianapolis (F1 road course). Menus list tracks **A-Z by name** (`trackChoices`).
+  Mugello, Estoril, Indianapolis (F1 road course), Magny-Cours (0.6 scale), Sochi, Jacarepaguá,
+  Buenos Aires (0.6 scale), Kyalami (the 3-zone 2016 layout, anticlockwise), Watkins Glen
+  (0.6 scale where DRS was worth too little at 0.5, or walls reached across the hairpin). Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
   `scripts/import-track.ts` (see its header).
   For DRS zones on new tracks, use the full-throttle sections from

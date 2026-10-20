@@ -4,6 +4,7 @@ import albertPark from './albert-park.json';
 import bahrain from './bahrain.json';
 import baku from './baku.json';
 import barcelona from './barcelona.json';
+import buenosAires from './buenos-aires.json';
 import cota from './cota.json';
 import estoril from './estoril.json';
 import hockenheim from './hockenheim.json';
@@ -12,10 +13,13 @@ import imola from './imola.json';
 import indianapolis from './indianapolis.json';
 import interlagos from './interlagos.json';
 import istanbul from './istanbul.json';
+import jacarepagua from './jacarepagua.json';
 import jeddah from './jeddah.json';
+import kyalami from './kyalami.json';
 import lasVegas from './las-vegas.json';
 import lusail from './lusail.json';
 import madrid from './madrid.json';
+import magnyCours from './magny-cours.json';
 import mexico from './mexico.json';
 import miami from './miami.json';
 import monaco from './monaco.json';
@@ -30,9 +34,11 @@ import sepang from './sepang.json';
 import shanghai from './shanghai.json';
 import silverstone from './silverstone.json';
 import singapore from './singapore.json';
+import sochi from './sochi.json';
 import spa from './spa.json';
 import suzuka from './suzuka.json';
 import testCircuit from './test-circuit.json';
+import watkinsGlen from './watkins-glen.json';
 import yasMarina from './yas-marina.json';
 import zandvoort from './zandvoort.json';
 
@@ -76,6 +82,12 @@ export const TRACKS: Record<string, TrackDef> = {
   mugello: parseTrackDef(mugello),
   estoril: parseTrackDef(estoril),
   indianapolis: parseTrackDef(indianapolis),
+  'magny-cours': parseTrackDef(magnyCours),
+  sochi: parseTrackDef(sochi),
+  jacarepagua: parseTrackDef(jacarepagua),
+  'buenos-aires': parseTrackDef(buenosAires),
+  kyalami: parseTrackDef(kyalami),
+  'watkins-glen': parseTrackDef(watkinsGlen),
   test: parseTrackDef(testCircuit),
 };
 
