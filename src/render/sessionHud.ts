@@ -178,3 +178,18 @@ export function drawNameTag(ctx: CanvasRenderingContext2D, name: string, x: numb
   ctx.fillText(name, x, y - 4.1);
   ctx.textAlign = 'left';
 }
+
+/** A name tag in screen space (CSS px), e.g. over a car in the 3D view. Smaller further away. */
+export function drawScreenTag(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, color: string, distance: number): void {
+  const size = Math.max(10, Math.min(15, 15 - distance / 30));
+  ctx.font = `bold ${size}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  const w = ctx.measureText(name).width + 10;
+  ctx.globalAlpha = distance > 200 ? Math.max(0, (300 - distance) / 100) : 1;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(x - w / 2, y - size - 6, w, size + 6);
+  ctx.fillStyle = color;
+  ctx.fillText(name, x, y - 5);
+  ctx.textAlign = 'left';
+  ctx.globalAlpha = 1;
+}

@@ -16,14 +16,14 @@ import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawOwnPing } from '../render/ping';
 import { drawRain } from '../render/rain';
 import { drawSafetyCar } from '../render/safetyCar';
-import { drawLights, drawNameTag, drawSessionBanner, drawSpectating, drawTower } from '../render/sessionHud';
+import { drawLights, drawNameTag, drawScreenTag, drawSessionBanner, drawSpectating, drawTower } from '../render/sessionHud';
 import { TileCache } from '../render/tiles';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { settings } from './settings';
 import { saveCam3d, savedCam3d, savedView, saveView } from './view';
 import { liveryFor } from '../render/livery';
-import type { CarView, View3D } from '../render3d/view3d';
+import type { Cam3d, CarView, View3D } from '../render3d/view3d';
 import { cycle, isSpectating, watchable } from './spectate';
 import type { ItemView } from '../sim/items';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
@@ -71,7 +71,7 @@ export interface GameDriver {
   drawOverlay?(ctx: CanvasRenderingContext2D, width: number, height: number): void;
   /** Single player only: the menu truly pauses the game (online the race goes on). */
   readonly pausable?: boolean;
-  /** Offers the 3D first-person view (V). Time trial only for now. */
+  /** Offers the 3D first-person view (V). Not in party mode yet. */
   readonly firstPerson?: boolean;
   /** Mode-specific keys, read once per frame. */
   handleKeys?(keyboard: Keyboard): void;
@@ -97,6 +97,7 @@ function lerpPose(r: Racer, alpha: number): Pose {
 /** Free practice on one machine, no network. */
 export class PracticeDriver implements GameDriver {
   readonly meId = 'me';
+  readonly firstPerson = true;
   readonly resetHint = 'Press R to get back on track (5 s wait)';
   private recovering: number | null = null;
   private readonly w: RaceWorld;
@@ -185,6 +186,10 @@ export class HostDriver implements GameDriver {
     return { x: sc.prevX + (sc.x - sc.prevX) * alpha, y: sc.prevY + (sc.y - sc.prevY) * alpha, heading: sc.prevHeading + dh * alpha };
   }
   constructor(private readonly host: HostGame) {}
+  /** Not in party mode yet: the items aren't drawn in 3D. */
+  get firstPerson() {
+    return this.host.session?.settings.mode !== 'party';
+  }
   items() {
     const s = this.host.session;
     return s?.items ? s.items.view(s.world.time) : null;
@@ -220,6 +225,10 @@ export class HostDriver implements GameDriver {
 /** Someone who joined a lobby. */
 export class ClientDriver implements GameDriver {
   constructor(private readonly client: ClientGame) {}
+  /** Not in party mode yet: the items aren't drawn in 3D. */
+  get firstPerson() {
+    return this.client.session?.mode !== 'party';
+  }
   net() {
     return this.client.net;
   }
@@ -295,6 +304,7 @@ export class GameScreen {
   private loading3d = false;
   private viewButtons: HTMLElement | null = null;
   private updateViewButtons: () => void = () => {};
+  private offered3d = false;
   /** Called when the session phase changes (e.g. 'finished'). */
   onPhase: (phase: string) => void = () => {};
   /** Called on Esc. */
@@ -317,8 +327,8 @@ export class GameScreen {
     } catch {
       // Storage blocked: stay on the default fixed view.
     }
-    this.want3d = !!this.driver.firstPerson && savedView() === '3d';
-    if (this.driver.firstPerson) this.addViewButtons();
+    this.want3d = savedView() === '3d';
+    this.addViewButtons();
     // Mouse driving carries on from the last race.
     if (this.controls.mouse?.active) this.canvas.style.cursor = 'crosshair';
     this.last = performance.now();
@@ -366,13 +376,37 @@ export class GameScreen {
       box.append(b);
       return b;
     };
-    const cam = button(() => void this.cycleCam3d());
+    // Camera list, opened by the Camera button (C still cycles through it).
+    const list = document.createElement('div');
+    list.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 6px);display:none;flex-direction:column;gap:4px;';
+    box.style.position = 'fixed';
+    box.append(list);
+    const showList = async () => {
+      const open = list.style.display === 'none';
+      list.replaceChildren();
+      list.style.display = open ? 'flex' : 'none';
+      if (!open || !this.view3d) return;
+      const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/view3d');
+      for (const c of CAM3D_ORDER) {
+        const b = button(() => {
+          this.setCam3d(c);
+          list.style.display = 'none';
+        });
+        b.textContent = CAM3D_NAMES[c];
+        b.style.textAlign = 'left';
+        if (this.view3d?.mode === c) b.style.borderColor = '#ffd400';
+        list.append(b);
+      }
+    };
+    const cam = button(() => void showList());
     cam.textContent = 'Camera (C)';
     const view = button(() => this.toggleView());
     this.viewButtons = box;
     this.updateViewButtons = () => {
+      box.style.display = this.driver.firstPerson ? 'flex' : 'none';
       view.textContent = this.want3d ? 'Map view (V)' : 'Test 3D view (V)';
       cam.style.display = this.want3d ? '' : 'none';
+      list.style.display = 'none';
     };
     this.updateViewButtons();
     // Under the menus in #ui.
@@ -389,15 +423,22 @@ export class GameScreen {
     this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 3 });
   }
 
-  /** In 3D, C cycles cockpit / T-cam / nose / chase. */
+  /** In 3D, C cycles through the cameras (CAM3D_ORDER). */
   private async cycleCam3d(): Promise<void> {
     if (!this.view3d) return;
-    const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/view3d');
+    const { CAM3D_ORDER } = await import('../render3d/view3d');
     const i = CAM3D_ORDER.indexOf(this.view3d.mode);
-    this.view3d.mode = CAM3D_ORDER[(i + 1) % CAM3D_ORDER.length];
+    this.setCam3d(CAM3D_ORDER[(i + 1) % CAM3D_ORDER.length]);
+  }
+
+  private setCam3d(cam: Cam3d): void {
+    if (!this.view3d) return;
+    this.view3d.mode = cam;
     this.view3d.snap();
-    saveCam3d(this.view3d.mode);
-    this.toasts.push({ text: `CAMERA: ${CAM3D_NAMES[this.view3d.mode]}`, color: '#ffffff', until: this.driver.now() + 2 });
+    saveCam3d(cam);
+    void import('../render3d/view3d').then(({ CAM3D_NAMES }) =>
+      this.toasts.push({ text: `CAMERA: ${CAM3D_NAMES[cam]}`, color: '#ffffff', until: this.driver.now() + 2 }),
+    );
   }
 
   /** Load three.js and build the 3D track the first time the 3D view is wanted. */
@@ -407,7 +448,7 @@ export class GameScreen {
     import('../render3d/view3d')
       .then(({ View3D, CAM3D_ORDER }) => {
         this.loading3d = false;
-        if (!this.running || !this.want3d) return;
+        if (!this.running || !this.want3d || !this.driver.firstPerson) return;
         const view = new View3D(track);
         const cam = savedCam3d();
         const found = CAM3D_ORDER.find((c) => c === cam);
@@ -536,8 +577,12 @@ export class GameScreen {
 
     if (this.keyboard.wasPressed('Escape')) this.onMenu();
     if (this.keyboard.wasPressed('KeyV') && this.driver.firstPerson) this.toggleView();
+    if (this.keyboard.wasPressed('KeyM') && this.view3d) {
+      this.view3d.mirror = !this.view3d.mirror;
+      this.toasts.push({ text: this.view3d.mirror ? 'MIRROR ON' : 'MIRROR OFF', color: '#ffffff', until: this.driver.now() + 2 });
+    }
     if (this.keyboard.wasPressed('KeyC')) {
-      if (this.want3d) void this.cycleCam3d();
+      if (this.view3d) void this.cycleCam3d();
       else this.toggleCamera();
     }
     this.driver.handleKeys?.(this.keyboard);
@@ -575,7 +620,14 @@ export class GameScreen {
     const { ctx, canvas } = this;
     const world = this.driver.world();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    if (world && this.want3d && !this.view3d) this.open3d(world.track);
+    // The 3D view, when wanted and this game offers it (not party mode, which can be picked later).
+    const offered = !!this.driver.firstPerson;
+    if (offered !== this.offered3d) {
+      this.offered3d = offered;
+      if (!offered) this.close3d();
+      this.updateViewButtons();
+    }
+    if (world && offered && this.want3d && !this.view3d) this.open3d(world.track);
     // First person: the 3D canvas underneath shows through; this one only carries the HUD.
     if (this.view3d) ctx.clearRect(0, 0, canvas.width, canvas.height);
     else {
@@ -605,14 +657,14 @@ export class GameScreen {
     this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, myPose.heading, dt);
     const session = this.driver.session();
     const sc = this.driver.safetyCar(alpha);
-    if (this.view3d) this.render3d(this.view3d, world, me, poses, dt);
+    if (this.view3d) this.render3d(this.view3d, world, me, poses, session, sc, dt);
     else this.renderWorld(world, me, poses, session, sc);
 
     this.drawHudLayer(world, me, own, poses, session, sc, dt);
   }
 
   /** First person: our car (or the one we're watching) and everything else in 3D. */
-  private render3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, dt: number): void {
+  private render3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, session: SessionSnap | null, sc: Pose | null, dt: number): void {
     const carView = (r: Racer): CarView => {
       const p = poses.get(r.id)!;
       return {
@@ -626,7 +678,10 @@ export class GameScreen {
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
       };
     };
-    const others = world.racers.filter((r) => r !== me).map(carView);
+    // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
+    const ghostly = (r: Racer) =>
+      session?.phase === 'qualifying' || (r.frozen && (session?.phase === 'race' || session?.phase === 'finished')) || r.items.ghost > 0;
+    const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ghost: ghostly(r) ? r.color : undefined }));
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
       others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
     );
@@ -646,7 +701,18 @@ export class GameScreen {
       },
       others,
       dt,
+      sc && { ...sc, lights: session?.safetyCar === 'deployed' },
     );
+  }
+
+  /** 3D view: names over the other cars (up to 300 m away) and the safety car. */
+  private drawTags3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, sc: Pose | null): void {
+    const tags = world.racers.filter((r) => r !== me).map((r) => ({ ...poses.get(r.id)!, name: r.name, color: r.color }));
+    if (sc) tags.push({ ...sc, name: 'SAFETY CAR', color: '#ffb000' });
+    for (const t of tags) {
+      const p = view.project(t.x, t.y, 1.8);
+      if (p && p.distance < 300) drawScreenTag(this.ctx, t.name, p.x, p.y, t.color, p.distance);
+    }
   }
 
   /** The top-down map: track, cars, items, safety car. */
@@ -713,6 +779,7 @@ export class GameScreen {
     const { ctx, canvas, dpr } = this;
     const spectating = me !== own;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (this.view3d) this.drawTags3d(this.view3d, world, me, poses, sc);
     const w = canvas.width / dpr;
     const h = canvas.height / dpr;
     const now = this.driver.now();

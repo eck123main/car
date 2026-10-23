@@ -22,6 +22,16 @@ const STEER_VISUAL = 0.35;
 /** Where the driver's eyes are (car frame). */
 export const EYE: V3 = [-0.4, 0.94, 0];
 
+/**
+ * Texture coordinates for a mirror showing the [u0, u1] share of the view behind (left to right
+ * as the driver sees it). The mirror camera looks backwards, so its picture is flipped.
+ */
+export function mirrorUv(geo: THREE.BufferGeometry, u0: number, u1: number): void {
+  const uv = geo.getAttribute('uv');
+  for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - (u0 + uv.getX(i) * (u1 - u0)));
+  uv.needsUpdate = true;
+}
+
 /** A box tapering from a rear face at x0 to a front face at x1 (widths, bottoms, tops). */
 function tbox(q: QuadBuilder, x0: number, x1: number, w0: number, w1: number, b0: number, t0: number, b1: number, t1: number, color: string, z = 0): void {
   q.box(
@@ -62,8 +72,8 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
     tbox(q, 0.3, 0.36, 0.44, 0.44, 0.1, 0.56, 0.1, 0.56, '#0d0d0f', z);
     if (l.flash) tbox(q, -1.2, 0.2, 0.39, 0.45, 0.42, 0.46, 0.5, 0.54, l.flash, z + side * 0.005);
     // Mirror on a stalk.
-    strut(q, [0.25, 0.55, side * 0.38], [0.3, 0.7, side * 0.6], 0.035, CARBON);
-    tbox(q, 0.24, 0.34, 0.22, 0.22, 0.66, 0.76, 0.66, 0.76, l.body, side * 0.66);
+    strut(q, [0.25, 0.55, side * 0.38], [0.3, 0.8, side * 0.62], 0.035, CARBON);
+    tbox(q, 0.24, 0.34, 0.24, 0.24, 0.76, 0.87, 0.76, 0.87, l.body, side * 0.68);
   }
   // Engine cover rising to the airbox behind the driver.
   tbox(q, -2.25, -0.78, 0.3, 0.62, 0.07, 0.5, 0.07, 0.96, l.body);
@@ -136,6 +146,9 @@ export class CarModel {
   private readonly frontWheels: THREE.Group[] = [];
   private readonly flap: THREE.Mesh;
   private readonly helmet: THREE.Mesh;
+  private readonly halo = new THREE.Group();
+  private readonly mirrors = new THREE.Group();
+  private mirrorMat: THREE.Material | null = null;
   private readonly mats: Materials;
   private readonly bodyGeo: THREE.BufferGeometry;
   private readonly owned: THREE.BufferGeometry[] = [];
@@ -161,8 +174,9 @@ export class CarModel {
     this.group.add(new THREE.Mesh(this.bodyGeo, this.mats.body));
     for (const g of haloParts()) {
       this.owned.push(g);
-      this.group.add(new THREE.Mesh(g, this.mats.carbon));
+      this.halo.add(new THREE.Mesh(g, this.mats.carbon));
     }
+    this.group.add(this.halo);
     const helmetGeo = new THREE.SphereGeometry(0.15, 12, 8);
     this.owned.push(helmetGeo);
     this.helmet = new THREE.Mesh(helmetGeo, this.mats.helmet);
@@ -228,6 +242,33 @@ export class CarModel {
     this.helmet.visible = on;
   }
 
+  /** Some cameras hide the halo: its centre pillar blocks the middle of the view. */
+  set haloVisible(on: boolean) {
+    this.halo.visible = on;
+  }
+
+  /** Glass on both wing mirrors showing the view behind (own car only). */
+  addMirrorGlass(view: THREE.Texture): void {
+    const mat = new THREE.MeshBasicMaterial({ map: view });
+    for (const side of [-1, 1]) {
+      const geo = new THREE.PlaneGeometry(0.22, 0.09);
+      // Left mirror: the left half of what's behind; right mirror: the right half.
+      mirrorUv(geo, side < 0 ? 0 : 0.5, side < 0 ? 0.5 : 1);
+      // Facing back at the driver.
+      geo.rotateY(-Math.PI / 2);
+      this.owned.push(geo);
+      const glass = new THREE.Mesh(geo, mat);
+      glass.position.set(0.235, 0.815, side * 0.68);
+      this.mirrors.add(glass);
+    }
+    this.mirrorMat = mat;
+    this.group.add(this.mirrors);
+  }
+
+  set mirrorsVisible(on: boolean) {
+    this.mirrors.visible = on;
+  }
+
   /** Add the steering wheel (own car only). */
   addSteeringWheel(): SteeringWheel {
     this.wheel = new SteeringWheel();
@@ -240,6 +281,7 @@ export class CarModel {
     for (const g of this.owned) g.dispose();
     for (const m of Object.values(this.mats)) m.dispose();
     this.wheel?.dispose();
+    this.mirrorMat?.dispose();
   }
 }
 
@@ -318,6 +360,45 @@ export class SteeringWheel {
     c.fillStyle = info.ersActive ? '#ffd400' : '#4dd2ff';
     c.fillRect(8, 50, 112 * info.ers, 8);
     this.tex.needsUpdate = true;
+  }
+
+  dispose(): void {
+    for (const d of this.disposables) d.dispose();
+  }
+}
+
+/** The safety car: a silver road car with a light bar that flashes amber while it's out. */
+export class SafetyCarModel {
+  readonly group = new THREE.Group();
+  private readonly disposables: { dispose(): void }[] = [];
+  private readonly lightMat = new THREE.MeshBasicMaterial({ color: '#4a3a10' });
+
+  constructor() {
+    const q = new QuadBuilder();
+    tbox(q, -2.3, 2.3, 1.9, 1.8, 0.25, 0.95, 0.25, 0.75, '#b9bec4');
+    tbox(q, -1.5, 0.6, 1.6, 1.6, 0.95, 1.35, 0.95, 1.3, '#1b2430');
+    tbox(q, -2.3, -2.25, 1.6, 1.6, 0.5, 0.8, 0.5, 0.8, '#b01010');
+    const geo = q.build();
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    this.group.add(new THREE.Mesh(geo, mat));
+    const bar = new THREE.BoxGeometry(0.3, 0.12, 1.2);
+    const light = new THREE.Mesh(bar, this.lightMat);
+    light.position.set(-0.3, 1.42, 0);
+    this.group.add(light);
+    const wheel = wheelGeometry(0.34, 0.3);
+    const tyre = new THREE.MeshLambertMaterial({ color: TYRE });
+    for (const [x, z] of [[1.45, -0.8], [1.45, 0.8], [-1.45, -0.8], [-1.45, 0.8]]) {
+      const w = new THREE.Mesh(wheel, tyre);
+      w.position.set(x, 0.34, z);
+      this.group.add(w);
+    }
+    this.disposables.push(geo, mat, bar, wheel, tyre, this.lightMat);
+  }
+
+  update(x: number, y: number, heading: number, flashing: boolean, time: number): void {
+    this.group.position.set(x, 0, y);
+    this.group.rotation.y = -heading;
+    this.lightMat.color.set(flashing && Math.floor(time * 4) % 2 === 0 ? '#ffb000' : '#4a3a10');
   }
 
   dispose(): void {

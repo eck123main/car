@@ -180,16 +180,25 @@ so nobody else can post under an account (guests can't insert account ids). Gues
 ## First-person view (test)
 
 **The plan for first-person F1 (goals, rules, roadmap) is in `docs/first-person-plan.md`: read it
-before working on the 3D side.** For now it's a **test button** in time trial (bottom right:
-"Test 3D view", then "Camera"), not a game mode or a menu option.
+before working on the 3D side.** For now it's a **test button** in the game (bottom right:
+"Test 3D view", then "Camera" opens a list of cameras), not a game mode or a menu option.
+Offered in time trial, practice and races (bots or online; each player picks their own view), but
+**not party mode** (items aren't drawn in 3D yet; `GameDriver.firstPerson`).
 
-**V** in time trial switches to a 3D first-person view (`src/render3d/`, three.js, loaded only
+**V** switches to a 3D first-person view (`src/render3d/`, three.js, loaded only
 when first used so the top-down game doesn't download it). It is **only a renderer**: the same
 `RaceWorld` simulation drives the car, so speed, braking, DRS, ERS, grip and wall hits are
 exactly the same as the top-down game. The 2D canvas stays on top and keeps the whole HUD.
-- **Cameras** (C cycles, remembered in `f1td.cam3d`; the view in `f1td.view`): cockpit (halo,
-  steering wheel with a live speed / DRS / ERS display), T-cam above the airbox, nose cam over
-  the front wing, chase cam.
+- **Cameras** (C cycles, remembered in `f1td.cam3d`; the view in `f1td.view`; `CAMS` in
+  `view3d.ts`): cockpit (halo, steering wheel with a live speed / DRS / ERS display), cockpit
+  without the halo (its centre bar blocks the view), T-cam above the airbox, nose cam, front-wing
+  cam, rear-wing cam, chase cam, far chase cam.
+- **Rear-view mirror** (M toggles): one small render (512x128, every other frame) of what's
+  behind, shown on the car's wing mirrors from inside the cockpit and as a mirror at the top of
+  the screen from the other cameras.
+- **Races**: other cars see-through where 2D shows them as ghosts (qualifying, parked), the safety
+  car (silver, flashing light bar), name tags over cars (`View3D.project`). Start lights and
+  everything else come from the 2D HUD on top.
 - **Track** (`trackMesh.ts`): built from the physics' own centreline samples, so the walls stand
   exactly where cars hit them. Ground layers are side-by-side bands, never stacked. Flat (no
   elevation: the physics is 2D). **Scenery** (`scenery3d.ts`): instanced trees, grandstands with
@@ -197,7 +206,7 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
 - **Keep it light**: flat-shaded low-poly, no shadows or post-processing, fog limits the draw
   distance, pixel ratio capped at 1.25. Two passes: the world (near plane 0.5 m, so far ground
   never flickers), then your own car (near plane 2 cm).
-- Not yet: online races, other modes, weather, party items, Suzuka's bridge height.
+- Not yet: party items, rain spray / wet look, lights on the gantry, Suzuka's bridge height.
 
 ## Sound & settings
 
@@ -287,7 +296,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Use item (party mode) | **E** | Fires on the press |
-| First-person view | **V** | Time trial only, a test (also the button bottom right); then **C** cycles cockpit / T-cam / nose / chase |
+| First-person view | **V** | A test (also the button bottom right), not in party mode; then **C** cycles the 8 cameras, **M** mirror on/off |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 | Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |

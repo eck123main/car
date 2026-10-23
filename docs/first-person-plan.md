@@ -41,9 +41,15 @@ the main way to play (**[OPEN]** whether top-down stays as a mode or a map view,
   crowd, pit garages, brake boards, start gantry, hills), `carModel.ts` (car, halo, steering wheel
   with live speed / DRS / ERS display, DRS flap that opens and turns green, steered front wheels,
   compound-coloured tyre rings, see-through ghost cars).
-- Game screen: test buttons bottom right in time trial ("Test 3D view", "Camera"); keys **V**
-  (view) and **C** (camera); the 2D HUD stays on top; mouse steering works from screen position.
-  View and camera remembered (`f1td.view`, `f1td.cam3d`).
+- Game screen: test buttons bottom right ("Test 3D view", "Camera" with a list of all cameras);
+  keys **V** (view), **C** (camera), **M** (mirror); the 2D HUD stays on top; mouse steering works
+  from screen position. View and camera remembered (`f1td.view`, `f1td.cam3d`).
+- 8 cameras: cockpit, cockpit without the halo (the centre bar blocked the view), T-cam, nose,
+  front wing, rear wing, chase, far chase.
+- Rear-view mirror: one 512x128 render of what's behind every other frame, on the car's wing
+  mirrors (cockpit) or at the top of the screen (other cameras). It costs a second (small) pass.
+- **In races** (practice, bots, online; not party mode): other cars, ghosts in qualifying, the
+  safety car, name tags. Each player picks their own view; the network code didn't change.
 - Checked in headless Chrome on Silverstone (all four cameras). Not yet measured on a real GPU.
 
 ## Roadmap
@@ -59,17 +65,19 @@ the main way to play (**[OPEN]** whether top-down stays as a mode or a map view,
 - Mirrors that show something (cheap: cars behind drawn as markers, not a second render).
 - Run all 44 circuits through a quick check (screenshot each) for scenery or wall glitches.
 
-### Phase 2: the rest of single player
-- Practice and races against bots in 3D: other cars, the safety car, start lights on the gantry
-  (they already exist in the sim; only drawing is missing), pit boxes and pit crew blocks.
+### Phase 2: the rest of the game
+- Done: practice, bots and online races in 3D, safety car, mirrors, name tags.
+- Start lights on the gantry (the HUD shows them now), pit boxes and pit crew blocks.
 - Weather: rain drops / spray / darker sky (cheap), wet track tint.
 - Party mode items in 3D (rockets, boxes, drops).
 - Suzuka: lift the bridge stretch so the two roads cross at different heights.
 
 ### Phase 3: online
-- Multiplayer races in 3D: nothing changes in the network code (it sends the same world state);
-  the client just draws it in 3D. Interpolated other cars already exist.
-- Lobby setting or per-player choice of view (**[OPEN]**: per player, so friends can mix views?).
+- Done: online races draw in 3D with no network changes; each player picks their own view.
+- Test with real friends over the internet: other cars are drawn 100 ms behind (interpolation),
+  which may look different up close in first person than top-down.
+- **[OPEN]** Should the host be able to force one view for everyone (fairness: the mirror and
+  map show different things)?
 
 ### Phase 4: maybe later
 - **[OPEN]** Elevation (real hills such as Spa's Eau Rouge). The physics is 2D, so this would be
