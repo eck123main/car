@@ -682,6 +682,8 @@ export class GameScreen {
     const ghostly = (r: Racer) =>
       session?.phase === 'qualifying' || (r.frozen && (session?.phase === 'race' || session?.phase === 'finished')) || r.items.ghost > 0;
     const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ghost: ghostly(r) ? r.color : undefined }));
+    // Hold Q to look behind.
+    view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
       others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
     );

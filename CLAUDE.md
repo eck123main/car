@@ -296,7 +296,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Use item (party mode) | **E** | Fires on the press |
-| First-person view | **V** | A test (also the button bottom right), not in party mode; then **C** cycles the 8 cameras, **M** mirror on/off |
+| First-person view | **V** | A test (also the button bottom right), not in party mode; then **C** cycles the 8 cameras, **M** mirror on/off, hold **Q** to look behind |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 | Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |

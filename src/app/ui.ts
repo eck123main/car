@@ -63,7 +63,7 @@ const CONTROLS: [string, string][] = [
   ['← / →', 'Spectating: switch driver (after your qualifying lap, once you finish, or joining late)'],
   ['R / Enter', 'Time trial: restart the lap from the start'],
   ['G', 'Time trial: switch ghost (top players, your best, off)'],
-  ['V', 'Test the first-person 3D view (not in party mode); C then changes camera, M mirror on/off'],
+  ['V', 'Test the first-person 3D view (not in party mode); C then changes camera, M mirror on/off, hold Q to look behind'],
   ['Esc', 'Menu'],
 ];
 

@@ -39,6 +39,9 @@ interface CamDef {
   chase?: boolean;
 }
 
+/** Looking behind: from above the driver's head, over the airbox and rear wing. */
+const LOOK_BACK: CamDef = { eye: [0.3, 1.45, 0], look: [-30, 0.4, 0], fov: 62 };
+
 const CAMS: Record<Cam3d, CamDef> = {
   cockpit: { eye: EYE, look: [30, 0.2, 0], fov: 62, inside: true },
   clear: { eye: [EYE[0], EYE[1] + 0.04, 0], look: [30, 0.2, 0], fov: 64, inside: true, noHalo: true },
@@ -109,6 +112,8 @@ export class View3D {
    * car it shows on the wing mirrors; from the other cameras as a mirror at the top of the screen.
    */
   mirror = true;
+  /** Held look-back key: the camera looks behind the car, from above the driver's head. */
+  lookBack = false;
   private readonly mirrorTarget = new THREE.WebGLRenderTarget(MIRROR_SIZE[0], MIRROR_SIZE[1]);
   private readonly mirrorCamera = new THREE.PerspectiveCamera(MIRROR_FOV, MIRROR_SIZE[0] / MIRROR_SIZE[1], 0.5, MIRROR_FAR);
   private readonly screenMirror = new THREE.Scene();
@@ -250,7 +255,7 @@ export class View3D {
     }
     const mine = this.cars.get(own.id)!.model;
     const def = CAMS[this.mode];
-    mine.driverVisible = !def.inside;
+    mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
@@ -281,7 +286,7 @@ export class View3D {
     this.renderer.render(this.near, this.nearCamera);
 
     // Outside the cockpit the car's own mirrors can't be seen: show one at the top of the screen.
-    if (this.mirror && !def.inside) this.drawScreenMirror();
+    if (this.mirror && !def.inside && !this.lookBack) this.drawScreenMirror();
   }
 
   private drawScreenMirror(): void {
@@ -305,7 +310,7 @@ export class View3D {
   }
 
   private placeCamera(own: OwnCarView, dt: number): void {
-    const cam = CAMS[this.mode];
+    const cam = this.lookBack ? LOOK_BACK : CAMS[this.mode];
     let heading = own.heading;
     if (cam.chase) {
       // The chase camera swings round behind the car a little late.
