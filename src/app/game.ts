@@ -676,6 +676,7 @@ export class GameScreen {
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
+        trackIndex: r.car.trackIndex,
       };
     };
     // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
@@ -709,10 +710,10 @@ export class GameScreen {
 
   /** 3D view: names over the other cars (up to 300 m away) and the safety car. */
   private drawTags3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, sc: Pose | null): void {
-    const tags = world.racers.filter((r) => r !== me).map((r) => ({ ...poses.get(r.id)!, name: r.name, color: r.color }));
-    if (sc) tags.push({ ...sc, name: 'SAFETY CAR', color: '#ffb000' });
+    const tags = world.racers.filter((r) => r !== me).map((r) => ({ ...poses.get(r.id)!, name: r.name, color: r.color, trackIndex: r.car.trackIndex }));
+    if (sc) tags.push({ ...sc, name: 'SAFETY CAR', color: '#ffb000', trackIndex: null });
     for (const t of tags) {
-      const p = view.project(t.x, t.y, 1.8);
+      const p = view.project(t.x, t.y, 1.8, t.trackIndex);
       if (p && p.distance < 300) drawScreenTag(this.ctx, t.name, p.x, p.y, t.color, p.distance);
     }
   }

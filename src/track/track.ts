@@ -1,4 +1,4 @@
-import { SURFACES, type DrsZone, type PitDef, type Surface, type SurfaceType, type TrackDef } from './types';
+import { SURFACES, type DrsZone, type PitDef, type SceneryDef, type Surface, type SurfaceType, type TrackDef } from './types';
 
 /** Width of the kerb band just outside the track edge (m). */
 export const KERB_WIDTH = 1.2;
@@ -92,6 +92,8 @@ export class Track {
   readonly length: number;
   readonly drsZones: DrsZone[];
   readonly pit: PitLane | null;
+  /** The 3D look and landmarks (from the track file). */
+  readonly scenery: SceneryDef | null;
   private readonly grid = new Map<number, number[]>();
 
   constructor(def: TrackDef) {
@@ -103,6 +105,7 @@ export class Track {
     this.buildGrid();
     this.fixWallOwnership();
     this.drsZones = def.drsZones ?? findDrsZones(this.samples, this.length);
+    this.scenery = def.scenery ?? null;
   }
 
   /** Forward distance along the lap from a to b (0..length). */

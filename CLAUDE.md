@@ -206,7 +206,21 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
 - **Keep it light**: flat-shaded low-poly, no shadows or post-processing, fog limits the draw
   distance, pixel ratio capped at 1.25. Two passes: the world (near plane 0.5 m, so far ground
   never flickers), then your own car (near plane 2 cm).
-- Not yet: party items, rain spray / wet look, lights on the gantry, Suzuka's bridge height.
+- **Look Behind**: hold **Q** (camera above the driver's head, looking back).
+- **What makes each circuit recognisable** (`src/render3d/landmarks.ts`): a `"scenery"` block in
+  the track file (`SceneryDef` in `src/track/types.ts`), looks only, never physics. `sky`
+  (day / dusk / night: floodlight masts, lit windows), `land` (desert / dunes / forest), `alps`,
+  `mountain` and `sea` (compass direction), `city` (skyline ring), and `landmarks` placed by
+  **share of the lap** (0-1) and side: tunnel (Monaco), water with boats (Monaco harbour, Montreal
+  basin, Albert Park lake), crossover (Suzuka: the later stretch rises 7.5 m over a bridge; cars
+  and cameras follow the road height, `View3D.heightAt`), hotel over the track (Yas Marina), wheel
+  (Suzuka, Singapore Flyer), sphere (Las Vegas), flames (Baku's towers), sands (Marina Bay Sands),
+  walls (Baku's old city), strip (Las Vegas), stadium (Mexico's Foro Sol), sign (Wall of
+  Champions). Big landmarks move further out until clear of every part of the track, and warn in
+  the console if there's no room. 22 circuits have a block; the rest look as before.
+  Note: Monaco's start line and pits in the track file are at Casino Square, not on the real
+  start straight (corners match the real lap from there).
+- Not yet: party items, rain spray / wet look, lights on the gantry.
 
 ## Sound & settings
 

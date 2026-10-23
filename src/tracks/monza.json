@@ -18,5 +18,6 @@
     [-227, 434.5], [-223, 386.7]
   ],
   "drsZones": [{"detect":260,"start":360,"end":826},{"detect":2390,"start":2490,"end":210}],
-  "pit": {"side":"right"}
+  "pit": {"side":"right"},
+  "scenery": {"land":"forest"}
 }

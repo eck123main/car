@@ -19,5 +19,6 @@
     [-37.7, -639.6], [-33.9, -603.8], [-29.9, -586.4], [-2.4, -526.4], [47.7, -397.7], [56.6, -369.1],
     [136.8, 13], [137.2, 18.8], [136.3, 24], [125.3, 42.1], [124, 47.2], [124, 52.9]
   ],
-  "drsZones": [{"detect":1840,"start":1940,"end":2320},{"detect":2396,"start":2496,"end":176},{"detect":844,"start":944,"end":1220}]
+  "drsZones": [{"detect":1840,"start":1940,"end":2320},{"detect":2396,"start":2496,"end":176},{"detect":844,"start":944,"end":1220}],
+  "scenery": {"landmarks":[{"type":"water","from":0.7,"to":0.93,"side":"left","gap":25,"width":110},{"type":"sign","at":0.958,"side":"right","text":"BIENVENUE AU QUÉBEC"}]}
 }

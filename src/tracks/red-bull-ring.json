@@ -18,5 +18,6 @@
     [319.1, 116.5], [315.1, 120.6], [305.2, 127.1], [294.5, 132.7], [266.8, 143.9]
   ],
   "drsZones": [{"detect":96,"start":196,"end":518},{"detect":562,"start":662,"end":918},{"detect":1844,"start":1944,"end":76}],
-  "pit": {"side":"right"}
+  "pit": {"side":"right"},
+  "scenery": {"alps":true}
 }

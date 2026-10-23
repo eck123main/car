@@ -22,5 +22,6 @@
     [313.6, -204.6], [318.2, -202.5], [321.8, -199], [324.4, -194.2], [326.7, -182.7], [331.5, -129]
   ],
   "drsZones": [{"detect":258,"start":358,"end":614},{"detect":1498,"start":1598,"end":1904},{"detect":2174,"start":2274,"end":68},{"detect":622,"start":722,"end":892}],
-  "pit": {"side":"left"}
+  "pit": {"side":"left"},
+  "scenery": {"sky":"night","city":true,"landmarks":[{"type":"wheel","at":0.97,"side":"left","gap":90,"size":40},{"type":"sands","at":0.75,"side":"right","gap":110,"size":110}]}
 }

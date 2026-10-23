@@ -24,5 +24,6 @@
     [-65.8, 432], [-70.5, 428.7], [-74.6, 424.6], [-81.4, 414.9]
   ],
   "drsZones": [{"detect":2294,"start":2394,"end":132},{"detect":1384,"start":1484,"end":1674}],
-  "pit": {"side":"right"}
+  "pit": {"side":"right"},
+  "scenery": {"sky":"night","land":"desert"}
 }

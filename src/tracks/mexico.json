@@ -19,5 +19,6 @@
     [-357.5, -179.3], [-344.9, -191.7], [-334.6, -197.4], [-329, -199.4], [-317.4, -201.4], [-305.5, -201.2]
   ],
   "drsZones": [{"detect":578,"start":678,"end":888},{"detect":1412,"start":1512,"end":1670},{"detect":1936,"start":2036,"end":480}],
-  "pit": {"side":"right"}
+  "pit": {"side":"right"},
+  "scenery": {"city":true,"landmarks":[{"type":"stadium","from":0.83,"to":0.93}]}
 }

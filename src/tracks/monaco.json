@@ -30,5 +30,6 @@
     [153.1, -248.6], [152.2, -260], [153.2, -265.7], [157.5, -276.7], [163.6, -286.9]
   ],
   "drsZones": [{"detect":336,"start":436,"end":958},{"detect":1876,"start":1976,"end":2364},{"detect":3080,"start":3180,"end":70}],
-  "pit": {"side":"left","from":-130,"to":70}
+  "pit": {"side":"left","from":-130,"to":70},
+  "scenery": {"city":true,"landmarks":[{"type":"tunnel","from":0.15,"to":0.27},{"type":"water","from":0.33,"to":0.45,"side":"left","gap":5,"width":140,"boats":true}]}
 }

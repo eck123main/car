@@ -23,5 +23,6 @@
     [-148.8, -5.1], [-146, -9.3], [-142, -12.5], [-136.9, -14.7]
   ],
   "drsZones": [{"detect":602,"start":702,"end":1130},{"detect":1224,"start":1324,"end":1652}],
-  "pit": {"side":"right"}
+  "pit": {"side":"right"},
+  "scenery": {"sky":"dusk","land":"desert","landmarks":[{"type":"hotel","at":0.87}]}
 }

@@ -9,6 +9,71 @@ export interface TrackDef {
   drsZones?: DrsZone[];
   /** Which side of the start/finish straight the pit lane is on (as at the real circuit). */
   pit?: PitDef;
+  /** What makes the circuit recognisable in the 3D view. Looks only: never changes the physics. */
+  scenery?: SceneryDef;
+}
+
+/** Compass direction (north is up on the map). */
+export type Compass = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
+
+/**
+ * The look of a circuit in 3D, and its landmarks. Landmarks are placed by share of the lap
+ * (0..1 from the start line) and side ('left' / 'right' of the driving direction).
+ */
+export interface SceneryDef {
+  /** Night race (floodlights) or a sunset race. Default: day. */
+  sky?: 'day' | 'dusk' | 'night';
+  /** Desert (sand, few trees), dunes (sandy grass) or forest (more trees). Default: green. */
+  land?: 'green' | 'desert' | 'dunes' | 'forest';
+  /** Taller mountains round the horizon (e.g. the Alps). */
+  alps?: boolean;
+  /** A big mountain on the horizon in this direction (Mount Fuji). */
+  mountain?: Compass;
+  /** Sea beyond the circuit in this direction. */
+  sea?: Compass;
+  /** Tall city buildings round the circuit. */
+  city?: boolean;
+  landmarks?: Landmark[];
+}
+
+export type LandmarkType =
+  /** Roof over the track from `from` to `to` (Monaco). */
+  | 'tunnel'
+  /** Water beside the track from `from` to `to`, `gap` m past the wall, `width` m wide; `boats`. */
+  | 'water'
+  /** Where the track crosses itself, the later stretch goes over a bridge (Suzuka). */
+  | 'crossover'
+  /** A building spanning the track at `at` (Yas Marina hotel). */
+  | 'hotel'
+  /** Big wheel at `at`, `gap` m past the wall, `size` = radius. */
+  | 'wheel'
+  /** A huge glowing sphere (Las Vegas), `size` = radius. */
+  | 'sphere'
+  /** Three flame-shaped towers (Baku). */
+  | 'flames'
+  /** Three towers with a ship-like park on top (Marina Bay Sands). */
+  | 'sands'
+  /** Old stone city walls with towers along the track from `from` to `to` (Baku). */
+  | 'walls'
+  /** Tall buildings along the track from `from` to `to` (the Las Vegas Strip). */
+  | 'strip'
+  /** Stadium stands on both sides from `from` to `to` (Mexico's Foro Sol). */
+  | 'stadium'
+  /** Words painted on the wall at `at` (the Wall of Champions). */
+  | 'sign';
+
+export interface Landmark {
+  type: LandmarkType;
+  at?: number;
+  from?: number;
+  to?: number;
+  side?: 'left' | 'right';
+  /** Distance past the wall (m). */
+  gap?: number;
+  width?: number;
+  size?: number;
+  text?: string;
+  boats?: boolean;
 }
 
 export interface PitDef {

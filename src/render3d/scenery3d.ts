@@ -14,6 +14,7 @@ const TREE_STEP = 8;
 const TREE_REACH = 220;
 const STAND_GAP = 5;
 const STAND_ROWS = 10;
+const STADIUM_ROWS = 22;
 const ROW_DEPTH = 1.1;
 const ROW_RISE = 0.55;
 const MAX_CORNER_STANDS = 4;
@@ -32,6 +33,18 @@ function hash(text: string): number {
   return h >>> 0;
 }
 
+export interface SceneryOptions {
+  /** Trees per spot compared with normal. */
+  trees: number;
+  /** Places kept clear for landmarks (water, buildings). */
+  blocked: (x: number, y: number, margin: number) => boolean;
+  /** Colour of the hills on the horizon, and whether they're mountains (the Alps). */
+  hills: string;
+  alps?: boolean;
+  /** Height of the road near a point (boards on a bridge ramp stand up with it). */
+  heightAt?: (x: number, y: number) => number;
+}
+
 export class Scenery3d {
   readonly group = new THREE.Group();
   private readonly rnd: () => number;
@@ -41,10 +54,12 @@ export class Scenery3d {
   constructor(
     private readonly track: Track,
     material: THREE.Material,
+    private readonly opts: SceneryOptions = { trees: 1, blocked: () => false, hills: '#5d7a8a' },
   ) {
     this.rnd = rng(hash(track.name));
     this.ss = track.samples;
     this.addGarages();
+    this.addStadiums();
     this.addMainStands();
     this.addCornerStands();
     this.addGantry();
@@ -56,10 +71,22 @@ export class Scenery3d {
 
   /** At least `margin` metres beyond the walls of whichever part of the track is nearest. */
   private clear(x: number, y: number, margin: number): boolean {
+    if (this.opts.blocked(x, y, margin)) return false;
     const hit = this.track.query(x, y);
     if (!hit) return true;
     const wall = hit.d >= 0 ? hit.sample.wallR : hit.sample.wallL;
     return Math.abs(hit.d) - wall > margin;
+  }
+
+  /** Stadium sections (Mexico's Foro Sol): tall stands on both sides. */
+  private addStadiums(): void {
+    const n = this.ss.length;
+    for (const l of this.track.scenery?.landmarks ?? []) {
+      if (l.type !== 'stadium') continue;
+      const i0 = Math.floor((l.from ?? 0) * n);
+      const len = (((Math.floor((l.to ?? 0) * n) - i0) % n) + n) % n;
+      for (const side of [1, -1] as const) this.stand(i0, i0 + len, side, STADIUM_ROWS);
+    }
   }
 
   private sample(i: number): TrackSample {
@@ -72,8 +99,8 @@ export class Scenery3d {
   }
 
   /** A stepped grandstand along samples [i0, i1] on one side, cut short where it isn't clear. */
-  private stand(i0: number, i1: number, side: 1 | -1): boolean {
-    const depth = STAND_ROWS * ROW_DEPTH;
+  private stand(i0: number, i1: number, side: 1 | -1, rows = STAND_ROWS): boolean {
+    const depth = rows * ROW_DEPTH;
     const ok = (s: TrackSample) => {
       const base = this.wall(s, side) + STAND_GAP;
       const p = at(s, side * base);
@@ -90,7 +117,7 @@ export class Scenery3d {
       const ba = this.wall(a, side) + STAND_GAP;
       const bb = this.wall(b, side) + STAND_GAP;
       const q = this.solid;
-      for (let r = 0; r < STAND_ROWS; r++) {
+      for (let r = 0; r < rows; r++) {
         const h0 = 0.8 + r * ROW_RISE;
         const h1 = h0 + ROW_RISE;
         const da0 = side * (ba + r * ROW_DEPTH);
@@ -112,7 +139,7 @@ export class Scenery3d {
         }
       }
       // Front wall, back wall and roof.
-      const top = 0.8 + STAND_ROWS * ROW_RISE;
+      const top = 0.8 + rows * ROW_RISE;
       q.quad(at(a, side * ba, 0), at(b, side * bb, 0), at(b, side * bb, 0.8), at(a, side * ba, 0.8), '#4f555c');
       q.quad(at(a, side * (ba + depth), 0), at(b, side * (bb + depth), 0), at(b, side * (bb + depth), top + 3), at(a, side * (ba + depth), top + 3), '#4f555c');
       q.quad(at(a, side * (ba - 1), top + 3.2), at(b, side * (bb - 1), top + 3.2), at(b, side * (bb + depth), top + 3), at(a, side * (ba + depth), top + 3), '#c9ced3');
@@ -205,7 +232,8 @@ export class Scenery3d {
     for (let i = 0; i < this.ss.length; i += step) {
       const t = this.ss[i];
       for (const side of [1, -1] as const) {
-        const count = 1 + Math.floor(this.rnd() * 3);
+        // Fewer trees in the desert, more in a forest.
+        const count = Math.floor((1 + this.rnd() * 3) * this.opts.trees);
         for (let k = 0; k < count; k++) {
           // Denser near the track.
           const out = this.wall(t, side) + 9 + Math.pow(this.rnd(), 1.6) * TREE_REACH;
@@ -276,10 +304,11 @@ export class Scenery3d {
     const postMat = new THREE.MeshLambertMaterial({ color: '#777' });
     for (const b of boards) {
       const board = new THREE.Mesh(plane, face(b.label));
-      board.position.set(b.x, 2, b.y);
+      const lift = this.opts.heightAt?.(b.x, b.y) ?? 0;
+      board.position.set(b.x, 2 + lift, b.y);
       board.rotation.y = Math.atan2(-b.tx, -b.ty);
       const post = new THREE.Mesh(postGeo, postMat);
-      post.position.set(b.x, 0.65, b.y);
+      post.position.set(b.x, 0.65 + lift, b.y);
       this.group.add(board, post);
     }
   }
@@ -306,10 +335,10 @@ export class Scenery3d {
       const a = (k / count) * Math.PI * 2 + this.rnd() * 0.1;
       const r = radius + this.rnd() * 300;
       const w = 250 + this.rnd() * 350;
-      const h = 60 + this.rnd() * 140;
+      const h = this.opts.alps ? 260 + this.rnd() * 380 : 60 + this.rnd() * 140;
       m.makeScale(w, h, w).setPosition(cx + Math.cos(a) * r, -5, cy + Math.sin(a) * r);
       mesh.setMatrixAt(k, m);
-      mesh.setColorAt(k, c.setHSL(0.36 + this.rnd() * 0.08, 0.18, 0.42 + this.rnd() * 0.08));
+      mesh.setColorAt(k, c.set(this.opts.hills).offsetHSL(this.rnd() * 0.06 - 0.03, 0, this.rnd() * 0.08 - 0.04));
     }
     mesh.frustumCulled = false;
     this.group.add(mesh);

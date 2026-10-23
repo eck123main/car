@@ -1,4 +1,4 @@
-import type { TrackDef } from './types';
+import type { Landmark, LandmarkType, SceneryDef, TrackDef } from './types';
 
 type Pt = [number, number];
 
@@ -36,7 +36,46 @@ export function parseTrackDef(data: unknown): TrackDef {
       if (typeof p.from === 'number' && typeof p.to === 'number') Object.assign(def.pit, { from: p.from, to: p.to });
     }
   }
+  const scenery = parseScenery(d.scenery);
+  if (scenery) def.scenery = scenery;
   return def;
+}
+
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+const LANDMARKS: LandmarkType[] = ['tunnel', 'water', 'crossover', 'hotel', 'wheel', 'sphere', 'flames', 'sands', 'walls', 'strip', 'stadium', 'sign'];
+
+/** The 3D look of a track. Anything not understood is left out (it's only scenery). */
+function parseScenery(data: unknown): SceneryDef | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const d = data as Record<string, unknown>;
+  const pick = <T extends string>(v: unknown, options: readonly T[]): T | undefined => (options.includes(v as T) ? (v as T) : undefined);
+  const out: SceneryDef = {
+    sky: pick(d.sky, ['day', 'dusk', 'night'] as const),
+    land: pick(d.land, ['green', 'desert', 'dunes', 'forest'] as const),
+    alps: d.alps === true || undefined,
+    mountain: pick(d.mountain, COMPASS),
+    sea: pick(d.sea, COMPASS),
+    city: d.city === true || undefined,
+  };
+  if (Array.isArray(d.landmarks)) {
+    out.landmarks = [];
+    for (const l of d.landmarks as Record<string, unknown>[]) {
+      const type = pick(l?.type, LANDMARKS);
+      if (!type) continue;
+      const lm: Landmark = { type };
+      for (const k of ['at', 'from', 'to', 'gap', 'width', 'size'] as const) {
+        const v = l[k];
+        if (typeof v === 'number' && Number.isFinite(v)) lm[k] = v;
+      }
+      const side = pick(l.side, ['left', 'right'] as const);
+      if (side) lm.side = side;
+      if (typeof l.text === 'string') lm.text = l.text.slice(0, 40);
+      if (l.boats === true) lm.boats = true;
+      out.landmarks.push(lm);
+    }
+  }
+  for (const k of Object.keys(out) as (keyof SceneryDef)[]) if (out[k] === undefined) delete out[k];
+  return out;
 }
 
 export function trackToJson(def: TrackDef): string {
@@ -46,7 +85,8 @@ export function trackToJson(def: TrackDef): string {
   }
   const pit = def.pit ? `,\n  "pit": ${JSON.stringify(def.pit)}` : '';
   const drs = def.drsZones ? `,\n  "drsZones": ${JSON.stringify(def.drsZones)}` : '';
-  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}\n}\n`;
+  const scenery = def.scenery ? `,\n  "scenery": ${JSON.stringify(def.scenery)}` : '';
+  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}${scenery}\n}\n`;
 }
 
 /**

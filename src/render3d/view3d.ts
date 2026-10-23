@@ -4,7 +4,9 @@ import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
 import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
 import { Scenery3d } from './scenery3d';
-import { buildTrackMeshes, noiseTexture, TRACK_COLORS } from './trackMesh';
+import { elevation, Landmarks, lookOf, type Elevation } from './landmarks';
+import { buildTrackMeshes, noiseTexture } from './trackMesh';
+import type { SceneryDef } from '../track/types';
 
 /**
  * First-person (3D) view of the race. Only a renderer: the cars are driven by exactly the
@@ -54,10 +56,6 @@ const CAMS: Record<Cam3d, CamDef> = {
 };
 /** Wider view at top speed (deg), for a sense of speed. */
 const FOV_SPEED = 8;
-const SKY_TOP = '#5f9bd8';
-const SKY_HORIZON = '#cfe2f1';
-const FOG_NEAR = 220;
-const FOG_FAR = 1000;
 /** Rendering never goes above this many device pixels per CSS pixel. */
 const MAX_PIXEL_RATIO = 1.25;
 /** Rear-view mirror picture (px), its vertical field of view (deg, ~70° across) and draw distance (m). */
@@ -76,6 +74,8 @@ export interface CarView {
   livery: Livery;
   /** See-through replay car in this colour (time trial ghost). */
   ghost?: string;
+  /** Which stretch of track it's on (Car.trackIndex), for the height of the road there. */
+  trackIndex?: number | null;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -124,17 +124,24 @@ export class View3D {
   private safetyCar: SafetyCarModel | null = null;
   private time = 0;
   private width = 1;
+  private readonly track: Track;
+  /** Road heights where the track crosses itself (Suzuka's bridge). */
+  private readonly elev: Elevation | null;
 
   constructor(track: Track) {
     this.canvas = document.createElement('canvas');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
-    this.renderer.setClearColor(SKY_HORIZON);
-    this.scene.fog = new THREE.Fog(SKY_HORIZON, FOG_NEAR, FOG_FAR);
+    // Each circuit's own look: night races, sunsets, desert, mountains.
+    const look = lookOf(track.scenery);
+    this.track = track;
+    this.elev = elevation(track);
+    this.renderer.setClearColor(look.skyHorizon);
+    this.scene.fog = new THREE.Fog(look.skyHorizon, look.fogNear, look.fogFar);
 
     for (const scene of [this.scene, this.near]) {
-      scene.add(new THREE.HemisphereLight('#e8f1ff', '#4a5a3a', 1.6));
-      const sun = new THREE.DirectionalLight('#fff6e0', 1.8);
+      scene.add(new THREE.HemisphereLight(look.night ? '#9fb4ff' : '#e8f1ff', '#4a5a3a', look.ambient));
+      const sun = new THREE.DirectionalLight(look.sunColor, look.sun);
       sun.position.set(0.5, 1, 0.3);
       scene.add(sun);
     }
@@ -143,20 +150,29 @@ export class View3D {
     const ground = new THREE.MeshLambertMaterial({ vertexColors: true, map: noise, side: THREE.DoubleSide });
     const solid = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const paint = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-    const meshes = buildTrackMeshes(track);
+    const meshes = buildTrackMeshes(track, look, this.elev);
     this.scene.add(new THREE.Mesh(meshes.ground, ground), new THREE.Mesh(meshes.walls, solid), new THREE.Mesh(meshes.paint, paint));
     this.disposables.push(noise, ground, solid, paint, meshes.ground, meshes.walls, meshes.paint);
 
     // The land outside the walls, a little below the track.
     const outsideGeo = new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2);
-    const outsideMat = new THREE.MeshLambertMaterial({ color: TRACK_COLORS.outside });
+    const outsideMat = new THREE.MeshLambertMaterial({ color: look.outside });
     const outside = new THREE.Mesh(outsideGeo, outsideMat);
     const c = track.samples[0];
     outside.position.set(c.x, -0.12, c.y);
     this.scene.add(outside);
     this.disposables.push(outsideGeo, outsideMat);
 
-    const scenery = new Scenery3d(track, solid);
+    const landmarks = new Landmarks(track, look, this.elev);
+    this.scene.add(landmarks.group);
+    this.disposables.push(landmarks);
+    const scenery = new Scenery3d(track, solid, {
+      trees: look.trees,
+      blocked: (x, y, margin) => landmarks.blocked(x, y, margin),
+      hills: hillColor(track.scenery),
+      alps: track.scenery?.alps,
+      heightAt: (x, y) => this.heightAt(x, y),
+    });
     this.scene.add(scenery.group);
     scenery.group.traverse((o) => {
       if (o instanceof THREE.Mesh) this.disposables.push(o.geometry);
@@ -164,8 +180,8 @@ export class View3D {
 
     // Sky: a gradient dome that follows the camera.
     const skyGeo = new THREE.SphereGeometry(2400, 16, 10);
-    const top = new THREE.Color(SKY_TOP);
-    const horizon = new THREE.Color(SKY_HORIZON);
+    const top = new THREE.Color(look.skyTop);
+    const horizon = new THREE.Color(look.skyHorizon);
     const pos = skyGeo.getAttribute('position');
     const colors: number[] = [];
     const col = new THREE.Color();
@@ -200,8 +216,8 @@ export class View3D {
   }
 
   /** Where a point (sim x, y, height h) is on screen in CSS px, or null if behind the camera. */
-  project(x: number, y: number, h: number): { x: number; y: number; distance: number } | null {
-    const p = new THREE.Vector3(x, h, y);
+  project(x: number, y: number, h: number, trackIndex: number | null = null): { x: number; y: number; distance: number } | null {
+    const p = new THREE.Vector3(x, h + this.heightAt(x, y, trackIndex), y);
     const distance = p.distanceTo(this.camera.position);
     p.project(this.camera);
     if (p.z > 1 || p.z < -1) return null;
@@ -246,6 +262,7 @@ export class View3D {
         this.cars.set(car.id, entry);
       }
       entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, car.compound);
+      entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex);
     }
     for (const [id, entry] of this.cars) {
       if (seen.has(id)) continue;
@@ -264,8 +281,9 @@ export class View3D {
     if (this.mirror && this.mirrorFrame++ % 2 === 0) {
       const cos = Math.cos(own.heading);
       const sin = Math.sin(own.heading);
-      this.mirrorCamera.position.set(own.x + cos * EYE[0], 1.0, own.y + sin * EYE[0]);
-      this.mirrorCamera.lookAt(own.x - cos * 40, 0.4, own.y - sin * 40);
+      const lift = this.heightAt(own.x, own.y, own.trackIndex);
+      this.mirrorCamera.position.set(own.x + cos * EYE[0], 1.0 + lift, own.y + sin * EYE[0]);
+      this.mirrorCamera.lookAt(own.x - cos * 40, 0.4 + lift, own.y - sin * 40);
       this.sky.position.copy(this.mirrorCamera.position);
       this.renderer.setRenderTarget(this.mirrorTarget);
       this.renderer.clear();
@@ -310,6 +328,7 @@ export class View3D {
   }
 
   private placeCamera(own: OwnCarView, dt: number): void {
+    const lift = this.heightAt(own.x, own.y, own.trackIndex);
     const cam = this.lookBack ? LOOK_BACK : CAMS[this.mode];
     let heading = own.heading;
     if (cam.chase) {
@@ -326,18 +345,25 @@ export class View3D {
       const h = heading + yaw;
       const cos = Math.cos(h);
       const sin = Math.sin(h);
-      return new THREE.Vector3(own.x + p[0] * cos - p[2] * sin, p[1], own.y + p[0] * sin + p[2] * cos);
+      return new THREE.Vector3(own.x + p[0] * cos - p[2] * sin, p[1] + lift, own.y + p[0] * sin + p[2] * cos);
     };
     // The chase camera is placed from the smoothed heading but stays centred on the car.
     const eye = toWorld(cam.eye);
     if (cam.chase) {
       const d = Math.hypot(cam.eye[0], cam.eye[2]);
-      eye.set(own.x - Math.cos(heading) * d, cam.eye[1], own.y - Math.sin(heading) * d);
+      eye.set(own.x - Math.cos(heading) * d, cam.eye[1] + lift, own.y - Math.sin(heading) * d);
     }
     this.camera.position.copy(eye);
     this.camera.lookAt(toWorld(cam.look, cam.chase ? 0 : this.look));
     this.camera.fov = cam.fov + FOV_SPEED * Math.min(1, own.speed / 90);
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Height of the road under a point (non-zero only on a crossover bridge). */
+  heightAt(x: number, y: number, trackIndex: number | null = null): number {
+    if (!this.elev) return 0;
+    const i = trackIndex ?? this.track.query(x, y)?.index;
+    return i === undefined ? 0 : this.elev.heights[i];
   }
 
   dispose(): void {
@@ -348,4 +374,13 @@ export class View3D {
     this.renderer.dispose();
     this.canvas.remove();
   }
+}
+
+/** Hills on the horizon, to go with the land and the sky. */
+function hillColor(def: SceneryDef | null): string {
+  if (def?.sky === 'night') return '#1a2233';
+  if (def?.land === 'desert') return '#b49a72';
+  if (def?.land === 'dunes') return '#a8a37c';
+  if (def?.alps) return '#6c7d78';
+  return '#62806c';
 }

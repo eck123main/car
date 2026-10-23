@@ -28,5 +28,6 @@
     [148.5, -78], [159.6, -81.5], [177.4, -82.1], [194.9, -78.7], [206.2, -74.6], [222, -66.1],
     [240.5, -51.1], [260.7, -28.9]
   ],
-  "drsZones": [{"detect":2520,"start":2620,"end":166},{"detect":1792,"start":1892,"end":2298}]
+  "drsZones": [{"detect":2520,"start":2620,"end":166},{"detect":1792,"start":1892,"end":2298}],
+  "scenery": {"landmarks":[{"type":"crossover"},{"type":"wheel","at":0.02,"side":"right","gap":110,"size":24}]}
 }

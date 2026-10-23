@@ -66,7 +66,15 @@ the main way to play (**[OPEN]** whether top-down stays as a mode or a map view,
 - Run all 44 circuits through a quick check (screenshot each) for scenery or wall glitches.
 
 ### Phase 2: the rest of the game
-- Done: practice, bots and online races in 3D, safety car, mirrors, name tags.
+- Done: practice, bots and online races in 3D, safety car, mirrors, name tags, hold Q to look
+  behind.
+- Done: **circuit identity** (the `scenery` block in track files, see CLAUDE.md): night races,
+  desert, Alps, Fuji, seas, city skylines and landmarks on 22 circuits (Monaco tunnel and
+  harbour, Suzuka bridge and wheel, Baku walls and Flame Towers, Singapore Flyer and Marina Bay
+  Sands, Yas hotel, Las Vegas Strip and Sphere, Montreal basin and Wall of Champions, Mexico
+  stadium, Albert Park lake). Placed from maps of each circuit with lap-share marks (north up).
+  Next candidates: COTA tower, Monza's old banking, Spa's Eau Rouge (needs real elevation),
+  Interlagos, Miami's stadium, Zandvoort's banked corners.
 - Start lights on the gantry (the HUD shows them now), pit boxes and pit crew blocks.
 - Weather: rain drops / spray / darker sky (cheap), wet track tint.
 - Party mode items in 3D (rockets, boxes, drops).

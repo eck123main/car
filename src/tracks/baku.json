@@ -24,5 +24,6 @@
     [116.5, -19.7], [194, -52.1], [275.8, -89.6], [446.9, -162.4], [529.1, -199.1]
   ],
   "drsZones": [{"detect":356,"start":456,"end":992},{"detect":4120,"start":4220,"end":54}],
-  "pit": {"side":"left","from":-280,"to":60}
+  "pit": {"side":"left","from":-280,"to":60},
+  "scenery": {"sea":"SE","city":true,"landmarks":[{"type":"walls","from":0.405,"to":0.5,"side":"left","gap":3},{"type":"flames","at":0.57,"side":"right","gap":220,"size":95}]}
 }

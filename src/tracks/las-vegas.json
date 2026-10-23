@@ -22,5 +22,6 @@
     [121.7, 448.9], [134.9, 436.8]
   ],
   "drsZones": [{"detect":1840,"start":1940,"end":2154},{"detect":2428,"start":2528,"end":3016}],
-  "pit": {"side":"left","from":-380,"to":30}
+  "pit": {"side":"left","from":-380,"to":30},
+  "scenery": {"sky":"night","land":"desert","city":true,"landmarks":[{"type":"strip","from":0.55,"to":0.8,"gap":30},{"type":"sphere","at":0.38,"side":"right","gap":60,"size":40}]}
 }

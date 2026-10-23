@@ -23,5 +23,6 @@
     [100.2, 381.6], [94.8, 379.5], [85, 373.1], [76.3, 364.9]
   ],
   "drsZones": [{"detect":180,"start":280,"end":428},{"detect":858,"start":958,"end":1632},{"detect":1636,"start":1736,"end":1924},{"detect":2302,"start":2402,"end":76}],
-  "pit": {"side":"right"}
+  "pit": {"side":"right"},
+  "scenery": {"landmarks":[{"type":"water","from":0.4,"to":0.58,"side":"right","gap":20,"width":150}]}
 }
