@@ -21,6 +21,9 @@ import { TileCache } from '../render/tiles';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { settings } from './settings';
+import { saveCam3d, savedCam3d, savedView, saveView } from './view';
+import { liveryFor } from '../render/livery';
+import type { CarView, View3D } from '../render3d/view3d';
 import { cycle, isSpectating, watchable } from './spectate';
 import type { ItemView } from '../sim/items';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
@@ -68,6 +71,8 @@ export interface GameDriver {
   drawOverlay?(ctx: CanvasRenderingContext2D, width: number, height: number): void;
   /** Single player only: the menu truly pauses the game (online the race goes on). */
   readonly pausable?: boolean;
+  /** Offers the 3D first-person view (V). Time trial only for now. */
+  readonly firstPerson?: boolean;
   /** Mode-specific keys, read once per frame. */
   handleKeys?(keyboard: Keyboard): void;
   /** The game screen closed: let go of anything still running (connections, timers). */
@@ -284,6 +289,10 @@ export class GameScreen {
   private ticker: Worker | null = null;
   /** Last frame's world-to-screen transform (device px), to find where the cursor points. */
   private worldToScreen: DOMMatrix | null = null;
+  /** First-person view: wanted (V), and the 3D renderer once three.js has loaded. */
+  private want3d = false;
+  private view3d: View3D | null = null;
+  private loading3d = false;
   /** Called when the session phase changes (e.g. 'finished'). */
   onPhase: (phase: string) => void = () => {};
   /** Called on Esc. */
@@ -306,6 +315,7 @@ export class GameScreen {
     } catch {
       // Storage blocked: stay on the default fixed view.
     }
+    this.want3d = !!this.driver.firstPerson && savedView() === '3d';
     // Mouse driving carries on from the last race.
     if (this.controls.mouse?.active) this.canvas.style.cursor = 'crosshair';
     this.last = performance.now();
@@ -331,6 +341,60 @@ export class GameScreen {
     document.removeEventListener('visibilitychange', this.updateMute);
     this.updateMute();
     this.canvas.style.cursor = '';
+    this.close3d();
+  }
+
+  /** V: switch between the top-down map and the 3D first-person view. */
+  private toggleView(): void {
+    this.want3d = !this.want3d;
+    saveView(this.want3d ? '3d' : 'top');
+    if (!this.want3d) this.close3d();
+    const text = this.want3d ? 'FIRST PERSON (beta) · C: change camera · V: back to the map' : 'TOP-DOWN VIEW';
+    this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 3 });
+  }
+
+  /** In 3D, C cycles cockpit / T-cam / nose / chase. */
+  private async cycleCam3d(): Promise<void> {
+    if (!this.view3d) return;
+    const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/view3d');
+    const i = CAM3D_ORDER.indexOf(this.view3d.mode);
+    this.view3d.mode = CAM3D_ORDER[(i + 1) % CAM3D_ORDER.length];
+    this.view3d.snap();
+    saveCam3d(this.view3d.mode);
+    this.toasts.push({ text: `CAMERA: ${CAM3D_NAMES[this.view3d.mode]}`, color: '#ffffff', until: this.driver.now() + 2 });
+  }
+
+  /** Load three.js and build the 3D track the first time the 3D view is wanted. */
+  private open3d(track: Track): void {
+    if (this.loading3d) return;
+    this.loading3d = true;
+    import('../render3d/view3d')
+      .then(({ View3D, CAM3D_ORDER }) => {
+        this.loading3d = false;
+        if (!this.running || !this.want3d) return;
+        const view = new View3D(track);
+        const cam = savedCam3d();
+        const found = CAM3D_ORDER.find((c) => c === cam);
+        if (found) view.mode = found;
+        // Under the 2D canvas, which keeps the HUD.
+        Object.assign(view.canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh' });
+        this.canvas.style.position = 'relative';
+        this.canvas.before(view.canvas);
+        this.view3d = view;
+        this.resize();
+      })
+      .catch((err: unknown) => {
+        this.loading3d = false;
+        this.want3d = false;
+        console.error(err);
+        this.toasts.push({ text: "Couldn't start the 3D view (WebGL off?)", color: '#ff6b6b', until: this.driver.now() + 4 });
+      });
+  }
+
+  private close3d(): void {
+    this.view3d?.dispose();
+    this.view3d = null;
+    this.canvas.style.position = '';
   }
 
   /** Sound only while the game is on screen and not paused. */
@@ -386,7 +450,10 @@ export class GameScreen {
   private mouseSteer(): number {
     const mouse = this.controls.mouse;
     const car = this.driver.world()?.racer(this.driver.meId)?.car;
-    if (!mouse?.active || !car || !this.worldToScreen) return 0;
+    if (!mouse?.active || !car) return 0;
+    // First person: the further the cursor is from the middle of the screen, the harder.
+    if (this.view3d) return Math.max(-1, Math.min(1, (mouse.x - window.innerWidth / 2) / (window.innerWidth * 0.3)));
+    if (!this.worldToScreen) return 0;
     const p = this.worldToScreen.inverse().transformPoint(new DOMPoint(mouse.x * this.dpr, mouse.y * this.dpr));
     const dx = p.x - car.x;
     const dy = p.y - car.y;
@@ -414,6 +481,7 @@ export class GameScreen {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(window.innerWidth * this.dpr);
     this.canvas.height = Math.round(window.innerHeight * this.dpr);
+    this.view3d?.setSize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   };
 
   private frame = (now: number): void => {
@@ -430,7 +498,11 @@ export class GameScreen {
     this.acc += elapsed;
 
     if (this.keyboard.wasPressed('Escape')) this.onMenu();
-    if (this.keyboard.wasPressed('KeyC')) this.toggleCamera();
+    if (this.keyboard.wasPressed('KeyV') && this.driver.firstPerson) this.toggleView();
+    if (this.keyboard.wasPressed('KeyC')) {
+      if (this.want3d) void this.cycleCam3d();
+      else this.toggleCamera();
+    }
     this.driver.handleKeys?.(this.keyboard);
     this.updateSpectating();
     this.controls.mouseSteer = this.mouseSteer();
@@ -463,11 +535,16 @@ export class GameScreen {
   }
 
   private render(alpha: number, dt: number): void {
-    const { ctx, canvas, dpr } = this;
+    const { ctx, canvas } = this;
     const world = this.driver.world();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = TrackGraphics.backgroundColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (world && this.want3d && !this.view3d) this.open3d(world.track);
+    // First person: the 3D canvas underneath shows through; this one only carries the HUD.
+    if (this.view3d) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    else {
+      ctx.fillStyle = TrackGraphics.backgroundColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     if (!world) return;
     if (this.gfx?.track !== world.track) {
       // The track never changes during a session: draw it once into bitmap tiles.
@@ -479,22 +556,70 @@ export class GameScreen {
     // The car the camera and HUD follow: our own, or the one we're spectating.
     const me = (this.watching !== null ? world.racer(this.watching) : undefined) ?? own;
     if (!me) return;
-    const spectating = me !== own;
     const poses = new Map(world.racers.map((r) => [r.id, this.driver.pose(r, alpha, dt)]));
     const myPose = poses.get(me.id)!;
     // Jump to the car (rather than sweep across the map) on a new car, or after the tab was
     // in the background and the camera fell far behind.
     if (!this.snapped || Math.hypot(this.camera.x - myPose.x, this.camera.y - myPose.y) > CAMERA_SNAP_DISTANCE) {
       this.camera.snap(myPose.x, myPose.y, myPose.heading);
+      this.view3d?.snap();
       this.snapped = true;
     }
     this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, myPose.heading, dt);
+    const session = this.driver.session();
+    const sc = this.driver.safetyCar(alpha);
+    if (this.view3d) this.render3d(this.view3d, world, me, poses, dt);
+    else this.renderWorld(world, me, poses, session, sc);
 
+    this.drawHudLayer(world, me, own, poses, session, sc, dt);
+  }
+
+  /** First person: our car (or the one we're watching) and everything else in 3D. */
+  private render3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, dt: number): void {
+    const carView = (r: Racer): CarView => {
+      const p = poses.get(r.id)!;
+      return {
+        id: r.id,
+        x: p.x,
+        y: p.y,
+        heading: p.heading,
+        steer: r.car.steer,
+        drsOpen: r.drsOpen,
+        compound: r.tyres.compound,
+        livery: skinLivery(r.skin) ?? liveryFor(r.color),
+      };
+    };
+    const others = world.racers.filter((r) => r !== me).map(carView);
+    (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
+      others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
+    );
+    view.render(
+      {
+        ...carView(me),
+        speed: me.car.speed,
+        yawRate: me.car.yawRate,
+        wheel: {
+          speedKmh: me.car.speed * 3.6,
+          drsOpen: me.drsOpen,
+          drsAvailable: me.drsHint === 'press',
+          ers: me.ers,
+          ersActive: me.ersActive,
+          limiter: me.input.limiter,
+        },
+      },
+      others,
+      dt,
+    );
+  }
+
+  /** The top-down map: track, cars, items, safety car. */
+  private renderWorld(world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, session: SessionSnap | null, sc: Pose | null): void {
+    const { ctx, canvas, dpr } = this;
+    const gfx = this.gfx!;
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
     this.worldToScreen = ctx.getTransform();
-    this.gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
+    gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
     drawPitBoxes(ctx, world);
-    const session = this.driver.session();
     const items = this.driver.items?.() ?? null;
     if (items) {
       drawItemBoxes(ctx, items, this.driver.now());
@@ -540,18 +665,22 @@ export class GameScreen {
       }
       drawSmoke(ctx, items, this.driver.now());
     }
-    const sc = this.driver.safetyCar(alpha);
     if (sc) {
       drawSafetyCar(ctx, sc.x, sc.y, sc.heading, session?.safetyCar === 'deployed', this.driver.now());
       drawNameTag(ctx, 'SAFETY CAR', sc.x, sc.y, '#ffb000');
     }
+  }
 
+  /** Everything drawn in screen space over the world: minimap, timing, HUD, sound. */
+  private drawHudLayer(world: RaceWorld, me: Racer, own: Racer | undefined, poses: ReadonlyMap<string, Pose>, session: SessionSnap | null, sc: Pose | null, dt: number): void {
+    const { ctx, canvas, dpr } = this;
+    const spectating = me !== own;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const w = canvas.width / dpr;
     const h = canvas.height / dpr;
     const now = this.driver.now();
     drawRain(ctx, world.options.wetness, w, h, now);
-    this.gfx.minimap.draw(
+    this.gfx!.minimap.draw(
       ctx,
       w,
       [

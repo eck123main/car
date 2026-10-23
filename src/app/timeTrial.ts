@@ -39,6 +39,7 @@ interface LoadedGhost {
 export class TimeTrialDriver implements GameDriver {
   readonly meId = 'me';
   readonly pausable = true;
+  readonly firstPerson = true;
   readonly resetHint = 'R or ENTER: restart from the start';
   readonly tt: TimeTrial;
   /** Set by the menu's Restart lap button; handled on the next step. */

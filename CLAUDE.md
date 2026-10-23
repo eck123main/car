@@ -14,8 +14,8 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 
 ## Design pillars
 
-1. **Simple look, deep driving.** Flat 2D shapes. No fancy animation, sprites, particles
-   or 3D. A car is a small coloured shape. A track is a plain strip with kerbs and
+1. **Simple look, deep driving.** Flat 2D shapes (plus an optional, simple low-poly first-person
+   view). No fancy animation, sprites or particles. A car is a small coloured shape. A track is a plain strip with kerbs and
    run-off. The depth is in the handling and the rules.
 2. **Racecraft matters.** Racing lines, braking points, inside/outside lines, slipstream
    and DRS should all make a real difference. A player who drives a better line should
@@ -177,6 +177,24 @@ key; everything goes through RPC functions (`sign_up`, `sign_in`, `sign_out`, `w
 `playerId()` is the account id, the name is the username, and laps are saved with `submit_lap`
 so nobody else can post under an account (guests can't insert account ids). Guests still play.
 
+## First-person view (beta)
+
+**V** in time trial switches to a 3D first-person view (`src/render3d/`, three.js, loaded only
+when first used so the top-down game doesn't download it). It is **only a renderer**: the same
+`RaceWorld` simulation drives the car, so speed, braking, DRS, ERS, grip and wall hits are
+exactly the same as the top-down game. The 2D canvas stays on top and keeps the whole HUD.
+- **Cameras** (C cycles, remembered in `f1td.cam3d`; the view in `f1td.view`): cockpit (halo,
+  steering wheel with a live speed / DRS / ERS display), T-cam above the airbox, nose cam over
+  the front wing, chase cam.
+- **Track** (`trackMesh.ts`): built from the physics' own centreline samples, so the walls stand
+  exactly where cars hit them. Ground layers are side-by-side bands, never stacked. Flat (no
+  elevation: the physics is 2D). **Scenery** (`scenery3d.ts`): instanced trees, grandstands with
+  a crowd, pit garages, brake boards, start gantry, hills, sky dome.
+- **Keep it light**: flat-shaded low-poly, no shadows or post-processing, fog limits the draw
+  distance, pixel ratio capped at 1.25. Two passes: the world (near plane 0.5 m, so far ground
+  never flickers), then your own car (near plane 2 cm).
+- Not yet: online races, other modes, weather, party items, Suzuka's bridge height.
+
 ## Sound & settings
 
 - `src/audio/sound.ts`: recordings in `public/sounds/` (named in `sounds.json`, see its README) are
@@ -265,6 +283,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Use item (party mode) | **E** | Fires on the press |
+| First-person view | **V** | Time trial only (beta); then **C** cycles cockpit / T-cam / nose / chase |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 | Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |

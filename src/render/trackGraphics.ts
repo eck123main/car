@@ -220,14 +220,17 @@ export class TrackGraphics {
   static readonly backgroundColor = COLORS.outside;
 }
 
-interface BrakeBoard {
+export interface BrakeBoard {
   x: number;
   y: number;
   label: string;
+  /** Direction of travel there (unit vector). */
+  tx: number;
+  ty: number;
 }
 
 /** Boards 100 m and 50 m before each slow corner that follows a fast stretch, on both sides. */
-function findBrakeBoards(track: Track): BrakeBoard[] {
+export function findBrakeBoards(track: Track): BrakeBoard[] {
   const ss = track.samples;
   const n = ss.length;
   const tight = (i: number) => Math.abs(ss[((i % n) + n) % n].curvature) >= 1 / 80;
@@ -244,7 +247,7 @@ function findBrakeBoards(track: Track): BrakeBoard[] {
       for (const side of [1, -1]) {
         if (track.onPitSide(s, side)) continue;
         const off = (s.halfWidth + KERB_WIDTH + 2.5) * side;
-        boards.push({ x: s.x + s.nx * off, y: s.y + s.ny * off, label: String(dist) });
+        boards.push({ x: s.x + s.nx * off, y: s.y + s.ny * off, label: String(dist), tx: s.tx, ty: s.ty });
       }
     }
   }

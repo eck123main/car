@@ -12,12 +12,14 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@types/three": "^0.170.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
     "vitest": "^5.0.3"
   },
   "dependencies": {
     "@supabase/realtime-js": "2.117.2",
-    "peerjs": "^1.5.5"
+    "peerjs": "^1.5.5",
+    "three": "^0.170.0"
   }
 }
