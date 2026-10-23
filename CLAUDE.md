@@ -177,7 +177,11 @@ key; everything goes through RPC functions (`sign_up`, `sign_in`, `sign_out`, `w
 `playerId()` is the account id, the name is the username, and laps are saved with `submit_lap`
 so nobody else can post under an account (guests can't insert account ids). Guests still play.
 
-## First-person view (beta)
+## First-person view (test)
+
+**The plan for first-person F1 (goals, rules, roadmap) is in `docs/first-person-plan.md`: read it
+before working on the 3D side.** For now it's a **test button** in time trial (bottom right:
+"Test 3D view", then "Camera"), not a game mode or a menu option.
 
 **V** in time trial switches to a 3D first-person view (`src/render3d/`, three.js, loaded only
 when first used so the top-down game doesn't download it). It is **only a renderer**: the same
@@ -283,7 +287,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Use item (party mode) | **E** | Fires on the press |
-| First-person view | **V** | Time trial only (beta); then **C** cycles cockpit / T-cam / nose / chase |
+| First-person view | **V** | Time trial only, a test (also the button bottom right); then **C** cycles cockpit / T-cam / nose / chase |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 | Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |

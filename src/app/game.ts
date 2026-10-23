@@ -293,6 +293,8 @@ export class GameScreen {
   private want3d = false;
   private view3d: View3D | null = null;
   private loading3d = false;
+  private viewButtons: HTMLElement | null = null;
+  private updateViewButtons: () => void = () => {};
   /** Called when the session phase changes (e.g. 'finished'). */
   onPhase: (phase: string) => void = () => {};
   /** Called on Esc. */
@@ -316,6 +318,7 @@ export class GameScreen {
       // Storage blocked: stay on the default fixed view.
     }
     this.want3d = !!this.driver.firstPerson && savedView() === '3d';
+    if (this.driver.firstPerson) this.addViewButtons();
     // Mouse driving carries on from the last race.
     if (this.controls.mouse?.active) this.canvas.style.cursor = 'crosshair';
     this.last = performance.now();
@@ -342,6 +345,38 @@ export class GameScreen {
     this.updateMute();
     this.canvas.style.cursor = '';
     this.close3d();
+    this.viewButtons?.remove();
+    this.viewButtons = null;
+  }
+
+  /**
+   * Test buttons, bottom right: switch to the 3D view and change its camera. The 3D view is
+   * still being tried out, so it isn't offered anywhere else yet.
+   */
+  private addViewButtons(): void {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;right:16px;bottom:16px;display:flex;gap:6px;';
+    const button = (onClick: () => void) => {
+      const b = document.createElement('button');
+      b.tabIndex = -1;
+      b.style.cssText = 'padding:6px 12px;font-size:12px;opacity:0.85;';
+      // Never take focus: Space (DRS) and Enter (restart) would press it again.
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', onClick);
+      box.append(b);
+      return b;
+    };
+    const cam = button(() => void this.cycleCam3d());
+    cam.textContent = 'Camera (C)';
+    const view = button(() => this.toggleView());
+    this.viewButtons = box;
+    this.updateViewButtons = () => {
+      view.textContent = this.want3d ? 'Map view (V)' : 'Test 3D view (V)';
+      cam.style.display = this.want3d ? '' : 'none';
+    };
+    this.updateViewButtons();
+    // Under the menus in #ui.
+    this.canvas.after(box);
   }
 
   /** V: switch between the top-down map and the 3D first-person view. */
@@ -349,7 +384,8 @@ export class GameScreen {
     this.want3d = !this.want3d;
     saveView(this.want3d ? '3d' : 'top');
     if (!this.want3d) this.close3d();
-    const text = this.want3d ? 'FIRST PERSON (beta) · C: change camera · V: back to the map' : 'TOP-DOWN VIEW';
+    this.updateViewButtons();
+    const text = this.want3d ? 'FIRST PERSON (test) · C: change camera · V: back to the map' : 'TOP-DOWN VIEW';
     this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 3 });
   }
 
@@ -386,6 +422,7 @@ export class GameScreen {
       .catch((err: unknown) => {
         this.loading3d = false;
         this.want3d = false;
+        this.updateViewButtons();
         console.error(err);
         this.toasts.push({ text: "Couldn't start the 3D view (WebGL off?)", color: '#ff6b6b', until: this.driver.now() + 4 });
       });
