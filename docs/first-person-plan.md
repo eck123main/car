@@ -80,6 +80,11 @@ the main way to play (**[OPEN]** whether top-down stays as a mode or a map view,
 - Party mode items in 3D (rockets, boxes, drops).
 - Suzuka: lift the bridge stretch so the two roads cross at different heights.
 
+- Done: **real elevation** (see CLAUDE.md, Driving & physics): hills in the physics for both
+  views, terrain in 3D, cars and cameras pitch with the slope, top-down shading. Spa's Eau
+  Rouge/Raidillon, Red Bull Ring, COTA's turn 1 and Suzuka's bridge are all in.
+  Next: the four OpenStreetMap circuits (Fuji especially), banking (Zandvoort, Indianapolis).
+
 ### Phase 3: online
 - Done: online races draw in 3D with no network changes; each player picks their own view.
 - Test with real friends over the internet: other cars are drawn 100 ms behind (interpolation),

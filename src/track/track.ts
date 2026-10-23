@@ -1,4 +1,4 @@
-import { SURFACES, type DrsZone, type PitDef, type SceneryDef, type Surface, type SurfaceType, type TrackDef } from './types';
+import { SURFACES, type DrsZone, type ElevationDef, type PitDef, type SceneryDef, type Surface, type SurfaceType, type TrackDef } from './types';
 
 /** Width of the kerb band just outside the track edge (m). */
 export const KERB_WIDTH = 1.2;
@@ -67,6 +67,22 @@ export interface TrackSample {
   pitWidth: number;
   /** Pit wall between the track and the pit lane. */
   pitWall: boolean;
+  /** Height of the ground (m, real terrain), and of the road (the ground, or a bridge over it). */
+  ground: number;
+  z: number;
+  /** Slope along the driving direction (rise per metre) and its change (1/m: + = dip, - = crest). */
+  grade: number;
+  vcurv: number;
+  /** On a bridge with another part of the track underneath. */
+  deck: boolean;
+}
+
+/** How a slope acts on a car: see Track.slope. */
+export interface Slope {
+  grade: number;
+  vcurv: number;
+  tx: number;
+  ty: number;
 }
 
 export interface TrackHit {
@@ -106,6 +122,18 @@ export class Track {
     this.fixWallOwnership();
     this.drsZones = def.drsZones ?? findDrsZones(this.samples, this.length);
     this.scenery = def.scenery ?? null;
+    applyElevation(this.samples, def.elevation, !!def.scenery?.landmarks?.some((l) => l.type === 'crossover'));
+    this.hilly = this.samples.some((s) => s.grade !== 0);
+  }
+
+  /** Track has hills (otherwise slope() is always null). */
+  readonly hilly: boolean;
+
+  /** The slope where a car is (its sample index), or null on a flat track. */
+  slope(index: number | null): Slope | null {
+    if (!this.hilly || index === null) return null;
+    const s = this.samples[index];
+    return s ? { grade: s.grade, vcurv: s.vcurv, tx: s.tx, ty: s.ty } : null;
   }
 
   /** Forward distance along the lap from a to b (0..length). */
@@ -523,10 +551,74 @@ function buildSamples(pts: Pt[], halfWidth: number): TrackSample[] {
       pit: false,
       pitWidth: 0,
       pitWall: false,
+      ground: 0,
+      z: 0,
+      grade: 0,
+      vcurv: 0,
+      deck: false,
     });
   }
   limitWallsByClearance(samples);
   return samples;
+}
+
+/** Steepest bridge ramp and how high the deck is (m), where the track crosses itself (Suzuka). */
+const BRIDGE_HEIGHT = 7.5;
+const RAMP_FLAT = 40;
+const RAMP_END = 230;
+
+/**
+ * Heights along the lap: the real terrain (interpolated from the track file), plus a bridge
+ * where the track crosses itself: the later stretch goes over, the earlier one under. Then the
+ * slope and its change at every sample, which the car physics uses.
+ */
+function applyElevation(samples: TrackSample[], elevation: ElevationDef | undefined, crossover: boolean): void {
+  const n = samples.length;
+  if (elevation) {
+    const h = elevation.heights;
+    const m = h.length;
+    for (const s of samples) {
+      const f = s.s / elevation.step;
+      const i = Math.floor(f);
+      const t = f - i;
+      s.ground = s.z = h[i % m] * (1 - t) + h[(i + 1) % m] * t;
+    }
+  }
+  if (crossover) {
+    let best = { d: Infinity, i: 0, j: 0 };
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 60; j < n; j++) {
+        if (n - (j - i) < 60) continue;
+        const d = Math.hypot(samples[i].x - samples[j].x, samples[i].y - samples[j].y);
+        if (d < best.d) best = { d, i, j };
+      }
+    }
+    if (best.d < 5) {
+      const lower = samples[best.i];
+      // Over the lower road's terrain, whatever the upper one's ground does.
+      const deckHeight = lower.ground + BRIDGE_HEIGHT;
+      const lowerReach = Math.max(lower.wallL, lower.wallR) + 6;
+      const reach = Math.ceil(RAMP_END / SAMPLE_SPACING);
+      for (let k = -reach; k <= reach; k++) {
+        const s = samples[(((best.j + k) % n) + n) % n];
+        const d = Math.abs(k) * SAMPLE_SPACING;
+        const t = d <= RAMP_FLAT ? 1 : Math.max(0, (RAMP_END - d) / (RAMP_END - RAMP_FLAT));
+        const smooth = t * t * (3 - 2 * t);
+        s.z = Math.max(s.ground, s.ground + (deckHeight - s.ground) * smooth);
+        const across = Math.abs((s.x - lower.x) * lower.nx + (s.y - lower.y) * lower.ny);
+        const along = Math.abs((s.x - lower.x) * lower.tx + (s.y - lower.y) * lower.ty);
+        s.deck = across < lowerReach + Math.max(s.wallL, s.wallR) && along < 40;
+      }
+    }
+  }
+  const z = (i: number) => samples[((i % n) + n) % n].z;
+  if (!samples.some((s) => s.z !== 0)) return;
+  const raw = samples.map((_, i) => (z(i + 5) - 2 * z(i) + z(i - 5)) / (5 * SAMPLE_SPACING) ** 2);
+  const vcurv = smoothClosed(raw, 5);
+  samples.forEach((s, i) => {
+    s.grade = (z(i + 3) - z(i - 3)) / (6 * SAMPLE_SPACING);
+    s.vcurv = vcurv[i];
+  });
 }
 
 /**

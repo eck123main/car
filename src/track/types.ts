@@ -11,6 +11,13 @@ export interface TrackDef {
   pit?: PitDef;
   /** What makes the circuit recognisable in the 3D view. Looks only: never changes the physics. */
   scenery?: SceneryDef;
+  /** Real terrain heights (m) every `step` m of the lap from the start line (scripts/elevation.ts). */
+  elevation?: ElevationDef;
+}
+
+export interface ElevationDef {
+  step: number;
+  heights: number[];
 }
 
 /** Compass direction (north is up on the map). */

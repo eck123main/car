@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Track, TrackSample } from '../track/track';
 import type { Compass, Landmark, SceneryDef } from '../track/types';
+import type { Terrain } from './terrain';
 import { at, QuadBuilder } from './trackMesh';
 
 /**
@@ -52,50 +53,61 @@ export function lookOf(def: SceneryDef | null): Look {
   return look;
 }
 
-/** Height of the road at every centreline sample (the crossover bridge), and where it's a deck. */
-export interface Elevation {
-  heights: Float32Array;
-  /** Samples on the bridge itself (open underneath), not on an embankment. */
-  deck: Uint8Array;
+/** Sea and water beside the track (from the scenery block), with their water levels. */
+export interface Water {
+  seas: { dx: number; dy: number; from: number; level: number }[];
+  bands: { from: number; to: number; side: number; gap: number; width: number; d0: number; d1: number; level: number; boats: boolean }[];
+  /** The water level at a point, or null on land. */
+  levelAt(x: number, y: number, margin?: number): number | null;
 }
 
-const BRIDGE_HEIGHT = 7.5;
-/** Full height this far either side of the crossing, back down to the ground by RAMP_END (m). */
-const RAMP_FLAT = 40;
-const RAMP_END = 230;
-
-/** Suzuka: the later stretch through the crossing goes over a bridge, the earlier one under it. */
-export function elevation(track: Track): Elevation | null {
-  if (!track.scenery?.landmarks?.some((l) => l.type === 'crossover')) return null;
+export function waterOf(track: Track): Water {
   const ss = track.samples;
   const n = ss.length;
-  let best = { d: Infinity, i: 0, j: 0 };
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 60; j < n; j++) {
-      if (n - (j - i) < 60) continue;
-      const d = Math.hypot(ss[i].x - ss[j].x, ss[i].y - ss[j].y);
-      if (d < best.d) best = { d, i, j };
+  const def = track.scenery;
+  const minGround = Math.min(...ss.map((s) => s.ground));
+  const seas: Water['seas'] = [];
+  if (def?.sea) {
+    const [dx, dy] = COMPASS_DIR[def.sea];
+    let max = -Infinity;
+    for (const s of ss) max = Math.max(max, s.x * dx + s.y * dy + Math.max(s.wallL, s.wallR));
+    seas.push({ dx, dy, from: max + 40, level: minGround - 1 });
+  }
+  const bands: Water['bands'] = [];
+  for (const l of def?.landmarks ?? []) {
+    if (l.type !== 'water') continue;
+    const side = l.side === 'left' ? -1 : 1;
+    const gap = l.gap ?? 6;
+    const width = l.width ?? 150;
+    const a = Math.floor((l.from ?? 0) * n);
+    const len = (((Math.floor((l.to ?? 0) * n) - a) % n) + n) % n;
+    let d0 = Infinity, d1 = 0, level = Infinity;
+    for (let k = 0; k <= len; k++) {
+      const s = ss[(a + k) % n];
+      const w = (side > 0 ? s.wallR : s.wallL) + gap;
+      d0 = Math.min(d0, w);
+      d1 = Math.max(d1, w + width);
+      level = Math.min(level, s.ground - 0.4);
     }
+    bands.push({ from: l.from ?? 0, to: l.to ?? 0, side, gap, width, d0, d1, level, boats: !!l.boats });
   }
-  if (best.d > 5) return null;
-  const heights = new Float32Array(n);
-  const deck = new Uint8Array(n);
-  const reach = Math.ceil(RAMP_END / 2);
-  const lower = ss[best.i];
-  const lowerReach = Math.max(lower.wallL, lower.wallR) + 6;
-  for (let k = -reach; k <= reach; k++) {
-    const idx = (((best.j + k) % n) + n) % n;
-    const d = Math.abs(k) * 2;
-    const t = d <= RAMP_FLAT ? 1 : Math.max(0, (RAMP_END - d) / (RAMP_END - RAMP_FLAT));
-    // Smooth at both ends of the ramp.
-    heights[idx] = BRIDGE_HEIGHT * t * t * (3 - 2 * t);
-    const s = ss[idx];
-    // Over the lower road: within its walls of its centreline.
-    const across = Math.abs((s.x - lower.x) * lower.nx + (s.y - lower.y) * lower.ny);
-    const along = Math.abs((s.x - lower.x) * lower.tx + (s.y - lower.y) * lower.ty);
-    if (across < lowerReach + Math.max(s.wallL, s.wallR) && along < 40) deck[idx] = 1;
-  }
-  return { heights, deck };
+  return {
+    seas,
+    bands,
+    levelAt(x, y, margin = 0) {
+      for (const s of seas) if (x * s.dx + y * s.dy > s.from - margin) return s.level;
+      if (bands.length === 0) return null;
+      const hit = track.query(x, y);
+      if (!hit) return null;
+      for (const w of bands) {
+        const f = hit.s / track.length;
+        const inRange = w.from <= w.to ? f >= w.from && f <= w.to : f >= w.from || f <= w.to;
+        const off = hit.d * w.side;
+        if (inRange && off > w.d0 - margin && off < w.d1 + margin) return w.level;
+      }
+      return null;
+    },
+  };
 }
 
 const COMPASS_DIR: Record<Compass, [number, number]> = {
@@ -146,25 +158,25 @@ export class Landmarks {
   private readonly rnd: () => number;
   /** Footprints kept free of trees and stands: circles, and water. */
   private readonly circles: { x: number; y: number; r: number }[] = [];
-  private readonly seaLines: { dx: number; dy: number; from: number }[] = [];
-  private readonly waterBands: { from: number; to: number; side: number; d0: number; d1: number }[] = [];
   private readonly buildings: { x: number; y: number; w: number; d: number; h: number; angle: number }[] = [];
   private readonly disposables: { dispose(): void }[] = [];
 
   constructor(
     private readonly track: Track,
     private readonly look: Look,
-    private readonly elev: Elevation | null,
+    private readonly terrain: Terrain,
+    private readonly water: Water,
   ) {
     this.ss = track.samples;
     this.n = this.ss.length;
     this.rnd = rng(track.length * 7 + 3);
     const def = track.scenery;
-    if (def?.sea) this.addSea(def.sea);
+    for (const sea of water.seas) this.addSea(sea);
+    for (const band of water.bands) this.addWater(band);
     for (const l of def?.landmarks ?? []) this.add(l);
     if (def?.city) this.addCity();
     if (def?.mountain) this.addMountain(def.mountain);
-    if (this.elev) this.addBridgePillars();
+    if (this.ss.some((s) => s.deck)) this.addBridgePillars();
     if (look.night) this.addFloodlights();
     this.addBuildings();
     const solidMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
@@ -177,19 +189,7 @@ export class Landmarks {
   /** Somewhere trees and stands must keep away from (water, buildings, landmarks). */
   blocked(x: number, y: number, margin = 4): boolean {
     for (const c of this.circles) if (Math.hypot(x - c.x, y - c.y) < c.r + margin) return true;
-    for (const s of this.seaLines) if (x * s.dx + y * s.dy > s.from - margin) return true;
-    if (this.waterBands.length) {
-      const hit = this.track.query(x, y);
-      if (hit) {
-        for (const w of this.waterBands) {
-          const f = hit.s / this.track.length;
-          const inRange = w.from <= w.to ? f >= w.from && f <= w.to : f >= w.from || f <= w.to;
-          const off = hit.d * w.side;
-          if (inRange && off > w.d0 - margin && off < w.d1 + margin) return true;
-        }
-      }
-    }
-    return false;
+    return this.water.levelAt(x, y, margin) !== null;
   }
 
   dispose(): void {
@@ -249,8 +249,6 @@ export class Landmarks {
     switch (l.type) {
       case 'tunnel':
         return this.addTunnel(l.from ?? 0, l.to ?? 0);
-      case 'water':
-        return this.addWater(l.from ?? 0, l.to ?? 0, side, l.gap ?? 6, l.width ?? 150, !!l.boats);
       case 'hotel':
         return this.addHotel(l.at ?? 0);
       case 'wheel':
@@ -267,7 +265,7 @@ export class Landmarks {
         return this.addStrip(l.from ?? 0, l.to ?? 0, l.gap ?? 25);
       case 'sign':
         return this.addSign(l.at ?? 0, side, l.text ?? '');
-      // 'crossover' is the elevation; 'stadium' is built with the other stands (Scenery3d).
+      // 'water' is drawn from waterOf; 'crossover' is in the track's heights; 'stadium' is built with the other stands (Scenery3d).
     }
   }
 
@@ -298,52 +296,48 @@ export class Landmarks {
   }
 
   /** Water beside the track (a harbour or a lake), with boats moored in it. */
-  private addWater(from: number, to: number, side: number, gap: number, width: number, boats: boolean): void {
-    const idx = this.range(from, to);
+  /** Water beside the track (a harbour or a lake), with boats moored in it, at its own level. */
+  private addWater(w: Water['bands'][number]): void {
+    const idx = this.range(w.from, w.to);
     const water = new QuadBuilder();
     const color = this.look.night ? '#0f2438' : '#2c6e94';
-    let d0 = Infinity, d1 = 0;
+    const { side, gap, width, level } = w;
     for (let k = 0; k < idx.length - 1; k++) {
       const a = this.ss[idx[k]];
       const b = this.ss[idx[k + 1]];
       const a0 = this.wall(a, side) + gap, b0 = this.wall(b, side) + gap;
-      water.quad(at(a, side * a0, -0.06), at(b, side * b0, -0.06), at(b, side * (b0 + width), -0.06), at(a, side * (a0 + width), -0.06), color, true);
-      d0 = Math.min(d0, a0);
-      d1 = Math.max(d1, a0 + width);
-      // Quay wall along the near edge.
-      this.solid.quad(at(a, side * a0, -1), at(b, side * b0, -1), at(b, side * b0, 0.02), at(a, side * a0, 0.02), '#b9b3a6');
+      // (at() adds each sample's road height; the water is flat.)
+      const la = level - a.z, lb = level - b.z;
+      water.quad(at(a, side * a0, la), at(b, side * b0, lb), at(b, side * (b0 + width), lb), at(a, side * (a0 + width), la), color, true);
+      // Quay wall along the near edge, up to the road.
+      this.solid.quad(at(a, side * a0, la - 1), at(b, side * b0, lb - 1), at(b, side * b0, 0.02), at(a, side * a0, 0.02), '#b9b3a6');
     }
     this.mesh(water.build(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-    this.waterBands.push({ from, to, side, d0, d1 });
-    if (!boats) return;
+    if (!w.boats) return;
     for (let k = 0; k < idx.length; k += 6) {
       if (this.rnd() < 0.3) continue;
       const s = this.ss[idx[k]];
       const off = this.wall(s, side) + gap + 6 + this.rnd() * Math.min(width - 12, 60);
       const len = 12 + this.rnd() * 22;
       const beam = len * 0.3;
+      const lift = level - s.z;
       // Moored side-on to the quay, with a cabin.
-      const p = (o: number, along: number, h: number) => at(s, side * o, h, along);
+      const p = (o: number, along: number, h: number) => at(s, side * o, h + lift, along);
       const hull = (o0: number, o1: number, a0: number, a1: number, h0: number, h1: number, c: string) =>
         this.solid.box([p(o0, a0, h0), p(o0, a1, h0), p(o1, a1, h0), p(o1, a0, h0)], [p(o0, a0, h1), p(o0, a1, h1), p(o1, a1, h1), p(o1, a0, h1)], c);
-      hull(off, off + beam, -len / 2, len / 2, 0, 2.2, '#f4f4f2');
+      hull(off, off + beam, -len / 2, len / 2, -0.5, 2.2, '#f4f4f2');
       hull(off + beam * 0.2, off + beam * 0.8, -len * 0.25, len * 0.2, 2.2, 4, '#dfe5ea');
     }
   }
 
-  /** Sea beyond the circuit in a compass direction. */
-  private addSea(dir: Compass): void {
-    const [dx, dy] = COMPASS_DIR[dir];
-    let max = -Infinity;
-    for (const s of this.ss) max = Math.max(max, s.x * dx + s.y * dy + Math.max(s.wallL, s.wallR));
-    const from = max + 40;
-    // A big quad: from the shore line outwards, wide across.
+  /** Sea beyond the circuit, from the shore line outwards. */
+  private addSea(sea: Water['seas'][number]): void {
+    const { dx, dy, from, level } = sea;
     const px = -dy, py = dx;
-    const c = (along: number, across: number): [number, number, number] => [dx * along + px * across, -0.08, dy * along + py * across];
+    const c = (along: number, across: number): [number, number, number] => [dx * along + px * across, level, dy * along + py * across];
     const q = new QuadBuilder();
     q.quad(c(from, -8000), c(from, 8000), c(from + 6000, 8000), c(from + 6000, -8000), this.look.night ? '#0d1e30' : '#2a6a90', true);
     this.mesh(q.build(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-    this.seaLines.push({ dx, dy, from });
   }
 
   /** A building spanning the track: two blocks and a bridge between them (Yas Marina hotel). */
@@ -417,7 +411,7 @@ export class Landmarks {
       cabins.setMatrixAt(k, m4.makeTranslation(Math.cos(a) * radius, cy + Math.sin(a) * radius - 1.5, 0));
     }
     g.add(cabins);
-    g.position.set(p[0], 0, p[2]);
+    g.position.set(p[0], this.terrain.heightAt(p[0], p[2]), p[2]);
     // Face the track: the wheel's flat side towards the road.
     g.rotation.y = Math.atan2(s.tx, s.ty) + Math.PI / 2;
     this.group.add(g);
@@ -458,7 +452,7 @@ export class Landmarks {
     const geo = new THREE.SphereGeometry(radius, 32, 18);
     const mat = new THREE.MeshBasicMaterial({ map: tex });
     const m = new THREE.Mesh(geo, mat);
-    m.position.set(p[0], radius * 0.85, p[2]);
+    m.position.set(p[0], this.terrain.heightAt(p[0], p[2]) + radius * 0.85, p[2]);
     // The picture faces the track.
     m.rotation.y = Math.atan2(-side * s.nx, -side * s.ny) - Math.PI / 2;
     this.group.add(m);
@@ -478,13 +472,14 @@ export class Landmarks {
     const hillMat = new THREE.MeshLambertMaterial({ color: '#8d8a6a', flatShading: true });
     const hillMesh = new THREE.Mesh(hill, hillMat);
     hillMesh.scale.set(height * 0.9, height * 0.18, height * 0.9);
-    hillMesh.position.set(base[0], height * 0.09 - 1, base[2]);
+    const ground = this.terrain.heightAt(base[0], base[2]);
+    hillMesh.position.set(base[0], ground + height * 0.09 - 1, base[2]);
     this.group.add(hillMesh);
     [[0, 0, 1], [-0.28, 0.2, 0.86], [0.28, 0.25, 0.8]].forEach(([dx, dz, k]) => {
       const m = new THREE.Mesh(geo, mat);
       const hgt = height * k;
       m.scale.set(hgt, hgt, hgt * 0.7);
-      m.position.set(base[0] + dx * height, height * 0.15, base[2] + dz * height);
+      m.position.set(base[0] + dx * height, ground + height * 0.15, base[2] + dz * height);
       this.group.add(m);
     });
     this.disposables.push(geo, mat, hill, hillMat);
@@ -497,10 +492,11 @@ export class Landmarks {
     const c = this.spot(s, side, gap, height * 0.35);
     if (!c) return;
     const q = this.solid;
+    const g = this.terrain.heightAt(c[0], c[2]);
     const box = (x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, color: string) =>
       q.box(
-        [[c[0] + x0, y0, c[2] + z0], [c[0] + x1, y0, c[2] + z0], [c[0] + x1, y0, c[2] + z1], [c[0] + x0, y0, c[2] + z1]],
-        [[c[0] + x0, y1, c[2] + z0], [c[0] + x1, y1, c[2] + z0], [c[0] + x1, y1, c[2] + z1], [c[0] + x0, y1, c[2] + z1]],
+        [[c[0] + x0, g + y0, c[2] + z0], [c[0] + x1, g + y0, c[2] + z0], [c[0] + x1, g + y0, c[2] + z1], [c[0] + x0, g + y0, c[2] + z1]],
+        [[c[0] + x0, g + y1, c[2] + z0], [c[0] + x1, g + y1, c[2] + z0], [c[0] + x1, g + y1, c[2] + z1], [c[0] + x0, g + y1, c[2] + z1]],
         color,
       );
     const w = height * 0.18;
@@ -536,7 +532,7 @@ export class Landmarks {
         const p = at(a, side * (a0 + T / 2));
         const tower = new THREE.CylinderGeometry(4, 4.6, H + 4, 10);
         const m = new THREE.Mesh(tower, this.towerMat());
-        m.position.set(p[0], (H + 4) / 2, p[2]);
+        m.position.set(p[0], p[1] + (H + 4) / 2, p[2]);
         this.group.add(m);
         this.disposables.push(tower);
       }
@@ -600,7 +596,7 @@ export class Landmarks {
     const c = new THREE.Color();
     this.buildings.forEach((b, k) => {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -b.angle);
-      m.compose(new THREE.Vector3(b.x, 0, b.y), q, new THREE.Vector3(b.w, b.h, b.d));
+      m.compose(new THREE.Vector3(b.x, this.terrain.heightAt(b.x, b.y) - 2, b.y), q, new THREE.Vector3(b.w, b.h + 2, b.d));
       mesh.setMatrixAt(k, m);
       mesh.setColorAt(k, c.set(BUILDING_TINTS[k % BUILDING_TINTS.length]));
     });
@@ -652,9 +648,9 @@ export class Landmarks {
     const bodyMat = fogless(this.look.night ? '#1d2433' : '#6d7f97');
     const capMat = fogless(this.look.night ? '#9aa3b5' : '#f4f6f8');
     const m = new THREE.Mesh(body, bodyMat);
-    m.position.set(cx + dx * dist, h / 2 - 40, cy + dy * dist);
+    m.position.set(cx + dx * dist, this.terrain.base + h / 2 - 40, cy + dy * dist);
     const top = new THREE.Mesh(cap, capMat);
-    top.position.set(cx + dx * dist, h - 40 - (h * 0.28) / 2 + 2, cy + dy * dist);
+    top.position.set(cx + dx * dist, this.terrain.base + h - 40 - (h * 0.28) / 2 + 2, cy + dy * dist);
     m.frustumCulled = top.frustumCulled = false;
     this.group.add(m, top);
     this.disposables.push(body, cap, bodyMat, capMat);
@@ -662,11 +658,10 @@ export class Landmarks {
 
   /** Concrete pillars holding up the crossover bridge, clear of the road underneath. */
   private addBridgePillars(): void {
-    const e = this.elev!;
     for (let i = 0; i < this.n; i += 4) {
-      if (!e.deck[i]) continue;
       const s = this.ss[i];
-      const h = e.heights[i] - 1;
+      if (!s.deck) continue;
+      const h = s.z - 1;
       for (const side of [-1, 1]) {
         const p = at(s, side * (this.wall(s, side) - 0.5));
         // Not on the lower road.
@@ -674,7 +669,8 @@ export class Landmarks {
         if (hit && Math.abs(hit.index - i) > 30 && Math.abs(hit.d) < hit.sample.halfWidth + 3) continue;
         const q = this.solid;
         const b = (x: number, z: number, y: number): [number, number, number] => [p[0] + x, y, p[2] + z];
-        q.box([b(-0.7, -0.7, 0), b(0.7, -0.7, 0), b(0.7, 0.7, 0), b(-0.7, 0.7, 0)], [b(-0.7, -0.7, h), b(0.7, -0.7, h), b(0.7, 0.7, h), b(-0.7, 0.7, h)], '#a9adb2');
+        const g = this.terrain.heightAt(p[0], p[2]) - 0.5;
+        q.box([b(-0.7, -0.7, g), b(0.7, -0.7, g), b(0.7, 0.7, g), b(-0.7, 0.7, g)], [b(-0.7, -0.7, h), b(0.7, -0.7, h), b(0.7, 0.7, h), b(-0.7, 0.7, h)], '#a9adb2');
       }
     }
   }
@@ -699,7 +695,7 @@ export class Landmarks {
     const heads = new THREE.InstancedMesh(head, headMat, spots.length);
     const m = new THREE.Matrix4();
     spots.forEach(([x, y], k) => {
-      m.makeTranslation(x, 0, y);
+      m.makeTranslation(x, this.terrain.heightAt(x, y), y);
       masts.setMatrixAt(k, m);
       heads.setMatrixAt(k, m);
     });

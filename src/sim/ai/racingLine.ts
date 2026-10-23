@@ -88,10 +88,12 @@ export function speedProfile(track: Track, line: RacingLine, p: CarParams, pace:
   const mu = p.mu * pace;
   const c = p.downforceCoef / p.mass;
   const top = 100;
-  const v = line.curvature.map((k) => {
+  // Hills (one sample per point of the line): a crest makes the car lighter, a dip heavier.
+  const ss = track.samples.length === n ? track.samples : null;
+  const v = line.curvature.map((k, i) => {
     const kk = Math.abs(k);
-    // v^2 * k = mu * (G + c v^2)  ->  v^2 = mu G / (k - mu c)
-    const denom = kk - mu * c;
+    // v^2 * k = mu * (G + vcurv v^2 + c v^2)  ->  v^2 = mu G / (k - mu c - mu vcurv)
+    const denom = kk - mu * c - mu * (ss?.[i].vcurv ?? 0);
     const corner = denom > 0 ? Math.sqrt((mu * G) / denom) : top;
     return Math.min(top, corner);
   });
@@ -100,7 +102,10 @@ export function speedProfile(track: Track, line: RacingLine, p: CarParams, pace:
   for (let pass = 0; pass < 2; pass++) {
     for (let i = n - 1; i >= 0; i--) {
       const next = v[(i + 1) % n];
-      const decel = brakeShare * p.mu * (G + c * next * next) + (p.dragCoef * next * next) / p.mass;
+      const grade = ss?.[i].grade ?? 0;
+      const weight = Math.max(0.3, 1 + (next * next * (ss?.[i].vcurv ?? 0)) / G);
+      // Braking uphill stops sooner, downhill later.
+      const decel = Math.max(1, brakeShare * p.mu * (G * weight + c * next * next) + (p.dragCoef * next * next) / p.mass + G * grade);
       const ds = track.length / n;
       v[i] = Math.min(v[i], Math.sqrt(next * next + 2 * decel * ds));
     }

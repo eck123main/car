@@ -4,7 +4,8 @@ import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
 import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
 import { Scenery3d } from './scenery3d';
-import { elevation, Landmarks, lookOf, type Elevation } from './landmarks';
+import { Landmarks, lookOf, waterOf } from './landmarks';
+import { Terrain } from './terrain';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -107,6 +108,7 @@ export class View3D {
   private readonly disposables: { dispose(): void }[] = [];
   private chaseHeading: number | null = null;
   private look = 0;
+  private pitch = 0;
   /**
    * Rear-view mirror: what's behind, drawn small into a texture every other frame. Inside the
    * car it shows on the wing mirrors; from the other cameras as a mirror at the top of the screen.
@@ -125,8 +127,6 @@ export class View3D {
   private time = 0;
   private width = 1;
   private readonly track: Track;
-  /** Road heights where the track crosses itself (Suzuka's bridge). */
-  private readonly elev: Elevation | null;
 
   constructor(track: Track) {
     this.canvas = document.createElement('canvas');
@@ -135,7 +135,6 @@ export class View3D {
     // Each circuit's own look: night races, sunsets, desert, mountains.
     const look = lookOf(track.scenery);
     this.track = track;
-    this.elev = elevation(track);
     this.renderer.setClearColor(look.skyHorizon);
     this.scene.fog = new THREE.Fog(look.skyHorizon, look.fogNear, look.fogFar);
 
@@ -150,20 +149,26 @@ export class View3D {
     const ground = new THREE.MeshLambertMaterial({ vertexColors: true, map: noise, side: THREE.DoubleSide });
     const solid = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const paint = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-    const meshes = buildTrackMeshes(track, look, this.elev);
+    // The land, following the track's real heights (and under any water).
+    const water = waterOf(track);
+    const terrain = new Terrain(track, (x, y) => water.levelAt(x, y));
+    const meshes = buildTrackMeshes(track, look, (x, y) => terrain.heightAt(x, y));
     this.scene.add(new THREE.Mesh(meshes.ground, ground), new THREE.Mesh(meshes.walls, solid), new THREE.Mesh(meshes.paint, paint));
     this.disposables.push(noise, ground, solid, paint, meshes.ground, meshes.walls, meshes.paint);
 
-    // The land outside the walls, a little below the track.
+    // The land outside the walls, and a flat plain beyond it to the horizon.
+    const landGeo = terrain.geometry();
+    const landMat = new THREE.MeshLambertMaterial({ color: look.outside, map: noise });
+    this.scene.add(new THREE.Mesh(landGeo, landMat));
     const outsideGeo = new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2);
     const outsideMat = new THREE.MeshLambertMaterial({ color: look.outside });
     const outside = new THREE.Mesh(outsideGeo, outsideMat);
     const c = track.samples[0];
-    outside.position.set(c.x, -0.12, c.y);
+    outside.position.set(c.x, terrain.base - 0.6, c.y);
     this.scene.add(outside);
-    this.disposables.push(outsideGeo, outsideMat);
+    this.disposables.push(landGeo, landMat, outsideGeo, outsideMat);
 
-    const landmarks = new Landmarks(track, look, this.elev);
+    const landmarks = new Landmarks(track, look, terrain, water);
     this.scene.add(landmarks.group);
     this.disposables.push(landmarks);
     const scenery = new Scenery3d(track, solid, {
@@ -172,6 +177,8 @@ export class View3D {
       hills: hillColor(track.scenery),
       alps: track.scenery?.alps,
       heightAt: (x, y) => this.heightAt(x, y),
+      groundAt: (x, y) => terrain.heightAt(x, y),
+      base: terrain.base,
     });
     this.scene.add(scenery.group);
     scenery.group.traverse((o) => {
@@ -263,6 +270,7 @@ export class View3D {
       }
       entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, car.compound);
       entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex);
+      entry.model.group.rotation.z = Math.atan(this.uphill(car));
     }
     for (const [id, entry] of this.cars) {
       if (seen.has(id)) continue;
@@ -341,7 +349,13 @@ export class View3D {
     // Look slightly into the corner.
     const target = Math.max(-0.12, Math.min(0.12, own.yawRate * 0.1));
     this.look += (target - this.look) * Math.min(1, dt * 4);
-    const toWorld = (p: [number, number, number], yaw = 0): THREE.Vector3 => {
+    // Nose up on a climb, down on a descent (smoothed a little, like the car's suspension).
+    const pitchTarget = cam.chase ? 0 : Math.atan(this.uphill(own));
+    this.pitch += (pitchTarget - this.pitch) * Math.min(1, dt * 8);
+    const pc = Math.cos(this.pitch);
+    const ps = Math.sin(this.pitch);
+    const toWorld = (q: [number, number, number], yaw = 0): THREE.Vector3 => {
+      const p: [number, number, number] = [q[0] * pc - q[1] * ps, q[0] * ps + q[1] * pc, q[2]];
       const h = heading + yaw;
       const cos = Math.cos(h);
       const sin = Math.sin(h);
@@ -359,11 +373,19 @@ export class View3D {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Rise per metre along a car's nose, from the slope of the track where it is. */
+  private uphill(car: CarView): number {
+    const i = car.trackIndex ?? this.track.query(car.x, car.y)?.index;
+    if (i === undefined) return 0;
+    const s = this.track.samples[i];
+    return s.grade * (Math.cos(car.heading) * s.tx + Math.sin(car.heading) * s.ty);
+  }
+
   /** Height of the road under a point (non-zero only on a crossover bridge). */
   heightAt(x: number, y: number, trackIndex: number | null = null): number {
-    if (!this.elev) return 0;
+    if (!this.track.hilly && !this.track.samples.some((s) => s.deck)) return 0;
     const i = trackIndex ?? this.track.query(x, y)?.index;
-    return i === undefined ? 0 : this.elev.heights[i];
+    return i === undefined ? 0 : this.track.samples[i].z;
   }
 
   dispose(): void {

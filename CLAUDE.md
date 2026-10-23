@@ -253,6 +253,21 @@ Top-down 2D car physics that feels like an F1 car:
   curvature (4th-order smoothing), not length.
 - **Downforce**: more grip at high speed and less in slow corners, so fast corners and
   hairpins feel different.
+- **Hills (real elevation)**: track files carry real terrain heights (`"elevation"`, every 10 m
+  of the lap, from SRTM via `scripts/elevation.ts`; real gradients, so heights are scaled like
+  the track). Physics (both views): gravity along the slope (slower uphill, longer braking
+  downhill), and the road's vertical curve changes the car's weight on the tyres: lighter over
+  crests, heavier in dips like Eau Rouge (`Track.slope`, `Car.step`; weight 0.3-1.8x, downforce
+  unaffected). A stopped car with no throttle doesn't roll. Bots plan for it (`speedProfile`).
+  Top-down shows climbs darker and descents lighter. Suzuka's crossover bridge is part of the
+  heights too (the later stretch is 7.5 m over the earlier one). Not yet: Fuji, Valencia,
+  Yeongam, Buddh (traced from OpenStreetMap, not in the source data) are flat.
+  **Lap times**: hills changed laps by up to ~1% (`scripts/elevation-ratios.ts`, Hard bot flat vs
+  hilly; `src/tracks/elevation-ratios.json`). Times on the 18 tracks that changed by 0.2%+ were
+  rescaled rather than reset: medal times, times kept in the browser (`src/net/adjustTimes.ts`,
+  once) and the global board (`supabase/elevation_adjust.sql`, run once in Supabase after
+  deploying; ghosts replay stretched to match). Do the same for any later physics change that
+  moves lap times.
 - **Slipstream**: following within 60 m behind another car (and up to 4 m to the side,
   so it holds while pulling out to pass) lowers drag, up to 35%.
 - **DRS**: in marked DRS zones, a player within ~1 second of the car ahead (at the

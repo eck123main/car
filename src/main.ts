@@ -13,9 +13,17 @@ import { ClientGame } from './net/client';
 import { HostGame } from './net/host';
 import { connectToHost, createHost } from './net/peer';
 import { OfflineTransport } from './net/transport';
+import { adjustStoredTimes } from './net/adjustTimes';
 import { Track } from './track/track';
 import type { TrackDef } from './track/types';
 import { DEFAULT_TRACK, loadCustomTrack, trackChoices, TRACKS } from './tracks';
+
+// Times kept in this browser follow physics changes (the elevation update), once.
+try {
+  adjustStoredTimes(localStorage, Object.keys(localStorage));
+} catch {
+  // Storage blocked: nothing kept to adjust.
+}
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const keyboard = new Keyboard(window);

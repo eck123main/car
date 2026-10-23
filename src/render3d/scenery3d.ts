@@ -43,6 +43,9 @@ export interface SceneryOptions {
   alps?: boolean;
   /** Height of the road near a point (boards on a bridge ramp stand up with it). */
   heightAt?: (x: number, y: number) => number;
+  /** Height of the land (trees stand on it), and its average (the horizon hills). */
+  groundAt?: (x: number, y: number) => number;
+  base?: number;
 }
 
 export class Scenery3d {
@@ -259,7 +262,7 @@ export class Scenery3d {
     const place = (geo: THREE.BufferGeometry, list: typeof spots, color: (tone: number) => THREE.Color) => {
       const mesh = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((p, k) => {
-        m.makeScale(p.s, p.s * (0.85 + p.tone * 0.3), p.s).setPosition(p.x, 0, p.y);
+        m.makeScale(p.s, p.s * (0.85 + p.tone * 0.3), p.s).setPosition(p.x, (this.opts.groundAt?.(p.x, p.y) ?? 0) - 0.2, p.y);
         mesh.setMatrixAt(k, m);
         mesh.setColorAt(k, color(p.tone));
       });
@@ -336,7 +339,7 @@ export class Scenery3d {
       const r = radius + this.rnd() * 300;
       const w = 250 + this.rnd() * 350;
       const h = this.opts.alps ? 260 + this.rnd() * 380 : 60 + this.rnd() * 140;
-      m.makeScale(w, h, w).setPosition(cx + Math.cos(a) * r, -5, cy + Math.sin(a) * r);
+      m.makeScale(w, h, w).setPosition(cx + Math.cos(a) * r, (this.opts.base ?? 0) - 5, cy + Math.sin(a) * r);
       mesh.setMatrixAt(k, m);
       mesh.setColorAt(k, c.set(this.opts.hills).offsetHSL(this.rnd() * 0.06 - 0.03, 0, this.rnd() * 0.08 - 0.04));
     }

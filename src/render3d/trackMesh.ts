@@ -106,14 +106,14 @@ export class QuadBuilder {
   }
 }
 
-/** A point `off` metres to the right of a sample (left if negative), at height h. */
+/** A point `off` metres to the right of a sample (left if negative), h metres above its road. */
 export function at(s: TrackSample, off: number, h = 0, along = 0): V3 {
-  return [s.x + s.nx * off + s.tx * along, h, s.y + s.ny * off + s.ty * along];
+  return [s.x + s.nx * off + s.tx * along, h + s.z, s.y + s.ny * off + s.ty * along];
 }
 
-/** Ground band between two offsets, from sample a (at height ea) to sample b (at eb). */
-function band(q: QuadBuilder, a: TrackSample, b: TrackSample, a0: number, a1: number, b0: number, b1: number, color: string | THREE.Color, ea = 0, eb = 0): void {
-  q.quad(at(a, a0, ea), at(b, b0, eb), at(b, b1, eb), at(a, a1, ea), color, true);
+/** Ground band between two offsets, from sample a to sample b (on their road heights). */
+function band(q: QuadBuilder, a: TrackSample, b: TrackSample, a0: number, a1: number, b0: number, b1: number, color: string | THREE.Color): void {
+  q.quad(at(a, a0), at(b, b0), at(b, b1), at(a, a1), color, true);
 }
 
 function runoffColor(surface: SurfaceType, s: number, look: GroundLook): string {
@@ -128,11 +128,7 @@ export interface GroundLook {
   grassStripe: string;
 }
 
-/** Road heights per sample (a bridge where the track crosses itself), and where it's a deck. */
-export interface RoadHeights {
-  heights: Float32Array;
-  deck: Uint8Array;
-}
+
 
 /** Barrier look by what's in front of it: tyre walls behind gravel, armco by grass, else concrete. */
 function wallColor(surface: SurfaceType, s: number): string {
@@ -148,7 +144,7 @@ export interface TrackMeshes {
   paint: THREE.BufferGeometry;
 }
 
-export function buildTrackMeshes(track: Track, look: GroundLook = COLORS, elev: RoadHeights | null = null): TrackMeshes {
+export function buildTrackMeshes(track: Track, look: GroundLook = COLORS, groundAt: (x: number, y: number) => number = () => 0): TrackMeshes {
   const ground = new QuadBuilder();
   const walls = new QuadBuilder();
   const paint = new QuadBuilder();
@@ -161,17 +157,15 @@ export function buildTrackMeshes(track: Track, look: GroundLook = COLORS, elev: 
     const b = ss[(i + 1) % n];
     const ha = a.halfWidth;
     const hb = b.halfWidth;
-    const ea = elev?.heights[i] ?? 0;
-    const eb = elev?.heights[(i + 1) % n] ?? 0;
     // On a bridge deck the walls are parapets with open space below; on an embankment they reach the ground.
-    const deck = !!elev?.deck[i];
-    const raised = ea > 0.05 || eb > 0.05;
+    const deck = a.deck;
+    const raised = a.z - a.ground > 0.05 || b.z - b.ground > 0.05;
     // Road: the middle, then per side the edge line and the strip outside it.
-    band(ground, a, b, -(ha - EDGE_LINE_IN), ha - EDGE_LINE_IN, -(hb - EDGE_LINE_IN), hb - EDGE_LINE_IN, COLORS.asphalt, ea, eb);
+    band(ground, a, b, -(ha - EDGE_LINE_IN), ha - EDGE_LINE_IN, -(hb - EDGE_LINE_IN), hb - EDGE_LINE_IN, COLORS.asphalt);
     for (const side of [1, -1] as const) {
       const r = side === 1;
-      band(ground, a, b, side * (ha - EDGE_LINE_IN), side * (ha - EDGE_LINE_OUT), side * (hb - EDGE_LINE_IN), side * (hb - EDGE_LINE_OUT), COLORS.line, ea, eb);
-      band(ground, a, b, side * (ha - EDGE_LINE_OUT), side * ha, side * (hb - EDGE_LINE_OUT), side * hb, COLORS.asphalt, ea, eb);
+      band(ground, a, b, side * (ha - EDGE_LINE_IN), side * (ha - EDGE_LINE_OUT), side * (hb - EDGE_LINE_IN), side * (hb - EDGE_LINE_OUT), COLORS.line);
+      band(ground, a, b, side * (ha - EDGE_LINE_OUT), side * ha, side * (hb - EDGE_LINE_OUT), side * hb, COLORS.asphalt);
 
       // Outside the edge: pit lane surface, or a kerb, then run-off up to the wall.
       let ca = ha;
@@ -180,28 +174,33 @@ export function buildTrackMeshes(track: Track, look: GroundLook = COLORS, elev: 
       if (pit) {
         ca = ha + a.pitWidth;
         cb = hb + b.pitWidth;
-        band(ground, a, b, side * ha, side * ca, side * hb, side * cb, COLORS.pit, ea, eb);
+        band(ground, a, b, side * ha, side * ca, side * hb, side * cb, COLORS.pit);
       } else if (r ? a.kerbR : a.kerbL) {
         ca = ha + KERB_WIDTH;
         cb = hb + KERB_WIDTH;
         const color = Math.floor(a.s / 2) % 2 === 0 ? COLORS.kerbRed : COLORS.kerbWhite;
-        band(ground, a, b, side * ha, side * ca, side * hb, side * cb, color, ea, eb);
+        band(ground, a, b, side * ha, side * ca, side * hb, side * cb, color);
       }
       const wa = Math.max(r ? a.wallR : a.wallL, ca);
       const wb = Math.max(r ? b.wallR : b.wallL, cb);
       const surface = r ? a.surfR : a.surfL;
-      if (wa > ca + 0.01 || wb > cb + 0.01) band(ground, a, b, side * ca, side * wa, side * cb, side * wb, runoffColor(surface, a.s, look), ea, eb);
+      if (wa > ca + 0.01 || wb > cb + 0.01) band(ground, a, b, side * ca, side * wa, side * cb, side * wb, runoffColor(surface, a.s, look));
 
       // The wall: its face, its top, and a coloured band on tyre walls.
       const color = raised ? COLORS.concrete : wallColor(surface, a.s);
       const ta = wa + WALL_THICKNESS;
       const tb = wb + WALL_THICKNESS;
-      const ba = deck ? ea - 1 : 0;
-      const bb = deck ? eb - 1 : 0;
-      walls.quad(at(a, side * wa, ba), at(b, side * wb, bb), at(b, side * wb, eb + WALL_HEIGHT), at(a, side * wa, ea + WALL_HEIGHT), color);
-      walls.quad(at(a, side * wa, ea + WALL_HEIGHT), at(b, side * wb, eb + WALL_HEIGHT), at(b, side * tb, eb + WALL_HEIGHT), at(a, side * ta, ea + WALL_HEIGHT), color);
+      // Walls reach down to the land (below the road in a dip, an embankment's foot on a ramp).
+      const foot = (t: TrackSample, off: number) => {
+        const p = at(t, off);
+        return Math.min(0, groundAt(p[0], p[2]) - t.z - 0.3);
+      };
+      const ba = deck ? -1 : foot(a, side * wa);
+      const bb = deck ? -1 : foot(b, side * wb);
+      walls.quad(at(a, side * wa, ba), at(b, side * wb, bb), at(b, side * wb, WALL_HEIGHT), at(a, side * wa, WALL_HEIGHT), color);
+      walls.quad(at(a, side * wa, WALL_HEIGHT), at(b, side * wb, WALL_HEIGHT), at(b, side * tb, WALL_HEIGHT), at(a, side * ta, WALL_HEIGHT), color);
       // An embankment's outer face, down to the ground.
-      if (raised && !deck) walls.quad(at(a, side * ta, 0), at(b, side * tb, 0), at(b, side * tb, eb + WALL_HEIGHT), at(a, side * ta, ea + WALL_HEIGHT), '#b4b9be');
+      if (raised && !deck) walls.quad(at(a, side * ta, ba), at(b, side * tb, bb), at(b, side * tb, WALL_HEIGHT), at(a, side * ta, WALL_HEIGHT), '#b4b9be');
       if (surface === 'gravel' && !raised && Math.floor(a.s / 4) % 2 === 0) {
         const off = 0.02;
         walls.quad(at(a, side * (wa - off), 0.75), at(b, side * (wb - off), 0.75), at(b, side * (wb - off), 0.95), at(a, side * (wa - off), 0.95), COLORS.tyreBand);
@@ -209,7 +208,7 @@ export function buildTrackMeshes(track: Track, look: GroundLook = COLORS, elev: 
     }
     // Underside of the bridge deck.
     if (deck) {
-      walls.quad(at(a, -(a.wallL + WALL_THICKNESS), ea - 1), at(b, -(b.wallL + WALL_THICKNESS), eb - 1), at(b, b.wallR + WALL_THICKNESS, eb - 1), at(a, a.wallR + WALL_THICKNESS, ea - 1), '#8d9399');
+      walls.quad(at(a, -(a.wallL + WALL_THICKNESS), -1), at(b, -(b.wallL + WALL_THICKNESS), -1), at(b, b.wallR + WALL_THICKNESS, -1), at(a, a.wallR + WALL_THICKNESS, -1), '#8d9399');
     }
 
     // Pit wall between the track and the lane.

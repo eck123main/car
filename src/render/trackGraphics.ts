@@ -26,6 +26,13 @@ function edge(s: TrackSample, side: Side, offset: number): [number, number] {
   return [s.x + s.nx * offset * sign, s.y + s.ny * offset * sign];
 }
 
+/** Road shading on hills: from these slopes (rise per metre), this dark uphill / light downhill. */
+const SLOPE_STEPS = [
+  { grade: 0.02, up: 0.06, down: 0.05 },
+  { grade: 0.05, up: 0.12, down: 0.09 },
+  { grade: 0.09, up: 0.19, down: 0.14 },
+];
+
 /** Samples per drawing chunk. Only chunks on screen get drawn. */
 const CHUNK = 40;
 
@@ -42,6 +49,9 @@ interface Chunk {
   pitLane: Path2D;
   pitWall: Path2D;
   pitLine: Path2D;
+  /** Hills: road shaded darker uphill, lighter downhill, by steepness (SLOPE_STEPS). */
+  uphill: Path2D[];
+  downhill: Path2D[];
   /** Kerb polylines with their lap distance, so the stripes line up across chunks. */
   kerbs: { path: Path2D; s: number }[];
 }
@@ -154,6 +164,13 @@ export class TrackGraphics {
 
     ctx.fillStyle = COLORS.asphalt;
     ctx.fill(merge(visible, 'asphalt'));
+    // Hills, so top-down drivers can see the climbs and descents they feel.
+    SLOPE_STEPS.forEach((step, k) => {
+      ctx.fillStyle = `rgba(0,0,0,${step.up})`;
+      for (const c of visible) ctx.fill(c.uphill[k]);
+      ctx.fillStyle = `rgba(255,255,255,${step.down})`;
+      for (const c of visible) ctx.fill(c.downhill[k]);
+    });
     ctx.lineWidth = 0.25;
     ctx.strokeStyle = COLORS.edgeLine;
     for (const c of visible) ctx.stroke(c.edgeLines);
@@ -307,7 +324,20 @@ function buildChunk(part: TrackSample[], pitSide: 1 | -1): Chunk {
       maxY = Math.max(maxY, y);
     }
   }
-  return { minX, minY, maxX, maxY, runoff, gravel, asphalt, edgeLines, walls, pitLane, pitWall, pitLine, kerbs };
+  const uphill = SLOPE_STEPS.map(() => new Path2D());
+  const downhill = SLOPE_STEPS.map(() => new Path2D());
+  for (let i = 0; i + 1 < part.length; i++) {
+    const a = part[i];
+    const b = part[i + 1];
+    const g = (a.grade + b.grade) / 2;
+    let k = -1;
+    SLOPE_STEPS.forEach((step, j) => {
+      if (Math.abs(g) >= step.grade) k = j;
+    });
+    if (k < 0) continue;
+    quad(g > 0 ? uphill[k] : downhill[k], edge(a, 'L', a.halfWidth), edge(b, 'L', b.halfWidth), edge(b, 'R', b.halfWidth), edge(a, 'R', a.halfWidth));
+  }
+  return { minX, minY, maxX, maxY, runoff, gravel, asphalt, edgeLines, walls, pitLane, pitWall, pitLine, kerbs, uphill, downhill };
 }
 
 type Pt = [number, number];

@@ -38,6 +38,12 @@ export function parseTrackDef(data: unknown): TrackDef {
   }
   const scenery = parseScenery(d.scenery);
   if (scenery) def.scenery = scenery;
+  if (typeof d.elevation === 'object' && d.elevation !== null) {
+    const e = d.elevation as Record<string, unknown>;
+    if (typeof e.step === 'number' && e.step >= 1 && e.step <= 100 && Array.isArray(e.heights) && e.heights.length >= 4 && e.heights.every((h) => typeof h === 'number' && Number.isFinite(h) && Math.abs(h) < 1000)) {
+      def.elevation = { step: e.step, heights: e.heights as number[] };
+    }
+  }
   return def;
 }
 
@@ -86,7 +92,8 @@ export function trackToJson(def: TrackDef): string {
   const pit = def.pit ? `,\n  "pit": ${JSON.stringify(def.pit)}` : '';
   const drs = def.drsZones ? `,\n  "drsZones": ${JSON.stringify(def.drsZones)}` : '';
   const scenery = def.scenery ? `,\n  "scenery": ${JSON.stringify(def.scenery)}` : '';
-  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}${scenery}\n}\n`;
+  const elevation = def.elevation ? `,\n  "elevation": ${JSON.stringify(def.elevation)}` : '';
+  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}${scenery}${elevation}\n}\n`;
 }
 
 /**

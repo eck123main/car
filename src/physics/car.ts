@@ -1,5 +1,5 @@
 import type { Surface, SurfaceType } from '../track/types';
-import type { WallContact } from '../track/track';
+import type { Slope, WallContact } from '../track/track';
 import type { CarParams } from './carParams';
 
 export interface DriverInput {
@@ -17,9 +17,14 @@ export interface CarWorld {
   wallContact(x: number, y: number, carX: number, carY: number, hint?: number | null): WallContact | null;
   /** Which part of the track a point is on (a sample index), starting from a hint. */
   locate?(x: number, y: number, hint?: number | null, heading?: number | null): number | null;
+  /** Hills: the slope at a sample index, or null where it's flat. */
+  slope?(index: number | null): Slope | null;
 }
 
 const G = 9.81;
+/** Limits on how much a crest or a dip changes the car's weight on the tyres. */
+const MIN_WEIGHT = 0.3;
+const MAX_WEIGHT = 1.8;
 
 /** Damage per part, 0 (fine) to 1 (destroyed). */
 export interface CarParts {
@@ -163,9 +168,14 @@ export class Car {
     const dmg = this.parts;
     const sides = (dmg.left + dmg.right) / 2;
     const downforce = p.downforceCoef * v2 * (1 - 0.45 * dmg.rearWing);
-    const loadF = (m * G * p.cgToRear) / L + downforce * p.aeroBalanceFront;
-    const loadR = (m * G * p.cgToFront) / L + downforce * (1 - p.aeroBalanceFront);
     if (this.trackIndex === null) this.trackIndex = world.locate?.(this.x, this.y, null, this.heading) ?? null;
+    // Hills: the rise per metre along the nose, and how the road's curve changes the car's
+    // weight on the tyres: light over a crest, pressed down in a dip (Eau Rouge).
+    const slope = world.slope?.(this.trackIndex) ?? null;
+    const uphill = slope ? slope.grade * (c * slope.tx + s * slope.ty) : 0;
+    const weight = slope ? Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, 1 + (vx * vx * slope.vcurv) / G)) : 1;
+    const loadF = ((m * G * p.cgToRear) / L) * weight + downforce * p.aeroBalanceFront;
+    const loadR = ((m * G * p.cgToFront) / L) * weight + downforce * (1 - p.aeroBalanceFront);
     const surfF = world.surfaceAt(this.x + c * p.cgToFront, this.y + s * p.cgToFront, this.trackIndex);
     const surfR = world.surfaceAt(this.x - c * p.cgToRear, this.y - s * p.cgToRear, this.trackIndex);
     this.surfaceFront = surfF.type;
@@ -219,6 +229,12 @@ export class Car {
     let fyTotal = fy;
     // A pull back only slows the car, never reverses it.
     if (this.push > 0 || (this.push < 0 && vx > 5)) fxTotal += this.push;
+    // Gravity along the slope. Fades out when stopped with no throttle, so a parked car
+    // (grid, pit box) doesn't creep.
+    if (uphill !== 0) {
+      const hold = this.throttle > 0.05 ? 1 : Math.min(1, speed / 2);
+      fxTotal -= ((m * G * uphill) / Math.sqrt(1 + uphill * uphill)) * hold;
+    }
     if (speed > 1e-3) {
       const drag = p.dragCoef * this.dragFactor * (1 + 0.35 * sides + 0.1 * dmg.frontWing) * v2;
       const surfaceDrag = surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed;
