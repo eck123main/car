@@ -134,6 +134,36 @@ alone: DRS free in every zone, ERS, no other cars.
   chase a time it shouldn't move. Note: good players are ~20% faster than the Hard bot (they carry
   far more corner speed), so bot laps alone are not a pace reference.
 
+- **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
+  with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
+  board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,
+  `f1td.tt.driven.<playerId>`); the others get a green **NEW** tag. Each row shows your best and
+  medal (signed in). Drive/Back stay pinned at the bottom of the card.
+
+## Garage (coins, skins, medals)
+
+"Garage" on the welcome screen (`src/app/garage.ts`): tabs **Daily**, **Skins**, **Medals**. The
+coin balance shows in the account bar, with a red dot when today's reward or spin is waiting.
+- **Signed-in only**, kept in the database: `supabase/economy.sql` (run after `accounts.sql`),
+  client `src/net/wallet.ts`. Tables are closed to the public key; RPCs `get_wallet`,
+  `claim_daily`, `daily_spin`, `buy_skin`, `equip_skin` do all the sums (row locked, so no
+  double claims). Days are **UTC**.
+- **Daily reward**: 50/60/70/80/100/120 coins, **day 7 = 300** (weekly bonus), then the week
+  repeats; missing a day restarts at day 1.
+- **Daily spin** (one free a day; odds shown in the menu, picked by the server): 25 (28%), 50
+  (25%), 100 (18%), 150 (10%), 250 (7%), 500 (2%), **2× next daily** (5%), **spin again** (3%),
+  **free common/rare skin you don't own** (2%, else 500 coins).
+- **Skins** (`src/cosmetics/skins.ts`): shop common 300 / rare 750 / epic 1500 (prices also in
+  `skin_shop`; `skins.test.ts` keeps SQL and TS in sync, also rewards and spin odds). **Medal
+  skins** count a medal towards every lower one: Bronze 10 bronze+, Silver 15 silver+, Gold 20
+  gold+, Author 5 author, Perfectionist author on every track (44). They're worked out from the
+  board like medals, so the database lets any `medal-*` id be equipped (not checked there).
+- The equipped skin is cached per account (`f1td.skin.<id>`) so a game starts without waiting,
+  sent in `hello` (and the host's constructor), checked with `isSkinId`, carried in
+  `PlayerInfo.skin` → `Racer.skin`, and drawn by `drawCar(..., { livery })` for everyone. The lobby
+  colour stays the identity on the minimap and name tags; the rainbow item overrides the skin.
+  Liveries can have `checks` (chequered pattern) and `shine` (metallic sheen).
+
 ## Accounts
 
 `src/net/accounts.ts`, schema `supabase/accounts.sql` (run after `time_trial.sql`). Username +
@@ -529,7 +559,7 @@ minimap/timing tower, and penalty notices.
 
 - Detailed graphics, animations, 3D, cinematic cameras. (Simple flat liveries are in.)
 - Full simulation-level physics (tyre temperature, setups, etc.) unless added later.
-- Career mode, championships, accounts. Possible later additions.
+- Career mode, championships. Possible later additions.
 
 ## Testing
 

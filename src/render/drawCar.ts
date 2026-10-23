@@ -1,6 +1,6 @@
 import type { CarParams } from '../physics/carParams';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
-import { liveryFor } from './livery';
+import { liveryFor, type Livery } from './livery';
 
 export interface CarLook {
   /** DRS flap open: the rear wing lights up green. */
@@ -11,6 +11,8 @@ export interface CarLook {
   rainLight?: boolean;
   /** Seconds, for the rain light's blink. */
   time?: number;
+  /** A skin's paint, in place of the colour's team livery. */
+  livery?: Livery | null;
 }
 
 const CARBON = '#1b1b1b';
@@ -32,7 +34,7 @@ export function drawCar(
 ): void {
   const hl = p.length / 2;
   const hw = p.width / 2;
-  const liv = liveryFor(color);
+  const liv = look.livery ?? liveryFor(color);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
@@ -128,9 +130,25 @@ export function drawCar(
       ctx.fill();
     }
   }
+  if (liv.checks) {
+    ctx.fillStyle = liv.checks;
+    const sq = 0.3;
+    for (let i = 0; i * sq < p.length; i++) {
+      for (let j = 0; j * sq < p.width; j++) if ((i + j) % 2 === 0) ctx.fillRect(-hl + i * sq, -hw + j * sq, sq, sq);
+    }
+  }
   if (liv.stripe) {
     ctx.fillStyle = liv.stripe;
     ctx.fillRect(-hl, -0.09, p.length, 0.18);
+  }
+  if (liv.shine) {
+    // Metallic: a bright band across the body, fading out either side.
+    const g = ctx.createLinearGradient(-1.2, -hw, 0.4, hw);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-hl, -hw, p.length, p.width);
   }
   // Nose tip.
   ctx.fillStyle = liv.nose;

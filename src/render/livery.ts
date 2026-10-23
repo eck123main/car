@@ -22,6 +22,10 @@ export interface Livery {
   endplates: string;
   /** Driver's helmet. */
   helmet: string;
+  /** A chequered pattern over the body, in this colour. */
+  checks?: string;
+  /** A metallic sheen across the body. */
+  shine?: boolean;
 }
 
 const LIVERIES: Record<string, Livery> = {

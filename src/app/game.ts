@@ -6,6 +6,7 @@ import type { NetInfo, SessionSnap } from '../net/protocol';
 import { sessionSnap } from '../net/snapshot';
 import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
+import { skinLivery } from '../cosmetics/skins';
 import { drawCar } from '../render/drawCar';
 import { drawCarEffects, drawDrops, drawItemBoxes, drawItemSlot, drawRockets, drawSmoke, drawTether, rainbowColor } from '../render/items';
 import { ITEM_INFO } from '../sim/items';
@@ -516,8 +517,10 @@ export class GameScreen {
       const parked = r.frozen && (session?.phase === 'race' || session?.phase === 'finished');
       // Party mode ghosts are see-through too (faintly, to tell them apart).
       ctx.globalAlpha = r.items.ghost > 0 ? 0.3 : ((ghosts || parked) && r !== me) || passing.has(r.id) ? 0.45 : 1;
-      const paint = r.items.star > 0 ? rainbowColor(this.driver.now(), r.id) : r.color;
+      const rainbow = r.items.star > 0;
+      const paint = rainbow ? rainbowColor(this.driver.now(), r.id) : r.color;
       drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, paint, {
+        livery: rainbow ? null : skinLivery(r.skin),
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         rainLight: world.options.wetness >= 0.3,

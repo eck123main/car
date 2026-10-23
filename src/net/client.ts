@@ -1,3 +1,4 @@
+import { isSkinId } from '../cosmetics/skins';
 import { placeItemBoxes, type ItemView } from '../sim/items';
 import type { SafetyCarSnap } from '../sim/safetyCar';
 import type { SessionEvent } from '../sim/session';
@@ -57,12 +58,14 @@ export class ClientGame {
     private readonly conn: Connection,
     name: string,
     private readonly clock: () => number,
+    /** Our car skin, shown to everyone. */
+    skin?: string,
   ) {
     conn.onMessage((m) => this.handle(m as HostMessage));
     conn.onClose(() => {
       if (this.status !== 'rejected') this.status = 'closed';
     });
-    conn.send({ t: 'hello', name, version: PROTOCOL_VERSION });
+    conn.send({ t: 'hello', name, version: PROTOCOL_VERSION, skin });
   }
 
   get me(): Racer | undefined {
@@ -154,7 +157,7 @@ export class ClientGame {
       case 'start': {
         this.track = new Track(parseTrackDef(msg.track));
         this.world = new RaceWorld(this.track, { drsRule: 'race', wetness: 0 });
-        for (const p of msg.players) this.world.addRacer(p.id, p.name, p.color);
+        for (const p of msg.players) this.world.addRacer(p.id, p.name, p.color).skin = isSkinId(p.skin) ? p.skin : undefined;
         this.snaps = [];
         this.boxLayout = null;
         this.items = null;

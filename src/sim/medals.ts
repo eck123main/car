@@ -31,6 +31,9 @@ export function medalTimesFrom(author: number): MedalTimes {
 
 const TABLE = MEDAL_TABLE as Record<string, MedalTimes>;
 
+/** How many tracks have medals. */
+export const MEDAL_TRACK_COUNT = Object.keys(TABLE).length;
+
 /** A track's medal times, or null if it has none (the test circuit, editor tracks). */
 export function medalTimes(trackId: string): MedalTimes | null {
   return TABLE[trackId] ?? null;

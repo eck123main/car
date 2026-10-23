@@ -70,6 +70,8 @@ export interface Racer {
   id: string;
   name: string;
   color: string;
+  /** Paint from the garage (`src/cosmetics/skins.ts`); none = the colour's team livery. */
+  skin?: string;
   car: Car;
   timer: LapTimer;
   tyres: Tyres;

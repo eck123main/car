@@ -47,7 +47,16 @@ const ERRORS: Record<string, string> = {
   wrong_password: 'Your current password is wrong.',
   locked: 'Too many wrong passwords. Try again in 5 minutes.',
   signed_out: 'You were signed out. Sign in again.',
+  already_claimed: 'Already claimed today. Come back tomorrow!',
+  already_spun: 'No spins left today. Come back tomorrow!',
+  not_enough_coins: 'Not enough coins.',
+  already_owned: 'You already own that skin.',
+  not_owned: "You don't own that skin yet.",
+  unknown_skin: 'Unknown skin.',
 };
+
+/** Functions from supabase/economy.sql (the rest are in accounts.sql). */
+const ECONOMY = ['get_wallet', 'claim_daily', 'daily_spin', 'buy_skin', 'equip_skin'];
 
 export class AccountError extends Error {}
 
@@ -107,7 +116,7 @@ export class AccountService {
       return (text ? JSON.parse(text) : null) as T;
     }
     const body = (await res.json().catch(() => ({}))) as { message?: string; code?: string };
-    if (res.status === 404 || body.code === 'PGRST202') throw new AccountError('Accounts are not set up on the server yet (run supabase/accounts.sql).');
+    if (res.status === 404 || body.code === 'PGRST202') throw new AccountError(`Not set up on the server yet (run supabase/${ECONOMY.includes(fn) ? 'economy' : 'accounts'}.sql).`);
     throw new AccountError(ERRORS[body.message ?? ''] ?? body.message ?? `Server error ${res.status}`);
   }
 

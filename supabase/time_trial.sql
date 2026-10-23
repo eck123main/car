@@ -9,6 +9,7 @@
 --      VITE_SUPABASE_KEY=sb_publishable_... (or the legacy anon key)
 -- 4. Then run accounts.sql too (player accounts; it also tightens the "add laps" policy, so
 --    run it again whenever this file is re-run).
+-- 5. Then economy.sql (coins, daily reward and spin, car skins: the garage).
 
 create table if not exists public.time_trial (
   id bigint generated always as identity primary key,

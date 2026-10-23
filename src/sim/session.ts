@@ -47,6 +47,8 @@ export interface PlayerInfo {
   id: string;
   name: string;
   color: string;
+  /** Car skin id; cosmetic only. */
+  skin?: string;
 }
 
 /**
@@ -169,7 +171,7 @@ export class Session {
   ) {
     this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false, collisions: false });
     this.items = settings.mode === 'party' ? new ItemSystem(track) : null;
-    for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium');
+    for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium').skin = p.skin;
     this.world.options.wetness = this.wetnessAt(0);
     this.phase = settings.qualifying ? 'qualifying' : 'grid';
     if (settings.qualifying) this.startQualifying();

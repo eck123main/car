@@ -78,6 +78,54 @@
       .tyre-bar i { display: block; height: 6px; border-radius: 3px; background: #4dd2ff; }
       .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
       .keys b { color: #ddd; font-weight: 600; }
+      .buttons.sticky { position: sticky; bottom: -24px; margin: 16px -24px -24px; padding: 12px 24px 24px; background: linear-gradient(transparent, #17181c 14px); }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+      button.chip { padding: 5px 12px; border-radius: 999px; font-size: 12px; }
+      button.chip.active { background: #c8102e; border-color: #e0223f; }
+      /* Time trial track list. */
+      .track-list { position: relative; margin-top: 8px; max-height: 260px; overflow-y: auto; border: 1px solid #2c2d33; border-radius: 8px; background: #121317; }
+      button.track-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #1f2025; border-radius: 0; background: transparent; padding: 8px 10px; }
+      button.track-row:hover:not(:disabled) { background: #1d1f25; }
+      button.track-row.selected { background: #2a1418; box-shadow: inset 3px 0 #c8102e; }
+      button.track-row.fresh .name { color: #fff; font-weight: 600; }
+      button.track-row:not(.fresh) .name { color: #a9acb5; }
+      .track-row .best { color: #8a8d96; font-size: 12px; font-variant-numeric: tabular-nums; }
+      .new-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #111; background: #2ecc40; border-radius: 4px; padding: 1px 6px; }
+      .medal-chip { font-size: 11px; font-weight: 600; color: var(--medal); border: 1px solid var(--medal); border-radius: 999px; padding: 0 7px; }
+      .medal-chip.empty { border: 0; padding: 0; }
+      /* Garage. */
+      .garage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .garage-balance { font-size: 18px; font-weight: 700; }
+      .coins { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+      .coin { display: inline-block; width: 0.95em; height: 0.95em; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #ffc83d 45%, #b8860b); box-shadow: inset 0 0 0 1.5px #8a6200; }
+      button.purse { display: inline-flex; align-items: center; gap: 6px; position: relative; }
+      .badge-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 0 2px #17181c; margin-left: 4px; vertical-align: 2px; }
+      .tabs { display: flex; gap: 4px; border-bottom: 1px solid #2c2d33; margin: 4px 0 8px; }
+      button.tab { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 14px; color: #9a9da6; }
+      button.tab.active { color: #fff; border-bottom-color: #c8102e; }
+      button.tab:hover:not(:disabled) { background: #1d1f25; }
+      .ok-note { color: #2ecc40; font-weight: 600; }
+      .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+      @media (max-width: 560px) { .week { grid-template-columns: repeat(4, 1fr); } }
+      .day { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 1px solid #2c2d33; border-radius: 8px; font-size: 11px; color: #8a8d96; text-align: center; }
+      .day .coins { color: #ddd; font-size: 13px; font-weight: 600; }
+      .day small { min-height: 14px; color: #2ecc40; font-weight: 600; }
+      .day.done { background: #14231a; border-color: #2a5a38; }
+      .day.today { border-color: #ffc83d; background: #2a2614; }
+      .day.today small { color: #ffc83d; }
+      .spin { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+      .wheel { flex: none; }
+      .spin > div { flex: 1; min-width: 200px; }
+      .skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+      .skin { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px; border: 1px solid #2c2d33; border-radius: 10px; background: #121317; }
+      .skin.equipped { border-color: #2ecc40; }
+      .skin.locked .skin-preview { opacity: 0.55; filter: saturate(0.6); }
+      .skin .rarity { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+      .skin button.small { margin: 4px 0 0; display: inline-flex; align-items: center; gap: 4px; }
+      .skin button.equipped { color: #2ecc40; opacity: 1; }
+      .unlock { width: 100%; font-size: 11px; color: #9a9da6; text-align: center; }
+      .progress { height: 5px; border-radius: 3px; background: #2b2d34; margin-top: 4px; overflow: hidden; }
+      .progress i { display: block; height: 100%; }
     </style>
   </head>
   <body>

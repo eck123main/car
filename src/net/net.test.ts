@@ -477,3 +477,22 @@ describe('Play again', () => {
     expect(c.session?.phase).toBe('grid');
   });
 });
+
+describe('Skins', () => {
+  it("shows everyone each player's skin, and drops unknown ones", () => {
+    const net = new LoopbackNetwork(0, 0, 0);
+    const host = new HostGame(net.host('ABC'), 'Hosty', (id) => TRACKS[id], () => 0, 'medal-gold');
+    const a = new ClientGame(net.connect('ABC'), 'Alice', () => 0, 'neon');
+    const b = new ClientGame(net.connect('ABC'), 'Bob', () => 0, 'made-up');
+    net.advance(0.1);
+    expect(host.lobby.players.map((p) => p.skin)).toEqual(['medal-gold', 'neon', undefined]);
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    net.advance(0.1);
+    for (const world of [host.session!.world, a.world!, b.world!]) {
+      expect(world.racer(HostGame.HOST_ID)?.skin).toBe('medal-gold');
+      expect(world.racer(a.id!)?.skin).toBe('neon');
+      expect(world.racer(b.id!)?.skin).toBeUndefined();
+    }
+  });
+});

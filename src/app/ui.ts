@@ -14,6 +14,8 @@ const MODES: Record<GameMode, string> = {
 import type { RaceWorld } from '../sim/world';
 import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } from '../sim/medals';
 import { settings, updateSettings, type Settings } from './settings';
+import { wallet } from '../net/wallet';
+import { skinDef } from '../cosmetics/skins';
 
 const root = document.getElementById('ui') as HTMLDivElement;
 
@@ -23,7 +25,7 @@ type ElProps<K extends keyof HTMLElementTagNameMap> = Omit<Partial<HTMLElementTa
 };
 
 /** Tiny element builder. */
-function el<K extends keyof HTMLElementTagNameMap>(
+export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: ElProps<K> = {} as ElProps<K>,
   ...children: (Node | string | null)[]
@@ -37,8 +39,13 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-function show(screen: HTMLElement): void {
+export function show(screen: HTMLElement): void {
   root.replaceChildren(screen);
+}
+
+/** A coin: a small gold disc, then the amount. */
+export function coins(n: number): HTMLElement {
+  return el('span', { class: 'coins' }, el('i', { class: 'coin' }), n.toLocaleString('en-US'));
 }
 
 export function clearUi(): void {
@@ -115,6 +122,8 @@ export interface WelcomeActions {
   onParty: (name: string) => void;
   onPractice: (name: string) => void;
   onTimeTrial: (name: string) => void;
+  /** Coins, skins and medals. */
+  onGarage: () => void;
   /** Accounts, if this build has a database. */
   accounts: AccountService | null;
   /** Show this screen again (after signing in or out). */
@@ -146,15 +155,27 @@ export function showWelcome(a: WelcomeActions): void {
         el('button', { onclick: go(a.onParty) }, 'Party race (items)'),
         el('button', { onclick: go(a.onTimeTrial) }, 'Time trial'),
         el('button', { onclick: go(a.onPractice) }, 'Practice solo'),
+        el('button', { onclick: a.onGarage }, 'Garage'),
       ];
   name.addEventListener('keydown', (e) => e.key === 'Enter' && buttons[0].click());
   const service = a.accounts;
   let accountBar: HTMLElement | null = null;
   if (service && account) {
+    // Coin balance, with a dot when today's reward or spin is waiting (filled in once loaded).
+    const purse = el('button', { class: 'small purse', title: 'Garage', onclick: a.onGarage });
+    purse.hidden = true;
+    wallet()
+      ?.get()
+      .then((w) => {
+        purse.replaceChildren(coins(w.coins), w.canClaim || w.canSpin ? el('span', { class: 'badge-dot', title: 'Daily reward waiting' }) : '');
+        purse.hidden = false;
+      })
+      .catch(() => {});
     accountBar = el(
       'div',
       { class: 'account-bar' },
       el('span', {}, 'Signed in as ', el('b', {}, account.username)),
+      purse,
       el('button', { class: 'small', onclick: () => showAccount(service, a.onBack) }, 'Account'),
     );
   } else if (service) {
@@ -226,7 +247,7 @@ function accountForm(button: HTMLButtonElement, error: HTMLElement, submit: () =
   );
 }
 
-function card(title: string, sub: string, ...children: (Node | null)[]): HTMLElement {
+export function card(title: string, sub: string, ...children: (Node | null)[]): HTMLElement {
   return el('div', { class: 'screen' }, el('div', { class: 'card' }, el('h1', {}, title), el('p', { class: 'sub' }, sub), ...children));
 }
 
@@ -461,7 +482,14 @@ export function showLobby(v: LobbyView): void {
   const s = v.lobby.settings;
   const players = el('ul', { class: 'players' });
   for (const p of v.lobby.players) {
-    const li = el('li', {}, el('span', { class: 'dot', style: `background:${p.color}` }), el('span', {}, p.name));
+    const skin = skinDef(p.skin);
+    const li = el(
+      'li',
+      {},
+      el('span', { class: 'dot', style: `background:${p.color}` }),
+      el('span', {}, p.name),
+      skin?.livery ? el('span', { class: 'muted', title: 'Car skin' }, skin.name) : null,
+    );
     if (p.host) li.append(el('span', { class: 'tag' }, 'HOST'));
     if (p.id === v.meId) li.append(el('span', { class: 'tag you' }, 'YOU'));
     if (p.bot) {
@@ -765,22 +793,91 @@ export interface TimeTrialMenu {
   onBack: () => void;
 }
 
+const drivenKey = () => `f1td.tt.driven.${playerId()}`;
+
+/** Tracks this player has started a time trial on, in this browser. */
+function drivenTracks(): Set<string> {
+  try {
+    const list = JSON.parse(localStorage.getItem(drivenKey()) ?? '[]') as unknown;
+    return new Set(Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Remember that a track was driven, so the menu stops calling it new. */
+export function markTrackDriven(track: string): void {
+  const all = drivenTracks();
+  if (all.has(track)) return;
+  all.add(track);
+  try {
+    localStorage.setItem(drivenKey(), JSON.stringify([...all]));
+  } catch {
+    // Only a hint in the menu.
+  }
+}
+
 /** Time trial: pick a track, see its leaderboard, drive. */
 export function showTimeTrialMenu(m: TimeTrialMenu): void {
-  const select = el('select', { style: 'width:100%' });
-  const options = new Map<string, HTMLOptionElement>();
-  for (const t of m.tracks) {
-    const o = el('option', { value: t.id, selected: t.id === m.track }, t.name);
-    options.set(t.id, o);
-    select.append(o);
-  }
+  // The track list: a stand-in for a <select> (`select.value`), which can't show badges.
+  const select = { value: m.tracks.some((t) => t.id === m.track) ? m.track : (m.tracks[0]?.id ?? '') };
+  const driven = drivenTracks();
+  const search = el('input', { type: 'text', placeholder: 'Search tracks', style: 'flex:1;min-width:0' });
+  let filter: 'all' | 'new' | 'driven' = 'all';
+  const chips = el('div', { class: 'chips', style: 'margin:0' });
+  const list = el('div', { class: 'track-list' });
+  const listNote = el('p', { class: 'muted', style: 'margin:6px 0 0' });
+  const rowEls = new Map<string, HTMLButtonElement>();
+  /** Tried before: a lap on the board (any device), or started here. */
+  const triedOn = (id: string) => driven.has(id) || bests[id] !== undefined;
+  const renderList = () => {
+    const q = search.value.trim().toLowerCase();
+    chips.replaceChildren(
+      ...(
+        [
+          ['all', 'All'],
+          ['new', 'Not driven'],
+          ['driven', 'Driven'],
+        ] as const
+      ).map(([id, label]) => el('button', { class: `chip${filter === id ? ' active' : ''}`, onclick: () => ((filter = id), renderList()) }, label)),
+    );
+    rowEls.clear();
+    list.replaceChildren();
+    for (const t of m.tracks) {
+      const tried = triedOn(t.id);
+      if ((filter === 'new' && tried) || (filter === 'driven' && !tried) || (q && !t.name.toLowerCase().includes(q))) continue;
+      const times = medalTimes(t.id);
+      const got = m.signedIn && times ? medalFor(bests[t.id], times) : null;
+      const row = el(
+        'button',
+        {
+          class: `track-row${t.id === select.value ? ' selected' : ''}${tried ? '' : ' fresh'}`,
+          onclick: () => {
+            select.value = t.id;
+            for (const [id, r] of rowEls) r.classList.toggle('selected', id === t.id);
+            void load();
+          },
+        },
+        el('span', { class: 'name' }, t.name),
+        tried ? null : el('span', { class: 'new-tag' }, 'NEW'),
+        el('span', { class: 'best' }, bests[t.id] !== undefined ? formatLapTime(bests[t.id]) : tried ? 'no lap yet' : ''),
+        got ? el('span', { class: 'medal-chip', style: `--medal:${MEDAL_COLORS[got]}` }, MEDAL_NAMES[got]) : el('span', { class: 'medal-chip empty' }),
+      );
+      rowEls.set(t.id, row);
+      list.append(row);
+    }
+    if (!list.childElementCount) list.append(el('p', { class: 'muted', style: 'padding:8px 10px;margin:0' }, filter === 'new' && !q ? "You've driven every track!" : 'No tracks match.'));
+    const done = m.tracks.filter((t) => triedOn(t.id)).length;
+    listNote.textContent = `Driven ${done} of ${m.tracks.length} tracks · ${m.tracks.length - done} new to you`;
+  };
+  search.addEventListener('input', renderList);
   const table = el('table', { class: 'results' });
   const status = el('p', { class: 'muted' });
   const ghost = el('select', { style: 'width:100%' });
   const medalBox = el('div', { class: 'medals' });
   const medalSummary = el('p', { class: 'muted' });
   const me = playerId();
-  /** Our best time per track (signed in only: guests don't earn medals). */
+  /** Our best time per track. */
   let bests: Record<string, number> = {};
   const showMedals = () => {
     const times = medalTimes(select.value);
@@ -813,21 +910,15 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
     const yours = best === undefined ? 'No lap here yet.' : `Your best here: ${formatLapTime(best)}.`;
     medalSummary.textContent = `${yours} Your medals: ${MEDALS.map((x) => `${counts.get(x)} ${MEDAL_NAMES[x]}`).join(' · ')}`;
   };
-  if (m.signedIn) {
-    m.board
-      .bestsOf(me, m.tracks.map((t) => t.id))
-      .then((b) => {
-        bests = b;
-        // Each track's medal next to its name.
-        for (const t of m.tracks) {
-          const times = medalTimes(t.id);
-          const got = times ? medalFor(b[t.id], times) : null;
-          options.get(t.id)!.textContent = got ? `${t.name}  ·  ${MEDAL_NAMES[got]}` : t.name;
-        }
-        showMedals();
-      })
-      .catch((err) => console.warn(err));
-  }
+  // Our times (guests too, to know which tracks we've driven); medals only count signed in.
+  m.board
+    .bestsOf(me, m.tracks.map((t) => t.id))
+    .then((b) => {
+      bests = b;
+      renderList();
+      showMedals();
+    })
+    .catch((err) => console.warn(err));
   let shownFor = '';
   const load = async () => {
     const track = select.value;
@@ -861,7 +952,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
       if (shownFor === track) status.textContent = "Couldn't reach the leaderboard.";
     }
   };
-  select.addEventListener('change', () => void load());
+  renderList();
   show(
     el(
       'div',
@@ -876,7 +967,9 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
           'Alone on track, soft tyres, DRS in every zone and ERS. All four wheels off the track and the lap is cancelled. ' +
             "Beat the times below and race the record holder's ghost.",
         ),
-        select,
+        el('div', { class: 'invite', style: 'align-items:center' }, search, chips),
+        list,
+        listNote,
         el('h2', {}, 'Medals'),
         medalBox,
         medalSummary,
@@ -886,14 +979,17 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
         el('h2', {}, m.board.global ? 'World leaderboard' : 'Leaderboard (this device only)'),
         status,
         table,
+        // Kept in view at the bottom of the card, so Drive is always one click away.
         el(
           'div',
-          { class: 'buttons' },
+          { class: 'buttons sticky' },
           el('button', { class: 'primary', onclick: () => m.onDrive(select.value, ghost.value) }, 'Drive'),
           el('button', { onclick: m.onBack }, 'Back'),
         ),
       ),
     ),
   );
+  const picked = rowEls.get(select.value);
+  if (picked) list.scrollTop = picked.offsetTop - list.clientHeight / 2;
   void load();
 }

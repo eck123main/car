@@ -9,7 +9,7 @@ import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -128,7 +128,7 @@ export interface SessionSnap {
 export type PackedInput = [number, number, number, number, number, number];
 
 export type ClientMessage =
-  | { t: 'hello'; name: string; version: number }
+  | { t: 'hello'; name: string; version: number; skin?: string }
   /**
    * The latest inputs, plus a few older ones the host hasn't acknowledged yet, so a lost
    * packet costs nothing (inputs go over the fast channel, which never resends).

@@ -1,3 +1,4 @@
+import { isSkinId } from '../cosmetics/skins';
 import { botContext, BotDriver, type Difficulty } from '../sim/ai/botDriver';
 import { DEFAULT_SETTINGS, Session, type PlayerInfo, type RaceSettings, type SessionEvent } from '../sim/session';
 import { IDLE_INPUT, type PlayerInput } from '../sim/world';
@@ -87,8 +88,10 @@ export class HostGame {
     private readonly trackDefs: (id: string) => TrackDef | undefined,
     /** Wall-clock seconds, for measuring pings. */
     private readonly clock: () => number = () => performance.now() / 1000,
+    /** The host's car skin. */
+    skin?: string,
   ) {
-    this.hostPlayer = { id: HostGame.HOST_ID, name: hostName, color: CAR_COLORS[0], host: true };
+    this.hostPlayer = { id: HostGame.HOST_ID, name: hostName, color: CAR_COLORS[0], skin, host: true };
     transport.onConnection((conn) => this.accept(conn));
   }
 
@@ -157,7 +160,7 @@ export class HostGame {
     const def = this.trackDefs(this.settings.trackId);
     if (!def) throw new Error(`Unknown track ${this.settings.trackId}`);
     this.track = new Track(def);
-    const players = this.lobby.players.map(({ id, name, color }) => ({ id, name, color }));
+    const players = this.lobby.players.map(({ id, name, color, skin }) => ({ id, name, color, skin }));
     this.session = new Session(this.track, this.settings, players);
     this.running = { def, players };
     for (const b of this.bots.values()) b.driver = new BotDriver(this.track, b.player.id, b.player.bot!);
@@ -248,7 +251,8 @@ export class HostGame {
         const used = new Set(this.lobby.players.map((p) => p.color));
         const color = CAR_COLORS.find((c) => !used.has(c)) ?? CAR_COLORS[0];
         const name = (typeof msg.name === 'string' ? msg.name : '').trim().slice(0, 16) || `Driver ${this.nextId - 1}`;
-        joined = { conn, player: { id, name, color, host: false }, queue: [], last: IDLE_INPUT, ack: 0, received: 0, minQueue: Infinity, window: 0, ping: null, relayed: null, pingSent: null };
+        const skin = isSkinId(msg.skin) ? msg.skin : undefined;
+        joined = { conn, player: { id, name, color, skin, host: false }, queue: [], last: IDLE_INPUT, ack: 0, received: 0, minQueue: Infinity, window: 0, ping: null, relayed: null, pingSent: null };
         this.remotes.set(id, joined);
         conn.send({ t: 'welcome', id } satisfies HostMessage);
         // Joining while a weekend is on: spectate it now, race in the next one.

@@ -1,6 +1,8 @@
 import { ClientDriver, GameScreen, HostDriver, PracticeDriver, type GameDriver } from './app/game';
 import { TimeTrialDriver } from './app/timeTrial';
-import { clearUi, showLobby, showMessage, showPauseMenu, showResults, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
+import { showGarage } from './app/garage';
+import { equippedSkin } from './net/wallet';
+import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
 import { accounts } from './net/accounts';
 import { gameAudio } from './audio/sound';
@@ -62,9 +64,19 @@ function welcome(joining: boolean): void {
     onParty: (n) => host(n, true, 'party'),
     onPractice: practice,
     onTimeTrial: timeTrial,
+    onGarage: garage,
     accounts: accounts(),
     onBack: () => welcome(joining),
   });
+}
+
+/** Real circuits only (not the test track or the editor's custom one): medals and fair times. */
+function realTracks(): { id: string; name: string }[] {
+  return trackList().filter((t) => t.id !== 'custom' && t.id !== 'test');
+}
+
+function garage(): void {
+  showGarage({ accounts: accounts(), board: leaderboard(), tracks: realTracks(), onBack: home });
 }
 
 function runGame(
@@ -149,7 +161,9 @@ function openTyrePicker(g: GameScreen, driver: GameDriver): () => void {
 function practice(name: string): void {
   const id = params.get('track') ?? DEFAULT_TRACK;
   const def = trackDef(id) ?? TRACKS[DEFAULT_TRACK];
-  runGame(new PracticeDriver(new Track(def), name), { menuNote: 'Practice: R puts you back on track.' });
+  const driver = new PracticeDriver(new Track(def), name);
+  driver.world().racers[0].skin = equippedSkin();
+  runGame(driver, { menuNote: 'Practice: R puts you back on track.' });
 }
 
 // ---------- Time trial
@@ -166,7 +180,7 @@ function timeTrial(name: string): void {
   stopGame();
   showTimeTrialMenu({
     // Only the real circuits (and not the editor's custom track): times must be comparable.
-    tracks: trackList().filter((t) => t.id !== 'custom' && t.id !== 'test'),
+    tracks: realTracks(),
     track: TRACKS[last] ? last : DEFAULT_TRACK,
     board: leaderboard(),
     signedIn: leaderboard().global && !!accounts()?.account(),
@@ -177,7 +191,9 @@ function timeTrial(name: string): void {
       } catch {
         // Remembering the track is a convenience only.
       }
+      markTrackDriven(id);
       const driver = new TimeTrialDriver(new Track(TRACKS[id]), id, name, leaderboard(), ghost);
+      driver.tt.me.skin = equippedSkin();
       runGame(driver, {
         menuNote: 'Time trial (paused). R or ENTER restarts the lap, G switches the ghost.',
         onLeave: () => timeTrial(name),
@@ -196,7 +212,7 @@ async function host(name: string, offline: boolean, mode: GameMode = 'classic'):
   let hostGame: HostGame;
   try {
     const transport = offline ? new OfflineTransport() : await createHost();
-    hostGame = new HostGame(transport, name, trackDef);
+    hostGame = new HostGame(transport, name, trackDef, undefined, equippedSkin());
     if (mode !== 'classic') hostGame.updateSettings({ mode });
     // A bots race starts with a few opponents ready to go.
     if (offline) for (const d of ['hard', 'medium', 'medium', 'easy', 'easy'] as const) hostGame.addBot(d);
@@ -265,7 +281,7 @@ async function join(name: string): Promise<void> {
   let client: ClientGame;
   try {
     const conn = await connectToHost(joinCode!);
-    client = new ClientGame(conn, name, () => performance.now() / 1000);
+    client = new ClientGame(conn, name, () => performance.now() / 1000, equippedSkin());
   } catch (err) {
     showMessage("Couldn't join", (err as Error).message, { label: 'Back', onClick: home });
     return;
