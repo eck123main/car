@@ -3,6 +3,7 @@ import type { Livery } from '../render/livery';
 import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
 import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
+import { Items3d, type ItemsFrame } from './items3d';
 import { Scenery3d } from './scenery3d';
 import { Landmarks, lookOf, waterOf } from './landmarks';
 import { Terrain } from './terrain';
@@ -75,6 +76,8 @@ export interface CarView {
   livery: Livery;
   /** See-through replay car in this colour (time trial ghost). */
   ghost?: string;
+  /** How see-through a ghost is (default 0.35). */
+  ghostOpacity?: number;
   /** Which stretch of track it's on (Car.trackIndex), for the height of the road there. */
   trackIndex?: number | null;
 }
@@ -125,6 +128,8 @@ export class View3D {
   private readonly screenGlass: THREE.Mesh;
   private mirrorFrame = 0;
   private safetyCar: SafetyCarModel | null = null;
+  /** Party mode items, made the first time a frame has some. */
+  private items: Items3d | null = null;
   private time = 0;
   private width = 1;
   private readonly track: Track;
@@ -236,7 +241,7 @@ export class View3D {
     this.pitchReady = false;
   }
 
-  render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null): void {
+  render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null, items: ItemsFrame | null = null): void {
     this.time += dt;
     // Nose up on a climb, down on a descent (eased a little, like the car's suspension).
     const pitchTarget = Math.atan(this.uphill(own));
@@ -254,7 +259,7 @@ export class View3D {
     const seen = new Set<string>();
     for (const car of [own, ...others]) {
       seen.add(car.id);
-      const key = `${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car === own}`;
+      const key = `${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${car === own}`;
       let entry = this.cars.get(car.id);
       if (entry && entry.key !== key) {
         entry.model.group.removeFromParent();
@@ -262,7 +267,7 @@ export class View3D {
         entry = undefined;
       }
       if (!entry) {
-        const model = new CarModel(car.livery, { ghost: car.ghost });
+        const model = new CarModel(car.livery, { ghost: car.ghost, opacity: car.ghostOpacity });
         if (car === own) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);
@@ -289,7 +294,20 @@ export class View3D {
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
 
-    // The mirror first (every other frame), while the sky sits round the mirror camera.
+    this.placeCamera(own, dt);
+    if (items) {
+      if (!this.items) {
+        this.items = new Items3d(this.track, (x, y, i) => this.heightAt(x, y, i ?? null));
+        this.scene.add(this.items.group);
+      }
+      this.items.update(items, this.camera, dt, (id) => this.cars.get(id)?.model, own.id);
+      // Knocked out: the camera shakes.
+      const shake = this.items.shake(own.id);
+      if (shake > 0) this.camera.position.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake * 0.5));
+    }
+    if (this.items) this.items.group.visible = !!items;
+
+    // The mirror (every other frame), while the sky sits round the mirror camera.
     if (this.mirror && this.mirrorFrame++ % 2 === 0) {
       const cos = Math.cos(own.heading);
       const sin = Math.sin(own.heading);
@@ -303,7 +321,6 @@ export class View3D {
       this.renderer.setRenderTarget(null);
     }
 
-    this.placeCamera(own, dt);
     this.sky.position.copy(this.camera.position);
 
     this.renderer.clear();
@@ -392,6 +409,7 @@ export class View3D {
   dispose(): void {
     for (const { model } of this.cars.values()) model.dispose();
     this.safetyCar?.dispose();
+    this.items?.dispose();
     this.cars.clear();
     for (const d of this.disposables) d.dispose();
     this.renderer.dispose();

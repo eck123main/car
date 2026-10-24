@@ -121,7 +121,7 @@ function haloParts(): THREE.BufferGeometry[] {
 }
 
 interface Materials {
-  body: THREE.Material;
+  body: THREE.MeshLambertMaterial;
   carbon: THREE.Material;
   tyre: THREE.Material;
   ring: THREE.MeshLambertMaterial;
@@ -155,13 +155,18 @@ export class CarModel {
   private readonly wingBase: string;
   private compound: Compound | null = null;
   private drs = false;
+  private painted: string | null = null;
+  private readonly ghost: boolean;
   wheel: SteeringWheel | null = null;
 
-  constructor(livery: Livery, opts: { ghost?: string } = {}) {
+  /** ghost: see-through in this colour (opacity: how see-through; party mode's ghost item is nearly invisible). */
+  constructor(livery: Livery, opts: { ghost?: string; opacity?: number } = {}) {
     const ghost = opts.ghost;
+    this.ghost = !!ghost;
     this.wingBase = ghost ?? livery.wings;
+    const opacity = opts.opacity ?? 0.35;
     const lambert = (p: THREE.MeshLambertMaterialParameters) =>
-      new THREE.MeshLambertMaterial(ghost ? { color: ghost, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide } : { side: THREE.DoubleSide, ...p });
+      new THREE.MeshLambertMaterial(ghost ? { color: ghost, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide } : { side: THREE.DoubleSide, ...p });
     this.mats = {
       body: lambert({ vertexColors: true }),
       carbon: lambert({ color: CARBON }),
@@ -235,6 +240,19 @@ export class CarModel {
       this.mats.ring.color.set(COMPOUNDS[compound].color);
     }
     this.wheel?.turn(steer);
+  }
+
+  /** Paint the whole body one glowing colour (party mode's rainbow), or null for the livery again. */
+  paint(color: string | null): void {
+    if (this.ghost || color === this.painted) return;
+    const body = this.mats.body;
+    if ((color === null) !== (this.painted === null)) {
+      body.vertexColors = color === null;
+      body.needsUpdate = true;
+    }
+    this.painted = color;
+    body.color.set(color ?? '#ffffff');
+    body.emissive.set(color ?? '#000000').multiplyScalar(color ? 0.45 : 0);
   }
 
   /** Inside the car: the helmet would fill the view. */

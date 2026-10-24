@@ -182,8 +182,8 @@ so nobody else can post under an account (guests can't insert account ids). Gues
 **The plan for first-person F1 (goals, rules, roadmap) is in `docs/first-person-plan.md`: read it
 before working on the 3D side.** For now it's a **test button** in the game (bottom right:
 "Test 3D view", then "Camera" opens a list of cameras), not a game mode or a menu option.
-Offered in time trial, practice and races (bots or online; each player picks their own view), but
-**not party mode** (items aren't drawn in 3D yet; `GameDriver.firstPerson`).
+Offered in time trial, practice and races (bots or online, party mode too; each player picks their
+own view; `GameDriver.firstPerson`).
 
 **V** switches to a 3D first-person view (`src/render3d/`, three.js, loaded only
 when first used so the top-down game doesn't download it). It is **only a renderer**: the same
@@ -226,7 +226,15 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   the console if there's no room. 22 circuits have a block; the rest look as before.
   Note: Monaco's start line and pits in the track file are at Casino Square, not on the real
   start straight (corners match the real lap from there).
-- Not yet: party items, rain spray / wet look, lights on the gantry.
+- **Party items** (`items3d.ts`, from the same `ItemView` / `ItemState` the 2D view draws): Mario Kart
+  style boxes (see-through rainbow cubes with a "?", spinning, bobbing, glowing; they shatter when hit
+  and pop back in), rockets and blue shells with smoke trails, oil / tyre barrier / mine (owner only) /
+  smoke cloud you can't see through, and effects on the car's own model: boost flames, shield bubble,
+  rainbow paint + sparkles, magnet on the nose with field lines, oil swirls, lightning bolt from the
+  sky, the hook on a cable caught on the rear wing, nearly invisible ghost cars, explosions, teleport
+  flashes, knocked-out cars spinning (own car: camera shake). Name tags hide inside smoke. Repeated
+  things are instanced; effects are camera-facing quads in a few shared meshes (~10 draw calls).
+- Not yet: rain spray / wet look, lights on the gantry.
 
 ## Sound & settings
 
@@ -337,7 +345,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Use item (party mode) | **E** | Fires on the press |
-| First-person view | **V** | A test (also the button bottom right), not in party mode; then **C** cycles the 8 cameras, **M** mirror on/off, hold **Q** to look behind |
+| First-person view | **V** | A test (also the button bottom right); then **C** cycles the 8 cameras, **M** mirror on/off, hold **Q** to look behind |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |
 | Mouse driving | **click the track** | Car steers towards the cursor (full lock 25° off its heading, `GameScreen.mouseSteer`); left button throttle, right brake, middle DRS; keys still work. Pressing a steering key switches back to the keyboard, so a resting mouse never steers (`Mouse` in `src/game/input.ts`) |

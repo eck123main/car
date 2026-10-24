@@ -48,7 +48,7 @@ the main way to play (**[OPEN]** whether top-down stays as a mode or a map view,
   front wing, rear wing, chase, far chase.
 - Rear-view mirror: one 512x128 render of what's behind every other frame, on the car's wing
   mirrors (cockpit) or at the top of the screen (other cameras). It costs a second (small) pass.
-- **In races** (practice, bots, online; not party mode): other cars, ghosts in qualifying, the
+- **In races** (practice, bots, online, party mode): other cars, ghosts in qualifying, the
   safety car, name tags. Each player picks their own view; the network code didn't change.
 - Checked in headless Chrome on Silverstone (all four cameras). Not yet measured on a real GPU.
 
@@ -77,7 +77,7 @@ the main way to play (**[OPEN]** whether top-down stays as a mode or a map view,
   Interlagos, Miami's stadium, Zandvoort's banked corners.
 - Start lights on the gantry (the HUD shows them now), pit boxes and pit crew blocks.
 - Weather: rain drops / spray / darker sky (cheap), wet track tint.
-- Party mode items in 3D (rockets, boxes, drops).
+- Done: party mode items in 3D (`items3d.ts`: boxes, rockets, drops, every item's effect).
 - Suzuka: lift the bridge stretch so the two roads cross at different heights.
 
 - Done: **real elevation** (see CLAUDE.md, Driving & physics): hills in the physics for both

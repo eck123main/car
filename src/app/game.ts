@@ -9,7 +9,7 @@ import { drawDamage } from '../render/damage';
 import { skinLivery } from '../cosmetics/skins';
 import { drawCar } from '../render/drawCar';
 import { drawCarEffects, drawDrops, drawItemBoxes, drawItemSlot, drawRockets, drawSmoke, drawTether, rainbowColor } from '../render/items';
-import { ITEM_INFO } from '../sim/items';
+import { ITEM_INFO, SMOKE_RADIUS } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
@@ -71,7 +71,7 @@ export interface GameDriver {
   drawOverlay?(ctx: CanvasRenderingContext2D, width: number, height: number): void;
   /** Single player only: the menu truly pauses the game (online the race goes on). */
   readonly pausable?: boolean;
-  /** Offers the 3D first-person view (V). Not in party mode yet. */
+  /** Offers the 3D first-person view (V). */
   readonly firstPerson?: boolean;
   /** Mode-specific keys, read once per frame. */
   handleKeys?(keyboard: Keyboard): void;
@@ -186,10 +186,7 @@ export class HostDriver implements GameDriver {
     return { x: sc.prevX + (sc.x - sc.prevX) * alpha, y: sc.prevY + (sc.y - sc.prevY) * alpha, heading: sc.prevHeading + dh * alpha };
   }
   constructor(private readonly host: HostGame) {}
-  /** Not in party mode yet: the items aren't drawn in 3D. */
-  get firstPerson() {
-    return this.host.session?.settings.mode !== 'party';
-  }
+  readonly firstPerson = true;
   items() {
     const s = this.host.session;
     return s?.items ? s.items.view(s.world.time) : null;
@@ -225,10 +222,7 @@ export class HostDriver implements GameDriver {
 /** Someone who joined a lobby. */
 export class ClientDriver implements GameDriver {
   constructor(private readonly client: ClientGame) {}
-  /** Not in party mode yet: the items aren't drawn in 3D. */
-  get firstPerson() {
-    return this.client.session?.mode !== 'party';
-  }
+  readonly firstPerson = true;
   net() {
     return this.client.net;
   }
@@ -680,17 +674,21 @@ export class GameScreen {
       };
     };
     // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
-    const ghostly = (r: Racer) =>
-      session?.phase === 'qualifying' || (r.frozen && (session?.phase === 'race' || session?.phase === 'finished')) || r.items.ghost > 0;
-    const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ghost: ghostly(r) ? r.color : undefined }));
+    const ghostly = (r: Racer) => session?.phase === 'qualifying' || (r.frozen && (session?.phase === 'race' || session?.phase === 'finished'));
+    // Party mode's ghost item: nearly invisible to everyone else, see-through to its driver.
+    const look = (r: Racer): Partial<CarView> =>
+      r.items.ghost > 0 ? { ghost: GHOST_ITEM_TINT, ghostOpacity: r === me ? 0.28 : 0.12 } : { ghost: r !== me && ghostly(r) ? r.color : undefined };
+    const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ...look(r) }));
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
       others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
     );
+    const items = this.driver.items?.() ?? null;
     view.render(
       {
         ...carView(me),
+        ...look(me),
         speed: me.car.speed,
         yawRate: me.car.yawRate,
         wheel: {
@@ -705,12 +703,22 @@ export class GameScreen {
       others,
       dt,
       sc && { ...sc, lights: session?.safetyCar === 'deployed' },
+      items && {
+        view: items,
+        viewer: this.driver.meId,
+        cars: world.racers.map((r) => ({ ...poses.get(r.id)!, id: r.id, trackIndex: r.car.trackIndex, state: r.items, frozen: r.frozen })),
+      },
     );
   }
 
   /** 3D view: names over the other cars (up to 300 m away) and the safety car. */
   private drawTags3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, sc: Pose | null): void {
-    const tags = world.racers.filter((r) => r !== me).map((r) => ({ ...poses.get(r.id)!, name: r.name, color: r.color, trackIndex: r.car.trackIndex }));
+    // A car inside a smoke cloud is hidden, name and all.
+    const smoke = (this.driver.items?.()?.drops ?? []).filter((d) => d.kind === 'smoke');
+    const hidden = (p: Pose) => smoke.some((d) => Math.hypot(d.x - p.x, d.y - p.y) < SMOKE_RADIUS);
+    const tags = world.racers
+      .filter((r) => r !== me && !hidden(poses.get(r.id)!))
+      .map((r) => ({ ...poses.get(r.id)!, name: r.name, color: r.color, trackIndex: r.car.trackIndex }));
     if (sc) tags.push({ ...sc, name: 'SAFETY CAR', color: '#ffb000', trackIndex: null });
     for (const t of tags) {
       const p = view.project(t.x, t.y, 1.8, t.trackIndex);
@@ -854,6 +862,9 @@ function startTicker(onTick: () => void): Worker | null {
 }
 
 /** Cars whose bodies overlap another car's (or nearly), by their drawn poses. */
+/** Party mode's ghost item in 3D: a pale see-through shimmer. */
+const GHOST_ITEM_TINT = '#e4e8ff';
+
 function overlapping(racers: readonly Racer[], poses: ReadonlyMap<string, { x: number; y: number; heading: number }>): Set<string> {
   const out = new Set<string>();
   for (let i = 0; i < racers.length; i++) {
