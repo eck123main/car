@@ -9,12 +9,14 @@
  * the script finds the scale that fits best, checks the fit, and maps every point of the lap
  * back to latitude/longitude. Heights are scaled like the track (real gradients on a half-size
  * track: half the height), smoothed (the data includes trees and buildings), and stored every
- * STEP metres of the lap from the start line, lowest point = 0. Tracks traced from OpenStreetMap
+ * STEP metres of the lap from the start line, lowest point = 0, with side-by-side stretches
+ * evened out (scripts/level-heights.ts). Tracks traced from OpenStreetMap
  * (not in the file) are skipped. --dry prints without writing. --cache keeps API answers.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Track } from '../src/track/track';
 import { TRACKS } from '../src/tracks';
+import { levelHeights } from './level-heights';
 
 /** Track id → feature id in bacinger/f1-circuits. */
 const FEATURES: Record<string, string> = {
@@ -126,8 +128,8 @@ for (const id of only.length ? only : Object.keys(FEATURES)) {
   let h = ground.map((v) => v * scale * (FLATTEN[id] ?? 1));
   for (const w of SMOOTH) h = smoothClosed(h, odd(w));
   h = limitGrade(h, (GRADE_CAP[id] ?? MAX_GRADE) * STEP);
-  const min = Math.min(...h);
-  h = h.map((v) => Math.round((v - min) * 10) / 10);
+  // Side-by-side stretches evened out (lowest = 0, rounded to 0.1 m).
+  h = levelHeights(TRACKS[id], h, STEP);
   const range = Math.max(...h);
   let steep = 0;
   let steepAt = 0;

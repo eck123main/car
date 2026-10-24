@@ -200,8 +200,14 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   car (silver, flashing light bar), name tags over cars (`View3D.project`). Start lights and
   everything else come from the 2D HUD on top.
 - **Track** (`trackMesh.ts`): built from the physics' own centreline samples, so the walls stand
-  exactly where cars hit them. Ground layers are side-by-side bands, never stacked. Flat (no
-  elevation: the physics is 2D). **Scenery** (`scenery3d.ts`): instanced trees, grandstands with
+  exactly where cars hit them. Ground layers are side-by-side bands, never stacked; each ground
+  triangle is wound to face up on its own (bands fold over on the inside of tight corners).
+  **Land** (`terrain.ts`, 20 m grid): meets the road's height beside the track, and every grid
+  corner of a cell the track (road to walls, pit lane) touches is pushed under that road, so land
+  never shows through; `heightAt` matches the drawn triangles. Beyond the grid a flat frame
+  (`outskirts`), never a plane under everything (it buried roads lower than average, Eau Rouge).
+  Cars and cameras use `Track.roadHeight` (blended between samples, like the road mesh); your own
+  car pitches exactly with the camera. Check with `npx tsx scripts/check-3d.ts`. **Scenery** (`scenery3d.ts`): instanced trees, grandstands with
   a crowd, pit garages, brake boards, start gantry, hills, sky dome.
 - **Keep it light**: flat-shaded low-poly, no shadows or post-processing, fog limits the draw
   distance, pixel ratio capped at 1.25. Two passes: the world (near plane 0.5 m, so far ground
@@ -255,7 +261,9 @@ Top-down 2D car physics that feels like an F1 car:
   hairpins feel different.
 - **Hills (real elevation)**: track files carry real terrain heights (`"elevation"`, every 10 m
   of the lap, from SRTM via `scripts/elevation.ts`; real gradients, so heights are scaled like
-  the track). Physics (both views): gravity along the slope (slower uphill, longer braking
+  the track; a cubic B-spline between the points, and side-by-side stretches evened out by
+  `scripts/level-heights.ts` so the data's buildings don't stand one on a 20 m wall). The weight
+  change uses the vertical curve over ~80 m (real dips and crests, not data bumps). Physics (both views): gravity along the slope (slower uphill, longer braking
   downhill), and the road's vertical curve changes the car's weight on the tyres: lighter over
   crests, heavier in dips like Eau Rouge (`Track.slope`, `Car.step`; weight 0.3-1.8x, downforce
   unaffected). A stopped car with no throttle doesn't roll. Bots plan for it (`speedProfile`).

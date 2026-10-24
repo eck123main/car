@@ -136,6 +136,21 @@ export class Track {
     return s ? { grade: s.grade, vcurv: s.vcurv, tx: s.tx, ty: s.ty } : null;
   }
 
+  /**
+   * Height of the road at a point and its rise per metre along the lap, blended between the
+   * two samples either side (the 3D road is drawn the same way), so a car moving along it
+   * rises smoothly instead of in 2 m steps. A hint (Car.trackIndex) keeps it on the right
+   * stretch where the track crosses itself.
+   */
+  roadHeight(x: number, y: number, hint: number | null = null): { z: number; grade: number; tx: number; ty: number } | null {
+    const hit = this.query(x, y, hint);
+    if (!hit) return null;
+    const a = this.samples[hit.index];
+    const b = this.samples[(hit.index + 1) % this.samples.length];
+    const t = clamp((hit.s - a.s) / SAMPLE_SPACING, 0, 1);
+    return { z: a.z + (b.z - a.z) * t, grade: a.grade + (b.grade - a.grade) * t, tx: a.tx, ty: a.ty };
+  }
+
   /** Forward distance along the lap from a to b (0..length). */
   forwardDistance(a: number, b: number): number {
     return (((b - a) % this.length) + this.length) % this.length;
@@ -575,13 +590,20 @@ const RAMP_END = 230;
 function applyElevation(samples: TrackSample[], elevation: ElevationDef | undefined, crossover: boolean): void {
   const n = samples.length;
   if (elevation) {
+    // A cubic B-spline through the heights: smooth slope and smooth change of slope, so a
+    // car's weight and pitch change gradually (straight lines between the points made both
+    // jump every `step` metres, which shook the car).
     const h = elevation.heights;
     const m = h.length;
+    const p = (i: number) => h[((i % m) + m) % m];
     for (const s of samples) {
       const f = s.s / elevation.step;
       const i = Math.floor(f);
       const t = f - i;
-      s.ground = s.z = h[i % m] * (1 - t) + h[(i + 1) % m] * t;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      s.ground = s.z =
+        ((1 - t) ** 3 * p(i - 1) + (3 * t3 - 6 * t2 + 4) * p(i) + (-3 * t3 + 3 * t2 + 3 * t + 1) * p(i + 1) + t3 * p(i + 2)) / 6;
     }
   }
   if (crossover) {
@@ -613,8 +635,10 @@ function applyElevation(samples: TrackSample[], elevation: ElevationDef | undefi
   }
   const z = (i: number) => samples[((i % n) + n) % n].z;
   if (!samples.some((s) => s.z !== 0)) return;
-  const raw = samples.map((_, i) => (z(i + 5) - 2 * z(i) + z(i - 5)) / (5 * SAMPLE_SPACING) ** 2);
-  const vcurv = smoothClosed(raw, 5);
+  // The road's vertical curve over ~80 m: real dips and crests, not the small bumps of the
+  // terrain data (at 300 km/h those made the car's grip pulse up and down).
+  const raw = samples.map((_, i) => (z(i + 15) - 2 * z(i) + z(i - 15)) / (15 * SAMPLE_SPACING) ** 2);
+  const vcurv = smoothClosed(smoothClosed(raw, 10), 10);
   samples.forEach((s, i) => {
     s.grade = (z(i + 3) - z(i - 3)) / (6 * SAMPLE_SPACING);
     s.vcurv = vcurv[i];

@@ -54,8 +54,16 @@ export class QuadBuilder {
   quad(a: V3, b: V3, c: V3, d: V3, color: string | THREE.Color, up = false): void {
     if (typeof color === 'string') this.c.set(color);
     else this.c.copy(color);
-    // Ground faces up: wind it anticlockwise seen from above, or it would be lit from below.
-    if (up && (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) < 0) [b, d] = [d, b];
+    // Ground faces up: wind each triangle anticlockwise seen from above, or it would be lit
+    // from below. Per triangle: on the inside of a tight corner a band folds over itself (a
+    // bowtie), and its folded half would otherwise face down and show as a dark patch.
+    const tris: V3[][] = [
+      [a, b, c],
+      [a, c, d],
+    ];
+    if (up) {
+      for (const t of tris) if ((t[1][2] - t[0][2]) * (t[2][0] - t[0][0]) - (t[1][0] - t[0][0]) * (t[2][2] - t[0][2]) < 0) [t[1], t[2]] = [t[2], t[1]];
+    }
     let nx = 0;
     let ny = 1;
     let nz = 0;
@@ -70,7 +78,7 @@ export class QuadBuilder {
       ny /= len;
       nz /= len;
     }
-    for (const p of [a, b, c, a, c, d]) {
+    for (const p of tris.flat()) {
       this.pos.push(p[0], p[1], p[2]);
       this.col.push(this.c.r, this.c.g, this.c.b);
       this.norm.push(nx, ny, nz);

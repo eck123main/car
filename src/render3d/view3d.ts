@@ -109,6 +109,7 @@ export class View3D {
   private chaseHeading: number | null = null;
   private look = 0;
   private pitch = 0;
+  private pitchReady = false;
   /**
    * Rear-view mirror: what's behind, drawn small into a texture every other frame. Inside the
    * car it shows on the wing mirrors; from the other cameras as a mirror at the top of the screen.
@@ -160,12 +161,9 @@ export class View3D {
     const landGeo = terrain.geometry();
     const landMat = new THREE.MeshLambertMaterial({ color: look.outside, map: noise });
     this.scene.add(new THREE.Mesh(landGeo, landMat));
-    const outsideGeo = new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2);
+    const outsideGeo = terrain.outskirts();
     const outsideMat = new THREE.MeshLambertMaterial({ color: look.outside });
-    const outside = new THREE.Mesh(outsideGeo, outsideMat);
-    const c = track.samples[0];
-    outside.position.set(c.x, terrain.base - 0.6, c.y);
-    this.scene.add(outside);
+    this.scene.add(new THREE.Mesh(outsideGeo, outsideMat));
     this.disposables.push(landGeo, landMat, outsideGeo, outsideMat);
 
     const landmarks = new Landmarks(track, look, terrain, water);
@@ -235,10 +233,15 @@ export class View3D {
   /** Jump the chase camera straight behind the car (new car, reset). */
   snap(): void {
     this.chaseHeading = null;
+    this.pitchReady = false;
   }
 
   render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null): void {
     this.time += dt;
+    // Nose up on a climb, down on a descent (eased a little, like the car's suspension).
+    const pitchTarget = Math.atan(this.uphill(own));
+    this.pitch = this.pitchReady ? this.pitch + (pitchTarget - this.pitch) * Math.min(1, dt * 10) : pitchTarget;
+    this.pitchReady = true;
     if (safetyCar) {
       if (!this.safetyCar) {
         this.safetyCar = new SafetyCarModel();
@@ -270,7 +273,8 @@ export class View3D {
       }
       entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, car.compound);
       entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex);
-      entry.model.group.rotation.z = Math.atan(this.uphill(car));
+      // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
+      entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
     }
     for (const [id, entry] of this.cars) {
       if (seen.has(id)) continue;
@@ -349,11 +353,10 @@ export class View3D {
     // Look slightly into the corner.
     const target = Math.max(-0.12, Math.min(0.12, own.yawRate * 0.1));
     this.look += (target - this.look) * Math.min(1, dt * 4);
-    // Nose up on a climb, down on a descent (smoothed a little, like the car's suspension).
-    const pitchTarget = cam.chase ? 0 : Math.atan(this.uphill(own));
-    this.pitch += (pitchTarget - this.pitch) * Math.min(1, dt * 8);
-    const pc = Math.cos(this.pitch);
-    const ps = Math.sin(this.pitch);
+    // Onboard cameras pitch with the car; chase cameras stay level.
+    const pitch = cam.chase ? 0 : this.pitch;
+    const pc = Math.cos(pitch);
+    const ps = Math.sin(pitch);
     const toWorld = (q: [number, number, number], yaw = 0): THREE.Vector3 => {
       const p: [number, number, number] = [q[0] * pc - q[1] * ps, q[0] * ps + q[1] * pc, q[2]];
       const h = heading + yaw;
@@ -373,19 +376,17 @@ export class View3D {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Rise per metre along a car's nose, from the slope of the track where it is. */
+  /** Rise per metre along a car's nose, from the slope of the road where it is. */
   private uphill(car: CarView): number {
-    const i = car.trackIndex ?? this.track.query(car.x, car.y)?.index;
-    if (i === undefined) return 0;
-    const s = this.track.samples[i];
-    return s.grade * (Math.cos(car.heading) * s.tx + Math.sin(car.heading) * s.ty);
+    if (!this.track.hilly) return 0;
+    const r = this.track.roadHeight(car.x, car.y, car.trackIndex ?? null);
+    return r ? r.grade * (Math.cos(car.heading) * r.tx + Math.sin(car.heading) * r.ty) : 0;
   }
 
-  /** Height of the road under a point (non-zero only on a crossover bridge). */
+  /** Height of the road under a point, blended between samples like the road mesh (0 on a flat track). */
   heightAt(x: number, y: number, trackIndex: number | null = null): number {
-    if (!this.track.hilly && !this.track.samples.some((s) => s.deck)) return 0;
-    const i = trackIndex ?? this.track.query(x, y)?.index;
-    return i === undefined ? 0 : this.track.samples[i].z;
+    if (!this.track.hilly) return 0;
+    return this.track.roadHeight(x, y, trackIndex)?.z ?? 0;
   }
 
   dispose(): void {
