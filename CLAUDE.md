@@ -274,8 +274,12 @@ Top-down 2D car physics that feels like an F1 car:
   hilly; `src/tracks/elevation-ratios.json`). Times on the 18 tracks that changed by 0.2%+ were
   rescaled rather than reset: medal times, times kept in the browser (`src/net/adjustTimes.ts`,
   once) and the global board (`supabase/elevation_adjust.sql`, run once in Supabase after
-  deploying; ghosts replay stretched to match). Do the same for any later physics change that
-  moves lap times.
+  deploying; ghosts replay stretched to match). The 3D ground fix (smoother hills, evened-out heights)
+  moved four more by 0.4%+ (Monaco -1.3%, Baku -0.7%, Magny-Cours -0.5%, Spa +0.4%): a second
+  step on top, `src/tracks/ground-ratios.json` (`ADJUSTMENTS` in `adjustTimes.ts`, medals via
+  `scripts/ground-adjust.ts`, board via `supabase/ground_adjust.sql`, run after
+  `elevation_adjust.sql`). Do the same for any later physics change that moves lap times: add
+  a step, never edit an old one (browsers and the board may already have applied it).
 - **Slipstream**: following within 60 m behind another car (and up to 4 m to the side,
   so it holds while pulling out to pass) lowers drag, up to 35%.
 - **DRS**: in marked DRS zones, a player within ~1 second of the car ahead (at the

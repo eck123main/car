@@ -13,14 +13,14 @@ import { ClientGame } from './net/client';
 import { HostGame } from './net/host';
 import { connectToHost, createHost } from './net/peer';
 import { OfflineTransport } from './net/transport';
-import { adjustStoredTimes } from './net/adjustTimes';
+import { adjustAllStoredTimes } from './net/adjustTimes';
 import { Track } from './track/track';
 import type { TrackDef } from './track/types';
 import { DEFAULT_TRACK, loadCustomTrack, trackChoices, TRACKS } from './tracks';
 
-// Times kept in this browser follow physics changes (the elevation update), once.
+// Times kept in this browser follow physics changes (elevation, the ground fix), each once.
 try {
-  adjustStoredTimes(localStorage, Object.keys(localStorage));
+  adjustAllStoredTimes(localStorage, Object.keys(localStorage));
 } catch {
   // Storage blocked: nothing kept to adjust.
 }

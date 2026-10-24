@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adjustStoredTimes } from './adjustTimes';
+import { ADJUSTMENTS, adjustAllStoredTimes, adjustStoredTimes } from './adjustTimes';
 
 function store(data: Record<string, unknown>) {
   const m = new Map(Object.entries(data).map(([k, v]) => [k, JSON.stringify(v)]));
@@ -32,5 +32,14 @@ describe('adjusting stored times after a physics change', () => {
     // Running again changes nothing.
     adjustStoredTimes(kv, keys, factors, 'test');
     expect(get('f1td.tt.baku')[0].time).toBeCloseTo(60.6);
+  });
+
+  it('applies every adjustment once, each on top of the last', () => {
+    const kv = store({ 'f1td.tt.monaco': [{ player: 'p', name: 'P', time: 50 }] });
+    const keys = [...kv.m.keys()];
+    adjustAllStoredTimes(kv, keys);
+    adjustAllStoredTimes(kv, keys);
+    const expected = ADJUSTMENTS.reduce((t, a) => t * (a.factors.monaco ?? 1), 50);
+    expect(JSON.parse(kv.getItem('f1td.tt.monaco')!)[0].time).toBeCloseTo(expected, 2);
   });
 });

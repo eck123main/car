@@ -1,4 +1,5 @@
 import ratios from '../tracks/elevation-ratios.json';
+import groundRatios from '../tracks/ground-ratios.json';
 import type { KeyValue } from './leaderboard';
 
 /**
@@ -9,6 +10,20 @@ import type { KeyValue } from './leaderboard';
  */
 
 export const ELEVATION_ADJUSTMENT = 'elevation-2026-10';
+
+/**
+ * Every adjustment so far, oldest first (each on top of the ones before): the elevation update,
+ * then the smoother hills and evened-out heights of the 3D ground fix (supabase/ground_adjust.sql).
+ */
+export const ADJUSTMENTS: { name: string; factors: Record<string, number> }[] = [
+  { name: ELEVATION_ADJUSTMENT, factors: ratios },
+  { name: 'ground-2026-10', factors: groundRatios },
+];
+
+/** Apply every adjustment this browser hasn't had yet, in order. */
+export function adjustAllStoredTimes(kv: KeyValue, keys: string[]): void {
+  for (const a of ADJUSTMENTS) adjustStoredTimes(kv, keys, a.factors, a.name);
+}
 
 interface Lap {
   time: number;
