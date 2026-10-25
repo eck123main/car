@@ -13,6 +13,7 @@ import { ITEM_INFO, SMOKE_RADIUS } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
+import { PitCrews } from '../render/pitCrew';
 import { drawOwnPing } from '../render/ping';
 import { drawRain } from '../render/rain';
 import { drawSafetyCar } from '../render/safetyCar';
@@ -279,6 +280,8 @@ export class GameScreen {
   readonly controls: LocalControls;
   private readonly camera = new Camera();
   private gfx: { track: Track; graphics: TrackGraphics; tiles: TileCache; minimap: Minimap } | null = null;
+  /** Pit crews, animated from each car's pit phase. */
+  private readonly pitCrews = new PitCrews();
   private readonly toasts: Toast[] = [];
   private running = false;
   private paused = false;
@@ -734,6 +737,8 @@ export class GameScreen {
     this.worldToScreen = ctx.getTransform();
     gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
     drawPitBoxes(ctx, world);
+    this.pitCrews.update(world);
+    this.pitCrews.drawUnder(ctx, world, poses);
     const items = this.driver.items?.() ?? null;
     if (items) {
       drawItemBoxes(ctx, items, this.driver.now());
@@ -747,8 +752,10 @@ export class GameScreen {
       ctx.globalAlpha = 1;
       drawNameTag(ctx, g.label, g.x, g.y, g.color);
     }
-    // No contact: cars passing through each other turn see-through (yours too) while they overlap.
-    const passing = session?.noContact && session.phase !== 'qualifying' ? overlapping(world.racers, poses) : new Set<string>();
+    // Cars passing through each other turn see-through (yours too) while they overlap: everyone
+    // with no contact, and cars in the pits (which never touch anyone).
+    const noContact = !!session?.noContact && session.phase !== 'qualifying';
+    const passing = overlapping(world.racers, poses, (a, b) => noContact || a.pit.phase !== 'out' || b.pit.phase !== 'out');
     // Draw other cars first so the local car is always on top.
     for (const r of [...world.racers.filter((r) => r !== me), me]) {
       const p = poses.get(r.id)!;
@@ -769,6 +776,7 @@ export class GameScreen {
       if (items) drawCarEffects(ctx, r.items, p.x, p.y, this.driver.now());
       if (r !== me) drawNameTag(ctx, r.name, p.x, p.y, r.color);
     }
+    this.pitCrews.drawOver(ctx, world, poses);
     if (items) {
       drawRockets(ctx, items, this.driver.now());
       for (const r of world.racers) {
@@ -865,10 +873,16 @@ function startTicker(onTick: () => void): Worker | null {
 /** Party mode's ghost item in 3D: a pale see-through shimmer. */
 const GHOST_ITEM_TINT = '#e4e8ff';
 
-function overlapping(racers: readonly Racer[], poses: ReadonlyMap<string, { x: number; y: number; heading: number }>): Set<string> {
+function overlapping(
+  racers: readonly Racer[],
+  poses: ReadonlyMap<string, { x: number; y: number; heading: number }>,
+  /** Which pairs can pass through each other. */
+  through: (a: Racer, b: Racer) => boolean,
+): Set<string> {
   const out = new Set<string>();
   for (let i = 0; i < racers.length; i++) {
     for (let j = i + 1; j < racers.length; j++) {
+      if (!through(racers[i], racers[j])) continue;
       const a = poses.get(racers[i].id)!;
       const b = poses.get(racers[j].id)!;
       const dx = b.x - a.x;

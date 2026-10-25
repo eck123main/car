@@ -62,6 +62,9 @@ export class TrackGraphics {
   private readonly startLine: Path2D[] = [new Path2D(), new Path2D()];
   private readonly brakeBoards: BrakeBoard[];
   private readonly pitLines = new Path2D();
+  /** The line between the pit lane's fast lane and its box lane, and the "80" painted on it. */
+  private readonly pitDivider = new Path2D();
+  private readonly pitLabels: { x: number; y: number; angle: number }[] = [];
   private readonly drsDetect = new Path2D();
   private readonly drsStart = new Path2D();
   private readonly drsLabels: { x: number; y: number; angle: number }[] = [];
@@ -91,6 +94,21 @@ export class TrackGraphics {
         const b = (t.halfWidth + PIT_LANE_INNER + PIT_LANE_WIDTH) * side;
         this.pitLines.moveTo(t.x + t.nx * a, t.y + t.ny * a);
         this.pitLines.lineTo(t.x + t.nx * b, t.y + t.ny * b);
+      }
+      const lane = track.pit;
+      const along = track.forwardDistance(lane.wallStart, lane.wallEnd);
+      const at = (s: number) => ss[Math.floor((((s % track.length) + track.length) % track.length) / 2) % ss.length];
+      for (let d = 0; d <= along; d += 2) {
+        const t = at(lane.wallStart + d);
+        const o = (t.halfWidth + PIT_LANE_INNER + 4) * side;
+        if (d === 0) this.pitDivider.moveTo(t.x + t.nx * o, t.y + t.ny * o);
+        else this.pitDivider.lineTo(t.x + t.nx * o, t.y + t.ny * o);
+      }
+      // Speed limit painted in the fast lane at both ends, reading for a driver coming down it.
+      for (const s of [lane.wallStart + 6, lane.wallEnd - 14]) {
+        const t = at(s);
+        const o = (t.halfWidth + PIT_LANE_INNER + 2) * side;
+        this.pitLabels.push({ x: t.x + t.nx * o, y: t.y + t.ny * o, angle: Math.atan2(t.ty, t.tx) + Math.PI / 2 });
       }
     }
     for (const zone of track.drsZones) {
@@ -146,6 +164,22 @@ export class TrackGraphics {
     ctx.lineWidth = 0.4;
     ctx.strokeStyle = '#ffffff';
     ctx.stroke(this.pitLines);
+    ctx.lineWidth = 0.22;
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.stroke(this.pitDivider);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.font = 'bold 2.6px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const l of this.pitLabels) {
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.angle);
+      ctx.fillText('80', 0, 0);
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
 
     ctx.lineCap = 'butt';
     ctx.lineWidth = KERB_LINE_WIDTH;
