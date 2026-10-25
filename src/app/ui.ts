@@ -204,7 +204,7 @@ export function showWelcome(a: WelcomeActions): void {
           'header',
           { class: 'hero' },
           el('div', { class: 'wordmark' }, el('span', { class: 'f1' }, 'F1'), el('span', {}, 'Top-Down')),
-          el('p', { class: 'tagline' }, a.joining ? "You've been invited to a race." : 'Real circuits, real racecraft. Short races with friends, straight from a link.'),
+          a.joining ? el('p', { class: 'tagline' }, "You've been invited to a race.") : null,
           el('figure', { class: 'circuit-box' }, art.svg, el('figcaption', {}, el('span', {}, 'On track'), art.name)),
         ),
         el(
