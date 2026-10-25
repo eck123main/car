@@ -73,6 +73,21 @@ describe('Time trial ghost', () => {
     expect(view.ghostKey()).toBe('personal');
   });
 
+  it("replaces our own ghost with the board's when the board has a faster lap of ours", async () => {
+    const { store, someoneSets } = sharedBoard();
+    const driver = new TimeTrialDriver(new Track(TRACKS.test), 'test', 'Me', store, 'personal');
+    await settle();
+    const view = driver as unknown as View & { personal: { ghost: { time: number } } | null };
+    view.lapDone(lap(51));
+    expect(view.personal?.ghost.time).toBe(51);
+    // A faster lap of ours from another device: its ghost is on the board.
+    store.ghostOf = async (_track, player) => (player === view.player ? lap(47).ghost : null);
+    someoneSets({ player: view.player, name: 'Me', time: 47, sectors: [] });
+    await settle();
+    await settle();
+    expect(view.personal?.ghost.time).toBe(47);
+  });
+
   it('moves on to the next player up after beating the chosen ghost', async () => {
     const { store, someoneSets } = sharedBoard();
     someoneSets({ player: 'third', name: 'Bob', time: 53, sectors: [] });

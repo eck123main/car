@@ -50,6 +50,7 @@ export class TimeTrialDriver implements GameDriver {
   private boardState: 'loading' | 'ok' | 'error' = 'loading';
   private readonly player = playerId();
   private personal: LoadedGhost | null = null;
+  private fetchingPersonal = false;
   /** Other players' ghosts by player id (null: loading, or they have none). */
   private readonly playerGhosts = new Map<string, LoadedGhost | null>();
   private notice: { text: string; color: string; until: number } | null = null;
@@ -76,16 +77,6 @@ export class TimeTrialDriver implements GameDriver {
     if (pb) {
       this.personal = this.load(pb);
       this.best = pb.time;
-    } else {
-      // Signed in on another device, or a new browser: our best ghost is on the leaderboard.
-      store
-        .ghostOf(trackId, this.player)
-        .then((g) => {
-          if (!g || (this.personal && this.personal.ghost.time <= g.time)) return;
-          this.personal = this.load(g);
-          if (this.best === null || g.time < this.best) this.best = g.time;
-        })
-        .catch((err) => console.warn(err));
     }
     void this.refresh();
     this.unwatch = store.watch(trackId, () => void this.refresh());
@@ -110,6 +101,7 @@ export class TimeTrialDriver implements GameDriver {
       }
       const mine = this.board.find((e) => e.player === this.player);
       if (mine && (this.best === null || mine.time < this.best)) this.best = mine.time;
+      if (mine) this.syncPersonal(mine.time);
       // Someone improved: their old ghost is out of date.
       for (const [id, g] of this.playerGhosts) {
         const row = this.board.find((e) => e.player === id);
@@ -119,6 +111,25 @@ export class TimeTrialDriver implements GameDriver {
       console.warn(err);
       this.boardState = 'error';
     }
+  }
+
+  /**
+   * Our best on the board beats the ghost kept in this browser (set on another device or
+   * browser): fetch the board's ghost, so "your best" replays the time the board shows.
+   */
+  private syncPersonal(boardTime: number): void {
+    if (this.fetchingPersonal || (this.personal && this.personal.ghost.time <= boardTime + 0.001)) return;
+    this.fetchingPersonal = true;
+    this.store
+      .ghostOf(this.trackId, this.player)
+      .then((g) => {
+        if (!g || (this.personal && this.personal.ghost.time <= g.time)) return;
+        this.personal = this.load(g);
+        savePersonalGhost(g, this.player);
+        if (this.best === null || g.time < this.best) this.best = g.time;
+      })
+      .catch((err) => console.warn(err))
+      .finally(() => (this.fetchingPersonal = false));
   }
 
   private load(ghost: Ghost): LoadedGhost {
