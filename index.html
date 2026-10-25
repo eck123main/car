@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>F1 Top-Down</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,600;0,700;0,900;1,900&display=swap" rel="stylesheet" />
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #e8e8e8; font: 14px system-ui, sans-serif; }
       canvas { display: block; width: 100vw; height: 100vh; }
@@ -126,6 +129,53 @@
       .unlock { width: 100%; font-size: 11px; color: #9a9da6; text-align: center; }
       .progress { height: 5px; border-radius: 3px; background: #2b2d34; margin-top: 4px; overflow: hidden; }
       .progress i { display: block; height: 100%; }
+      /* Welcome screen. */
+      .screen.home { display: block; overflow-y: auto; font-family: 'Titillium Web', system-ui, sans-serif; font-size: 15px;
+        background:
+          radial-gradient(ellipse 60% 50% at 25% 45%, rgba(225, 6, 0, 0.16), transparent 70%),
+          repeating-linear-gradient(45deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 6px),
+          linear-gradient(160deg, #15161b, #08090b 70%); }
+      .home-grid { min-height: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 460px); gap: 40px; align-items: center; max-width: 1180px; margin: 0 auto; padding: 40px 32px; }
+      .hero { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+      .wordmark { display: flex; align-items: baseline; gap: 14px; font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 0.9; font-size: clamp(44px, 6.4vw, 84px); letter-spacing: -0.01em; color: #fff; }
+      .wordmark .f1 { color: #e10600; position: relative; padding-right: 4px; }
+      .wordmark .f1::after { content: ''; position: absolute; left: 0; right: 0; bottom: -10px; height: 6px; background: repeating-linear-gradient(90deg, #e10600 0 18px, #fff 18px 36px); transform: skewX(-20deg); }
+      .tagline { margin: 14px 0 0; max-width: 34em; color: #a6a9b3; font-size: 17px; line-height: 1.45; }
+      .circuit-box { position: relative; margin: 8px 0 0; aspect-ratio: 4 / 3; max-height: 52vh; }
+      .circuit { width: 100%; height: 100%; overflow: visible; }
+      .circuit .road-glow { fill: none; stroke: rgba(225, 6, 0, 0.12); stroke-linejoin: round; filter: blur(6px); }
+      .circuit .road { fill: none; stroke: #2a2c33; stroke-linejoin: round; }
+      .circuit .road-line { fill: none; stroke: rgba(255,255,255,0.35); stroke-dasharray: 2 3; stroke-linejoin: round; }
+      .circuit .trail { fill: none; stroke: #e10600; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(225, 6, 0, 0.9)); }
+      .circuit .car { fill: #fff; filter: drop-shadow(0 0 3px #fff); }
+      .circuit .start { fill: #fff; }
+      .circuit-box figcaption { position: absolute; left: 0; bottom: 0; display: flex; flex-direction: column; font-weight: 700; font-size: 20px; color: #fff; text-transform: uppercase; letter-spacing: 0.02em; }
+      .circuit-box figcaption span { font-size: 11px; color: #e10600; letter-spacing: 0.18em; }
+      .home-panel { background: rgba(20, 21, 26, 0.82); border: 1px solid #2a2c33; border-radius: 16px; padding: 22px; box-shadow: 0 30px 80px rgba(0,0,0,0.55); backdrop-filter: blur(6px); }
+      .home-panel .field span { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-weight: 600; }
+      .home-panel input[type=text].big { font-family: inherit; font-size: 17px; font-weight: 600; padding: 11px 12px; border-radius: 8px; }
+      .home-panel input[type=text].big:focus { outline: none; border-color: #e10600; box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.25); }
+      .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+      button.tile { position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 12px; row-gap: 1px; align-items: center; text-align: left; padding: 13px 14px; border-radius: 10px; background: #1c1e24; border: 1px solid #2c2f37; font-family: inherit; transition: transform 0.12s, border-color 0.12s, background 0.12s; }
+      button.tile:hover:not(:disabled) { background: #23262e; border-color: #4a4e59; transform: translateY(-2px); }
+      button.tile .icon { grid-row: span 2; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: #2a2d35; color: #ff5a4f; }
+      button.tile .icon svg { width: 20px; height: 20px; }
+      button.tile b { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.2; }
+      button.tile small { font-size: 12px; color: #8f929c; line-height: 1.3; }
+      button.tile.wide { grid-column: 1 / -1; }
+      button.tile.primary { grid-column: 1 / -1; padding: 16px 18px; background: linear-gradient(100deg, #e10600, #a8000f); border-color: #ff2a1f; box-shadow: 0 10px 30px rgba(225, 6, 0, 0.3); }
+      button.tile.primary:hover:not(:disabled) { background: linear-gradient(100deg, #f5130c, #b80012); border-color: #ff5a4f; }
+      button.tile.primary .icon { background: rgba(255,255,255,0.18); color: #fff; width: 40px; height: 40px; }
+      button.tile.primary b { font-size: 19px; text-transform: uppercase; letter-spacing: 0.04em; font-style: italic; font-weight: 900; }
+      button.tile.primary small { color: rgba(255,255,255,0.8); }
+      .home-panel details { margin-top: 14px; border-top: 1px solid #262830; padding-top: 12px; }
+      .home-panel .account-bar { padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #262830; }
+      @media (max-width: 860px) {
+        .home-grid { grid-template-columns: 1fr; gap: 18px; padding: 24px 16px; }
+        .circuit-box { max-height: 28vh; aspect-ratio: auto; height: 28vh; }
+        .tagline { font-size: 15px; }
+      }
+      @media (max-width: 420px) { .tiles { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>

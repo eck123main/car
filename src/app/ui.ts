@@ -16,6 +16,7 @@ import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } f
 import { settings, updateSettings, type Settings } from './settings';
 import { wallet } from '../net/wallet';
 import { skinDef } from '../cosmetics/skins';
+import { circuitArt, icon } from './home';
 
 const root = document.getElementById('ui') as HTMLDivElement;
 
@@ -148,15 +149,18 @@ export function showWelcome(a: WelcomeActions): void {
     saveName(n);
     fn(n);
   };
+  /** A big mode tile: icon, title and one line on what it is. */
+  const tile = (ic: Parameters<typeof icon>[0], title: string, text: string, onclick: () => void, cls = '') =>
+    el('button', { class: `tile ${cls}`, onclick }, icon(ic), el('b', {}, title), el('small', {}, text));
   const buttons = a.joining
-    ? [el('button', { class: 'primary', onclick: go(a.onJoin) }, 'Join lobby')]
+    ? [tile('link', 'Join lobby', "Your friend's race is waiting", go(a.onJoin), 'primary')]
     : [
-        el('button', { class: 'primary', onclick: go(a.onHost) }, 'Create lobby'),
-        el('button', { onclick: go(a.onBots) }, 'Race against bots'),
-        el('button', { onclick: go(a.onParty) }, 'Party race (items)'),
-        el('button', { onclick: go(a.onTimeTrial) }, 'Time trial'),
-        el('button', { onclick: go(a.onPractice) }, 'Practice solo'),
-        el('button', { onclick: a.onGarage }, 'Garage'),
+        tile('link', 'Create lobby', 'Host a race weekend and send friends the link', go(a.onHost), 'primary'),
+        tile('bots', 'Race bots', 'Quali and a race against 5 bots', go(a.onBots)),
+        tile('party', 'Party race', 'Item boxes, rockets and chaos', go(a.onParty)),
+        tile('clock', 'Time trial', 'Chase the global leaderboard and medals', go(a.onTimeTrial)),
+        tile('practice', 'Practice', 'Alone on track, no pressure', go(a.onPractice)),
+        tile('garage', 'Garage', 'Daily rewards, skins and medals', a.onGarage, 'wide'),
       ];
   name.addEventListener('keydown', (e) => e.key === 'Enter' && buttons[0].click());
   const service = a.accounts;
@@ -188,21 +192,30 @@ export function showWelcome(a: WelcomeActions): void {
       el('button', { class: 'small', onclick: () => showSignUp(service, a.onBack) }, 'Create account'),
     );
   }
+  const art = circuitArt();
   show(
     el(
       'div',
-      { class: 'screen' },
+      { class: 'screen home' },
       el(
         'div',
-        { class: 'card' },
-        el('h1', { innerHTML: 'F1 <span>Top-Down</span>' }),
-        el('p', { class: 'sub' }, a.joining ? "You've been invited to a race." : 'Race your friends. Share a link, no sign-up needed.'),
-        accountBar,
-        account ? null : name,
-        el('div', { class: 'buttons' }, ...buttons),
-        el('details', {}, el('summary', {}, 'Settings'), settingsPanel()),
-        el('h2', {}, 'Controls'),
-        controlsHelp(),
+        { class: 'home-grid' },
+        el(
+          'header',
+          { class: 'hero' },
+          el('div', { class: 'wordmark' }, el('span', { class: 'f1' }, 'F1'), el('span', {}, 'Top-Down')),
+          el('p', { class: 'tagline' }, a.joining ? "You've been invited to a race." : 'Real circuits, real racecraft. Short races with friends, straight from a link.'),
+          el('figure', { class: 'circuit-box' }, art.svg, el('figcaption', {}, el('span', {}, 'On track'), art.name)),
+        ),
+        el(
+          'main',
+          { class: 'home-panel' },
+          accountBar,
+          account ? null : el('label', { class: 'field' }, el('span', {}, 'Driver name'), name),
+          el('div', { class: 'tiles' }, ...buttons),
+          el('details', {}, el('summary', {}, 'Settings'), settingsPanel()),
+          el('details', {}, el('summary', {}, 'Controls'), controlsHelp()),
+        ),
       ),
     ),
   );
