@@ -812,8 +812,7 @@ export function showPauseMenu(
         ),
         el('h2', {}, 'Settings'),
         settingsPanel(),
-        el('h2', {}, 'Controls'),
-        controlsHelp(),
+        el('details', {}, el('summary', {}, 'Controls'), controlsHelp()),
       ),
     ),
   );
