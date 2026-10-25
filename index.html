@@ -107,6 +107,10 @@
       .tt-preview .circuit-art { width: 150px; height: 112px; flex: none; aspect-ratio: auto; cursor: default; }
       .tt-preview .circuit-art:hover { transform: none; }
       .tt-preview .circuit-name { white-space: normal; }
+      .card.lobby { width: min(900px, calc(100vw - 32px)); }
+      .lobby-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+      .lobby-cols .tt-preview { margin-top: 20px; }
+      @media (max-width: 760px) { .lobby-cols { grid-template-columns: 1fr; gap: 0; } }
       /* Garage. */
       .garage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .garage-balance { font-size: 18px; font-weight: 700; }
