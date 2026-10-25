@@ -8,23 +8,28 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,600;0,700;0,900;1,900&display=swap" rel="stylesheet" />
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #e8e8e8; font: 14px system-ui, sans-serif; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c0f; color: #e8e8e8; font: 15px 'Titillium Web', system-ui, sans-serif; }
       canvas { display: block; width: 100vw; height: 100vh; }
       #ui { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
       #ui:empty { display: none; }
-      .screen { pointer-events: auto; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 30%, #1d2a1b, #0c0d10 70%); }
-      .screen.overlay { background: rgba(5, 6, 8, 0.72); }
-      .card { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; background: #17181c; border: 1px solid #2c2d33; border-radius: 12px; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
-      .card.wide { width: min(640px, calc(100vw - 32px)); }
-      h1 { margin: 0 0 4px; font-size: 26px; color: #fff; letter-spacing: 0.02em; }
+      .screen { pointer-events: auto; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background:
+          radial-gradient(ellipse 60% 50% at 30% 40%, rgba(225, 6, 0, 0.14), transparent 70%),
+          repeating-linear-gradient(45deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 6px),
+          linear-gradient(160deg, #15161b, #08090b 70%); }
+      .screen.overlay { background: rgba(5, 6, 8, 0.72); backdrop-filter: blur(3px); }
+      .card { position: relative; width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; background: rgba(20, 21, 26, 0.92); border: 1px solid #2a2c33; border-top: 3px solid #e10600; border-radius: 16px; padding: 24px; box-shadow: 0 30px 80px rgba(0,0,0,0.55); backdrop-filter: blur(6px); }
+      .card.wide { width: min(680px, calc(100vw - 32px)); }
+      h1 { margin: 0 0 4px; font-size: 30px; font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1.05; color: #fff; letter-spacing: 0; }
       h1 span { color: #e10600; }
-      h2 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #8a8d96; }
+      h2 { margin: 20px 0 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: #e10600; }
       p.sub { margin: 0 0 18px; color: #9a9da6; }
-      input[type=text], input[type=number], select { box-sizing: border-box; background: #0e0f12; color: #eee; border: 1px solid #34363d; border-radius: 6px; padding: 9px 10px; font: inherit; }
-      input[type=password] { box-sizing: border-box; background: #0e0f12; color: #eee; border: 1px solid #34363d; border-radius: 6px; padding: 9px 10px; font: inherit; }
+      input[type=text], input[type=number], select { box-sizing: border-box; background: #0e0f12; color: #eee; border: 1px solid #34363d; border-radius: 8px; padding: 9px 10px; font: inherit; }
+      input[type=text]:focus, input[type=number]:focus, input[type=password]:focus, select:focus { outline: none; border-color: #e10600; box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.25); }
+      input[type=password] { box-sizing: border-box; background: #0e0f12; color: #eee; border: 1px solid #34363d; border-radius: 8px; padding: 9px 10px; font: inherit; }
       input[type=text].big { width: 100%; font-size: 16px; }
-      input[type=range] { width: 160px; accent-color: #c8102e; }
-      input[type=checkbox] { accent-color: #c8102e; }
+      input[type=range] { width: 160px; accent-color: #e10600; }
+      input[type=checkbox] { accent-color: #e10600; width: 16px; height: 16px; }
       .account-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
       .account-bar span { margin-right: auto; }
       .account-bar button.small { margin-left: 0; }
@@ -35,14 +40,15 @@
       .warn { background: #3a2a06; border: 1px solid #ffb000; color: #ffe2a0; border-radius: 8px; padding: 12px 14px; line-height: 1.5; }
       label.confirm { display: flex; align-items: center; gap: 8px; margin-top: 16px; color: #fff; cursor: pointer; }
       details { margin-top: 16px; }
-      details summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #8a8d96; }
+      details summary { cursor: pointer; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: #8a8d96; }
+      details summary:hover { color: #fff; }
       details .settings { margin-top: 10px; }
       .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-      button { background: #2b2d34; color: #eee; border: 1px solid #3a3d45; border-radius: 6px; padding: 10px 16px; font: inherit; cursor: pointer; }
-      button:hover:not(:disabled) { background: #363943; }
+      button { background: #23252c; color: #eee; border: 1px solid #353841; border-radius: 8px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; transition: background 0.12s, border-color 0.12s, transform 0.12s; }
+      button:hover:not(:disabled) { background: #2e313a; border-color: #4a4e59; }
       button:disabled { opacity: 0.45; cursor: default; }
-      button.primary { background: #c8102e; border-color: #e0223f; font-weight: 600; }
-      button.primary:hover:not(:disabled) { background: #dd1a38; }
+      button.primary { background: linear-gradient(100deg, #e10600, #a8000f); border-color: #ff2a1f; font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: 0.04em; box-shadow: 0 8px 24px rgba(225, 6, 0, 0.28); }
+      button.primary:hover:not(:disabled) { background: linear-gradient(100deg, #f5130c, #b80012); border-color: #ff5a4f; transform: translateY(-1px); }
       .players { list-style: none; margin: 0; padding: 0; }
       .players li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #23242a; }
       .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.15); }
@@ -81,15 +87,15 @@
       .tyre-bar i { display: block; height: 6px; border-radius: 3px; background: #4dd2ff; }
       .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
       .keys b { color: #ddd; font-weight: 600; }
-      .buttons.sticky { position: sticky; bottom: -24px; margin: 16px -24px -24px; padding: 12px 24px 24px; background: linear-gradient(transparent, #17181c 14px); }
+      .buttons.sticky { position: sticky; bottom: -24px; margin: 16px -24px -24px; padding: 12px 24px 24px; background: linear-gradient(transparent, #15161b 14px); }
       .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
       button.chip { padding: 5px 12px; border-radius: 999px; font-size: 12px; }
-      button.chip.active { background: #c8102e; border-color: #e0223f; }
+      button.chip.active { background: #e10600; border-color: #ff2a1f; }
       /* Time trial track list. */
       .track-list { position: relative; margin-top: 8px; max-height: 260px; overflow-y: auto; border: 1px solid #2c2d33; border-radius: 8px; background: #121317; }
       button.track-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #1f2025; border-radius: 0; background: transparent; padding: 8px 10px; }
       button.track-row:hover:not(:disabled) { background: #1d1f25; }
-      button.track-row.selected { background: #2a1418; box-shadow: inset 3px 0 #c8102e; }
+      button.track-row.selected { background: #2a1418; box-shadow: inset 3px 0 #e10600; }
       button.track-row.fresh .name { color: #fff; font-weight: 600; }
       button.track-row:not(.fresh) .name { color: #a9acb5; }
       .track-row .best { color: #8a8d96; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -102,10 +108,10 @@
       .coins { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
       .coin { display: inline-block; width: 0.95em; height: 0.95em; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #ffc83d 45%, #b8860b); box-shadow: inset 0 0 0 1.5px #8a6200; }
       button.purse { display: inline-flex; align-items: center; gap: 6px; position: relative; }
-      .badge-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 0 2px #17181c; margin-left: 4px; vertical-align: 2px; }
+      .badge-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 0 2px #15161b; margin-left: 4px; vertical-align: 2px; }
       .tabs { display: flex; gap: 4px; border-bottom: 1px solid #2c2d33; margin: 4px 0 8px; }
       button.tab { background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 14px; color: #9a9da6; }
-      button.tab.active { color: #fff; border-bottom-color: #c8102e; }
+      button.tab.active { color: #fff; border-bottom-color: #e10600; }
       button.tab:hover:not(:disabled) { background: #1d1f25; }
       .ok-note { color: #2ecc40; font-weight: 600; }
       .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -130,11 +136,7 @@
       .progress { height: 5px; border-radius: 3px; background: #2b2d34; margin-top: 4px; overflow: hidden; }
       .progress i { display: block; height: 100%; }
       /* Welcome screen. */
-      .screen.home { display: block; overflow-y: auto; font-family: 'Titillium Web', system-ui, sans-serif; font-size: 15px;
-        background:
-          radial-gradient(ellipse 60% 50% at 25% 45%, rgba(225, 6, 0, 0.16), transparent 70%),
-          repeating-linear-gradient(45deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 6px),
-          linear-gradient(160deg, #15161b, #08090b 70%); }
+      .screen.home { display: block; overflow-y: auto; }
       .home-grid { min-height: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 460px); gap: 40px; align-items: center; max-width: 1180px; margin: 0 auto; padding: 40px 32px; }
       .hero { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
       .wordmark { display: flex; align-items: baseline; gap: 14px; font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 0.9; font-size: clamp(44px, 6.4vw, 84px); letter-spacing: -0.01em; color: #fff; }
