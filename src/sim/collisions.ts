@@ -277,8 +277,10 @@ export function judge(
  */
 export function resolveCollisions(track: Track, racers: Racer[], time: number, cooldowns: Map<string, number>): Contact[] {
   const contacts: Contact[] = [];
-  // Frozen cars and party mode ghosts pass through everyone.
-  const active = racers.filter((r) => !r.frozen && r.items.ghost <= 0);
+  // Frozen cars and party mode ghosts pass through everyone, and so does a car in the pits
+  // (driving in, stopped, or leaving until it's past the end of the lane): no pile-ups in a
+  // busy lane, and a car rejoining can't be hit (or hit anyone) while it merges.
+  const active = racers.filter((r) => !r.frozen && r.items.ghost <= 0 && r.pit.phase === 'out');
   for (let i = 0; i < active.length; i++) {
     for (let j = i + 1; j < active.length; j++) {
       const a = active[i];

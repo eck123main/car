@@ -129,6 +129,27 @@ for (const id of ['silverstone', 'test'] as const) {
       expect(r.pit.phase).toBe('out');
     });
 
+    it('lets cars in the pit lane pass through each other', () => {
+      const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
+      const a = world.addRacer('a', 'A', 'red');
+      const b = world.addRacer('b', 'B', 'blue');
+      const t = sampleAt(lane.boxes[4]);
+      const h = Math.atan2(t.ty, t.tx);
+      const off = laneCentre(track, t.halfWidth);
+      // A sits in the lane leaving its box; B comes up the lane straight into it.
+      a.car.place(t.x + t.nx * off, t.y + t.ny * off, h);
+      a.pit.phase = 'leaving';
+      b.car.place(t.x + t.nx * off - t.tx * 6, t.y + t.ny * off - t.ty * 6, h);
+      b.car.vx = Math.cos(h) * 20;
+      b.car.vy = Math.sin(h) * 20;
+      b.pit.phase = 'in';
+      const events: WorldEvent[] = [];
+      for (let k = 0; k < 60; k++) events.push(...world.step(DT, new Map()));
+      expect(a.car.damage).toBe(0);
+      expect(b.car.damage).toBe(0);
+      expect(events.some((e) => e.kind === 'contact')).toBe(false);
+    });
+
     it('stops cars crossing the pit wall from the track', () => {
       const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
       const r = world.addRacer('a', 'A', 'red');
