@@ -969,6 +969,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   const ghost = el('select', { style: 'width:100%' });
   const medalBox = el('div', { class: 'medals' });
   const medalSummary = el('p', { class: 'muted' });
+  const preview = el('div', { class: 'tt-preview' });
   const me = playerId();
   /** Our best time per track. */
   let bests: Record<string, number> = {};
@@ -1016,6 +1017,10 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   const load = async () => {
     const track = select.value;
     shownFor = track;
+    preview.replaceChildren(
+      el('div', { class: 'circuit-art enter' }, circuitSvg(track)),
+      el('div', { class: 'circuit-title' }, el('span', { class: 'circuit-label' }, 'Selected circuit'), el('div', { class: 'circuit-name' }, TRACKS[track]?.name ?? track)),
+    );
     showMedals();
     table.replaceChildren();
     status.textContent = 'Loading times…';
@@ -1063,6 +1068,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
         el('div', { class: 'invite', style: 'align-items:center' }, search, chips),
         list,
         listNote,
+        preview,
         el('h2', {}, 'Medals'),
         medalBox,
         medalSummary,

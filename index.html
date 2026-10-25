@@ -10,6 +10,7 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c0f; color: #e8e8e8; font: 15px 'Titillium Web', system-ui, sans-serif; }
       canvas { display: block; width: 100vw; height: 100vh; }
+      * { scrollbar-color: #3a3d45 transparent; scrollbar-width: thin; }
       #ui { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
       #ui:empty { display: none; }
       .screen { pointer-events: auto; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -102,6 +103,10 @@
       .new-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #111; background: #2ecc40; border-radius: 4px; padding: 1px 6px; }
       .medal-chip { font-size: 11px; font-weight: 600; color: var(--medal); border: 1px solid var(--medal); border-radius: 999px; padding: 0 7px; }
       .medal-chip.empty { border: 0; padding: 0; }
+      .tt-preview { display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 10px 14px; border: 1px solid #262830; border-radius: 12px; background: rgba(0,0,0,0.25); }
+      .tt-preview .circuit-art { width: 150px; height: 112px; flex: none; aspect-ratio: auto; cursor: default; }
+      .tt-preview .circuit-art:hover { transform: none; }
+      .tt-preview .circuit-name { white-space: normal; }
       /* Garage. */
       .garage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .garage-balance { font-size: 18px; font-weight: 700; }
