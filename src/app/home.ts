@@ -25,9 +25,11 @@ function node<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string
   return e;
 }
 
-/** A random real circuit, drawn as a glowing outline with a car lapping it (still if the player prefers less motion). */
-export function circuitArt(): { svg: SVGSVGElement; name: string } {
-  const id = REAL_TRACK_IDS[Math.floor(Math.random() * REAL_TRACK_IDS.length)];
+/** Lobby colours for the pack of cars lapping the circuit (the first few of CAR_COLORS). */
+const PACK = ['#e10600', '#ff8700', '#00d2be', '#1e5bff', '#ffd400'];
+
+/** A circuit drawn as a glowing outline with a small pack of cars lapping it (still if the player prefers less motion). */
+export function circuitSvg(id: string): SVGSVGElement {
   const def = TRACKS[id];
   const xs = def.points.map((p) => p[0]);
   const ys = def.points.map((p) => p[1]);
@@ -41,28 +43,40 @@ export function circuitArt(): { svg: SVGSVGElement; name: string } {
     length += Math.hypot(b[0] - a[0], b[1] - a[1]);
   }
   const w = size / 90;
+  const pathId = `home-lap-${id}`;
   const svg = node('svg', {
     class: 'circuit',
     viewBox: `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`,
     'aria-hidden': 'true',
   });
-  const path = node('path', { id: 'home-lap', d, class: 'road', 'stroke-width': w * 3.2 });
-  svg.append(node('path', { d, class: 'road-glow', 'stroke-width': w * 7 }), path, node('path', { d, class: 'road-line', 'stroke-width': w * 0.5 }));
+  svg.append(
+    node('path', { d, class: 'road-glow', 'stroke-width': w * 7 }),
+    node('path', { id: pathId, d, class: 'road', 'stroke-width': w * 3.2 }),
+    node('path', { d, class: 'road-line', 'stroke-width': w * 0.5 }),
+  );
   // Start line across the track at the first point.
   const [s, t] = [def.points[0], def.points[1]];
   const ang = (Math.atan2(t[1] - s[1], t[0] - s[0]) * 180) / Math.PI;
   svg.append(node('rect', { x: -w * 0.4, y: -w * 2.2, width: w * 0.8, height: w * 4.4, class: 'start', transform: `translate(${s[0]} ${s[1]}) rotate(${ang})` }));
-  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!still) {
-    // About a 40 s lap in game, shown sped up.
-    const dur = `${Math.min(16, Math.max(9, length / 120)).toFixed(1)}s`;
-    const trail = node('path', { d, class: 'trail', 'stroke-width': w * 2.4, pathLength: 100, 'stroke-dasharray': '5 95' });
-    trail.append(node('animate', { attributeName: 'stroke-dashoffset', from: 5, to: -95, dur, repeatCount: 'indefinite' }));
-    const car = node('g', {}, node('rect', { x: -w * 1.6, y: -w * 0.8, width: w * 3.2, height: w * 1.6, rx: w * 0.5, class: 'car' }));
-    car.append(node('animateMotion', { dur, repeatCount: 'indefinite', rotate: 'auto' }, node('mpath', { href: '#home-lap' })));
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return svg;
+  // A lap shown sped up; each car a little slower than the one before, spread out at the start,
+  // so the quicker ones catch and pass the others now and then.
+  const base = Math.min(16, Math.max(9, length / 120));
+  PACK.forEach((color, i) => {
+    const dur = `${(base * (1 + i * 0.035)).toFixed(2)}s`;
+    const begin = `${(-i * base * 0.09).toFixed(2)}s`;
+    const trail = node('path', { d, class: 'trail', style: `color:${color}`, 'stroke-width': w * 1.8, pathLength: 100, 'stroke-dasharray': '3.5 96.5' });
+    trail.append(node('animate', { attributeName: 'stroke-dashoffset', from: 3.5, to: -96.5, dur, begin, repeatCount: 'indefinite' }));
+    const car = node('g', {}, node('rect', { x: -w * 1.6, y: -w * 0.8, width: w * 3.2, height: w * 1.6, rx: w * 0.5, class: 'car', style: `color:${color}` }));
+    car.append(node('animateMotion', { dur, begin, repeatCount: 'indefinite', rotate: 'auto' }, node('mpath', { href: `#${pathId}` })));
     svg.append(trail, car);
-  }
-  return { svg, name: def.name };
+  });
+  return svg;
+}
+
+/** A random real circuit to start the showcase on. */
+export function randomTrack(): string {
+  return REAL_TRACK_IDS[Math.floor(Math.random() * REAL_TRACK_IDS.length)];
 }
 
 /** Simple line icons for the mode tiles (24 px grid, drawn with currentColor). */

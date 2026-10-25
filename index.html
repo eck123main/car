@@ -141,16 +141,34 @@
       .wordmark .f1 { color: #e10600; position: relative; padding-right: 4px; }
       .wordmark .f1::after { content: ''; position: absolute; left: 0; right: 0; bottom: -10px; height: 6px; background: repeating-linear-gradient(90deg, #e10600 0 18px, #fff 18px 36px); transform: skewX(-20deg); }
       .tagline { margin: 14px 0 0; max-width: 34em; color: #a6a9b3; font-size: 17px; line-height: 1.45; }
-      .circuit-box { position: relative; margin: 8px 0 0; aspect-ratio: 4 / 3; max-height: 52vh; }
+      .showcase { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+      .circuit-art { aspect-ratio: 4 / 3; max-height: 48vh; cursor: pointer; transition: transform 0.25s; }
+      .circuit-art:hover { transform: scale(1.015); }
+      .circuit-art.enter { animation: circuit-in 0.45s ease-out; }
+      @keyframes circuit-in { from { opacity: 0; transform: translateX(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+      @media (prefers-reduced-motion: reduce) { .circuit-art.enter { animation: none; } }
+      .circuit-bar { display: flex; align-items: center; gap: 10px; }
+      .circuit-title { display: flex; flex-direction: column; min-width: 0; flex: 0 1 auto; }
+      .circuit-label { font-size: 11px; font-weight: 700; color: #e10600; letter-spacing: 0.18em; text-transform: uppercase; }
+      .circuit-count { color: #6f727c; letter-spacing: 0.06em; }
+      .circuit-name { font-weight: 900; font-style: italic; font-size: 26px; line-height: 1.05; color: #fff; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .circuit-bar button.arrow { flex: none; width: 38px; height: 38px; padding: 0; border-radius: 50%; font-size: 22px; line-height: 1; background: #1c1e24; border-color: #2f323a; }
+      .circuit-bar button.arrow:hover { border-color: #e10600; color: #fff; }
+      .circuit-bar button.drive { margin-left: auto; flex: none; font-family: inherit; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; background: transparent; border: 1px solid #e10600; color: #fff; border-radius: 999px; padding: 8px 16px; }
+      .circuit-bar button.drive:hover { background: #e10600; }
+      .circuit-bar button.drive span { display: inline-block; transition: transform 0.15s; }
+      .circuit-bar button.drive:hover span { transform: translateX(3px); }
+      .circuit-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+      .circuit-stats div { display: flex; flex-direction: column; }
+      .circuit-stats span { font-size: 11px; color: #6f727c; text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; }
+      .circuit-stats b { font-size: 16px; color: #e8e8e8; font-variant-numeric: tabular-nums; }
       .circuit { width: 100%; height: 100%; overflow: visible; }
       .circuit .road-glow { fill: none; stroke: rgba(225, 6, 0, 0.12); stroke-linejoin: round; filter: blur(6px); }
       .circuit .road { fill: none; stroke: #2a2c33; stroke-linejoin: round; }
       .circuit .road-line { fill: none; stroke: rgba(255,255,255,0.35); stroke-dasharray: 2 3; stroke-linejoin: round; }
-      .circuit .trail { fill: none; stroke: #e10600; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(225, 6, 0, 0.9)); }
-      .circuit .car { fill: #fff; filter: drop-shadow(0 0 3px #fff); }
+      .circuit .trail { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px currentColor); opacity: 0.9; }
+      .circuit .car { fill: currentColor; stroke: #fff; stroke-width: 0.6px; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 3px currentColor); }
       .circuit .start { fill: #fff; }
-      .circuit-box figcaption { position: absolute; left: 0; bottom: 0; display: flex; flex-direction: column; font-weight: 700; font-size: 20px; color: #fff; text-transform: uppercase; letter-spacing: 0.02em; }
-      .circuit-box figcaption span { font-size: 11px; color: #e10600; letter-spacing: 0.18em; }
       .home-panel { background: rgba(20, 21, 26, 0.82); border: 1px solid #2a2c33; border-radius: 16px; padding: 22px; box-shadow: 0 30px 80px rgba(0,0,0,0.55); backdrop-filter: blur(6px); }
       .home-panel .field span { text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-weight: 600; }
       .home-panel input[type=text].big { font-family: inherit; font-size: 17px; font-weight: 600; padding: 11px 12px; border-radius: 8px; }
@@ -172,7 +190,8 @@
       .home-panel .account-bar { padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #262830; }
       @media (max-width: 860px) {
         .home-grid { grid-template-columns: 1fr; gap: 18px; padding: 24px 16px; }
-        .circuit-box { max-height: 28vh; aspect-ratio: auto; height: 28vh; }
+        .circuit-art { max-height: 30vh; aspect-ratio: auto; height: 30vh; }
+        .circuit-name { font-size: 20px; }
         .tagline { font-size: 15px; }
       }
       @media (max-width: 420px) { .tiles { grid-template-columns: 1fr; } }

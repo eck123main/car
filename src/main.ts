@@ -73,6 +73,7 @@ function welcome(joining: boolean): void {
     onPractice: practice,
     onTimeTrial: timeTrial,
     onGarage: garage,
+    board: leaderboard(),
     accounts: accounts(),
     onBack: () => welcome(joining),
   });
@@ -178,10 +179,10 @@ function practice(name: string): void {
 
 const TT_TRACK_KEY = 'f1td.tt.track';
 
-function timeTrial(name: string): void {
+function timeTrial(name: string, track?: string): void {
   let last = DEFAULT_TRACK;
   try {
-    last = localStorage.getItem(TT_TRACK_KEY) ?? DEFAULT_TRACK;
+    last = track ?? localStorage.getItem(TT_TRACK_KEY) ?? DEFAULT_TRACK;
   } catch {
     // Default track then.
   }

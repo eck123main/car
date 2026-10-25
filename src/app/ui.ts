@@ -16,7 +16,8 @@ import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } f
 import { settings, updateSettings, type Settings } from './settings';
 import { wallet } from '../net/wallet';
 import { skinDef } from '../cosmetics/skins';
-import { circuitArt, icon } from './home';
+import { circuitSvg, icon, randomTrack } from './home';
+import { REAL_TRACK_IDS, TRACKS } from '../tracks';
 
 const root = document.getElementById('ui') as HTMLDivElement;
 
@@ -123,7 +124,10 @@ export interface WelcomeActions {
   /** Party mode (item boxes) against bots. */
   onParty: (name: string) => void;
   onPractice: (name: string) => void;
-  onTimeTrial: (name: string) => void;
+  /** Time trial, on this track if given. */
+  onTimeTrial: (name: string, track?: string) => void;
+  /** For the lap record shown under the circuit on the welcome screen. */
+  board: Leaderboard;
   /** Coins, skins and medals. */
   onGarage: () => void;
   /** Accounts, if this build has a database. */
@@ -192,7 +196,7 @@ export function showWelcome(a: WelcomeActions): void {
       el('button', { class: 'small', onclick: () => showSignUp(service, a.onBack) }, 'Create account'),
     );
   }
-  const art = circuitArt();
+  const showcase = circuitShowcase(a.board, (track) => go((n) => a.onTimeTrial(n, track))());
   show(
     el(
       'div',
@@ -205,7 +209,7 @@ export function showWelcome(a: WelcomeActions): void {
           { class: 'hero' },
           el('div', { class: 'wordmark' }, el('span', { class: 'f1' }, 'F1'), el('span', {}, 'Top-Down')),
           a.joining ? el('p', { class: 'tagline' }, "You've been invited to a race.") : null,
-          el('figure', { class: 'circuit-box' }, art.svg, el('figcaption', {}, el('span', {}, 'On track'), art.name)),
+          showcase,
         ),
         el(
           'main',
@@ -220,6 +224,81 @@ export function showWelcome(a: WelcomeActions): void {
     ),
   );
   if (!account) name.focus();
+}
+
+/** Circuits A-Z, as the menus list them. */
+const SHOWCASE_TRACKS = [...REAL_TRACK_IDS].sort((x, y) => TRACKS[x].name.localeCompare(TRACKS[y].name));
+
+/**
+ * The welcome screen's circuit: a real track with a pack of cars lapping it. Browse with the
+ * arrows (buttons or keys) or a click; shows the lap record and your best, and drives it in
+ * time trial.
+ */
+function circuitShowcase(board: Leaderboard, onDrive: (track: string) => void): HTMLElement {
+  let index = SHOWCASE_TRACKS.indexOf(randomTrack());
+  const art = el('div', { class: 'circuit-art', title: 'Next circuit' });
+  const name = el('div', { class: 'circuit-name' });
+  const count = el('span', { class: 'circuit-count' });
+  const record = el('div', { class: 'circuit-stats' });
+  const records = new Map<string, Promise<{ record: string; mine: string }>>();
+  const stats = (id: string) => {
+    let p = records.get(id);
+    if (!p) {
+      const me = playerId();
+      p = board.top(id, 50).then((rows) => {
+        const mine = rows.find((r) => r.player === me);
+        return {
+          record: rows[0] ? `${formatLapTime(rows[0].time)} · ${rows[0].name}` : 'No laps yet: set the first',
+          mine: mine ? formatLapTime(mine.time) : '–',
+        };
+      });
+      records.set(id, p);
+    }
+    return p;
+  };
+  const stat = (label: string, value: string) => el('div', {}, el('span', {}, label), el('b', {}, value));
+  const render = () => {
+    const id = SHOWCASE_TRACKS[index];
+    art.replaceChildren(circuitSvg(id));
+    art.classList.remove('enter');
+    void art.offsetWidth; // restart the fade-in
+    art.classList.add('enter');
+    name.textContent = TRACKS[id].name;
+    count.textContent = `${index + 1} / ${SHOWCASE_TRACKS.length}`;
+    record.replaceChildren(stat('Lap record', '…'), stat('Your best', '…'));
+    stats(id)
+      .then((s) => SHOWCASE_TRACKS[index] === id && record.replaceChildren(stat('Lap record', s.record), stat('Your best', s.mine)))
+      .catch(() => SHOWCASE_TRACKS[index] === id && record.replaceChildren(stat('Lap record', 'Leaderboard offline')));
+  };
+  const step = (by: number) => {
+    index = (index + by + SHOWCASE_TRACKS.length) % SHOWCASE_TRACKS.length;
+    render();
+  };
+  art.addEventListener('click', () => step(1));
+  const box = el(
+    'section',
+    { class: 'showcase' },
+    art,
+    el(
+      'div',
+      { class: 'circuit-bar' },
+      el('button', { class: 'arrow', title: 'Previous circuit', onclick: () => step(-1) }, '‹'),
+      el('div', { class: 'circuit-title' }, el('span', { class: 'circuit-label' }, 'Circuit ', count), name),
+      el('button', { class: 'arrow', title: 'Next circuit', onclick: () => step(1) }, '›'),
+      el('button', { class: 'drive', onclick: () => onDrive(SHOWCASE_TRACKS[index]) }, 'Drive it ', el('span', {}, '→')),
+    ),
+    record,
+  );
+  // Left / right browse the circuits (not while typing a name).
+  const keys = (e: KeyboardEvent) => {
+    if (!box.isConnected) return document.removeEventListener('keydown', keys);
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+  };
+  document.addEventListener('keydown', keys);
+  render();
+  return box;
 }
 
 /** A labelled input for the account forms. */
