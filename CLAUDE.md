@@ -476,7 +476,9 @@ The timing tower is always shown (no Tab needed).
   the new tyres), jack it up, wheel guns flicker, old tyres carried off and the new compound shows
   on the car, the box light goes red then green, release smoke and rubber, crew walk back. Drawn
   top-down (`src/render/pitCrew.ts`) and in 3D (`src/render3d/pit3d.ts`, instanced, with a name
-  board and light post per box). Boxes are painted in the team colour with a stop bar and the
+  board and light post per box). 3D crew (`src/render3d/crew3d.ts`) have jointed arms and legs,
+  posed by `CrewAction` (`crewPose`): stride out, stand by, kneel with a shaking wheel gun, hold a
+  tyre, hands on the car, brace on the jack, cheer the car away (tested to stay on the ground). Boxes are painted in the team colour with a stop bar and the
   driver's three letters; the lane has a line between the fast lane and the box lane, and "80".
 - **Race engineer** (`src/sim/strategy.ts`): the HUD shows a pit window for the mandatory
   stop (from tyre life and laps left) and a "BOX THIS LAP" banner near the pit entry
