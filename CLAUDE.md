@@ -159,8 +159,10 @@ brake. Off by default (`Settings.idealLine`), any mode.
   driving laps in the real physics with `LineDriver` (time trial, must stay clean). The stored
   offsets are the line; tracks without one (custom, or no clean lap) use the bots' line. Rerun it
   for a track whose shape or width changes (the offsets must match its sample count).
-- The robot's laps are 2-8% off the author medals (Jeddah and Miami beat them): good players still
-  beat it, but it is far quicker than the bots' line (Silverstone 45.3 vs ~51 s).
+- The robot's laps are mostly 2-10% off the author medals (Estoril, Watkins Glen, Interlagos ~15%;
+  Imola, Sochi, Jeddah, Miami beat them): good players still beat it, but it is far quicker than the
+  bots' line (Silverstone 45.3 vs ~51 s). Ten tracks only got a clean lap with the gentler fallback
+  settings (1.4-2 m margin, 90-94% grip), so their lines keep further from the edges.
 
 ## Garage (coins, skins, medals)
 
