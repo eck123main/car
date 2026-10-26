@@ -12,20 +12,23 @@ export interface RacingLine {
   curvature: number[];
 }
 
-const cache = new WeakMap<Track, RacingLine>();
+const cache = new WeakMap<Track, Map<number, RacingLine>>();
 
 /**
  * A smooth, minimum-curvature line through the track: repeatedly pulls each point towards
  * the midpoint of its neighbours, kept inside the track edges. This naturally finds the
- * outside-inside-outside line through corners.
+ * outside-inside-outside line through corners. `margin` is the gap kept between the car's
+ * centre and the track edge (m).
  */
-export function racingLine(track: Track): RacingLine {
-  const cached = cache.get(track);
+export function racingLine(track: Track, margin = EDGE_MARGIN): RacingLine {
+  let lines = cache.get(track);
+  if (!lines) cache.set(track, (lines = new Map()));
+  const cached = lines.get(margin);
   if (cached) return cached;
   const ss = track.samples;
   const n = ss.length;
   const offset = new Array<number>(n).fill(0);
-  const limit = ss.map((s) => Math.max(0, s.halfWidth - EDGE_MARGIN));
+  const limit = ss.map((s) => Math.max(0, s.halfWidth - margin));
   const px = new Array<number>(n);
   const py = new Array<number>(n);
   const at = (i: number) => ((i % n) + n) % n;
@@ -62,7 +65,18 @@ export function racingLine(track: Track): RacingLine {
       }
     }
   }
-  place();
+  const line = lineFromOffsets(track, offset);
+  lines.set(margin, line);
+  return line;
+}
+
+/** The racing line through these offsets from the centreline, with its curvature. */
+export function lineFromOffsets(track: Track, offset: number[]): RacingLine {
+  const ss = track.samples;
+  const n = ss.length;
+  const at = (i: number) => ((i % n) + n) % n;
+  const px = offset.map((o, i) => ss[i].x + ss[i].nx * o);
+  const py = offset.map((o, i) => ss[i].y + ss[i].ny * o);
   const curvature = new Array<number>(n);
   for (let i = 0; i < n; i++) {
     const a = at(i - 3);
@@ -74,16 +88,15 @@ export function racingLine(track: Track): RacingLine {
     const len = (Math.hypot(ax, ay) + Math.hypot(bx, by)) / 2;
     curvature[i] = Math.atan2(ax * by - ay * bx, ax * bx + ay * by) / Math.max(len, 0.1);
   }
-  const line = { offset, curvature: smooth(curvature, 2) };
-  cache.set(track, line);
-  return line;
+  return { offset, curvature: smooth(curvature, 2) };
 }
 
 /**
  * Target speed at each sample for a car using `pace` (0..1) of its grip: the cornering
- * limit, then braking zones worked backwards from each corner.
+ * limit, then braking zones worked backwards from each corner, braking with `brakeShare` of
+ * the grip.
  */
-export function speedProfile(track: Track, line: RacingLine, p: CarParams, pace: number): number[] {
+export function speedProfile(track: Track, line: RacingLine, p: CarParams, pace: number, brakeShare = 0.8 * pace): number[] {
   const n = line.curvature.length;
   const mu = p.mu * pace;
   const c = p.downforceCoef / p.mass;
@@ -98,7 +111,6 @@ export function speedProfile(track: Track, line: RacingLine, p: CarParams, pace:
     return Math.min(top, corner);
   });
   // Braking: work backwards twice (the lap wraps), assuming a share of grip for braking.
-  const brakeShare = 0.8 * pace;
   for (let pass = 0; pass < 2; pass++) {
     for (let i = n - 1; i >= 0; i--) {
       const next = v[(i + 1) % n];
