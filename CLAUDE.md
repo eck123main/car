@@ -234,6 +234,7 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   sky, the hook on a cable caught on the rear wing, nearly invisible ghost cars, explosions, teleport
   flashes, knocked-out cars spinning (own car: camera shake). Name tags hide inside smoke. Repeated
   things are instanced; effects are camera-facing quads in a few shared meshes (~10 draw calls).
+- **Pit stops**: painted boxes, name boards, box lights and the crew at work (see Pit stops).
 - Not yet: rain spray / wet look, lights on the gantry.
 
 ## Sound & settings
@@ -467,6 +468,16 @@ The timing tower is always shown (no Tab needed).
   5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted.
 - **Leaving**: the driver drives off; the pit limiter (80 km/h) stays forced on until the
   car is past the lane.
+- **No contact in the pits**: a car in the pits (driving in, stopped, or leaving until it's past
+  the lane end) passes through every other car (`resolveCollisions` skips it), so a busy lane or
+  a car rejoining never causes a crash. Drawn see-through while it overlaps another car.
+- **Pit stop animation** (`src/render/pitStops.ts`, looks only, from each car's pit phase so it is
+  the same on every client): the crew walk out of the garage as the car comes in (carriers holding
+  the new tyres), jack it up, wheel guns flicker, old tyres carried off and the new compound shows
+  on the car, the box light goes red then green, release smoke and rubber, crew walk back. Drawn
+  top-down (`src/render/pitCrew.ts`) and in 3D (`src/render3d/pit3d.ts`, instanced, with a name
+  board and light post per box). Boxes are painted in the team colour with a stop bar and the
+  driver's three letters; the lane has a line between the fast lane and the box lane, and "80".
 - **Race engineer** (`src/sim/strategy.ts`): the HUD shows a pit window for the mandatory
   stop (from tyre life and laps left) and a "BOX THIS LAP" banner near the pit entry
   only when it makes sense: middle-to-end of the window, tyres >70% worn, damage >30%, or
