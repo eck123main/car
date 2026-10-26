@@ -13,7 +13,8 @@ import { ITEM_INFO, SMOKE_RADIUS } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
-import { PitCrews } from '../render/pitCrew';
+import { drawPitOver, drawPitUnder } from '../render/pitCrew';
+import { PitStops, type PitScene } from '../render/pitStops';
 import { drawOwnPing } from '../render/ping';
 import { drawRain } from '../render/rain';
 import { drawSafetyCar } from '../render/safetyCar';
@@ -281,7 +282,7 @@ export class GameScreen {
   private readonly camera = new Camera();
   private gfx: { track: Track; graphics: TrackGraphics; tiles: TileCache; minimap: Minimap } | null = null;
   /** Pit crews, animated from each car's pit phase. */
-  private readonly pitCrews = new PitCrews();
+  private readonly pitStops = new PitStops();
   private readonly toasts: Toast[] = [];
   private running = false;
   private paused = false;
@@ -660,6 +661,12 @@ export class GameScreen {
     this.drawHudLayer(world, me, own, poses, session, sc, dt);
   }
 
+  /** This frame's pit stops (crews, lights, smoke), for either view. */
+  private pitScene(world: RaceWorld, poses: ReadonlyMap<string, Pose>): PitScene {
+    this.pitStops.update(world);
+    return this.pitStops.scene(world, poses);
+  }
+
   /** First person: our car (or the one we're watching) and everything else in 3D. */
   private render3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, session: SessionSnap | null, sc: Pose | null, dt: number): void {
     const carView = (r: Racer): CarView => {
@@ -737,8 +744,8 @@ export class GameScreen {
     this.worldToScreen = ctx.getTransform();
     gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
     drawPitBoxes(ctx, world);
-    this.pitCrews.update(world);
-    this.pitCrews.drawUnder(ctx, world, poses);
+    const pit = this.pitScene(world, poses);
+    drawPitUnder(ctx, pit, poses);
     const items = this.driver.items?.() ?? null;
     if (items) {
       drawItemBoxes(ctx, items, this.driver.now());
@@ -776,7 +783,7 @@ export class GameScreen {
       if (items) drawCarEffects(ctx, r.items, p.x, p.y, this.driver.now());
       if (r !== me) drawNameTag(ctx, r.name, p.x, p.y, r.color);
     }
-    this.pitCrews.drawOver(ctx, world, poses);
+    drawPitOver(ctx, pit, poses);
     if (items) {
       drawRockets(ctx, items, this.driver.now());
       for (const r of world.racers) {
