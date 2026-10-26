@@ -718,6 +718,7 @@ export class GameScreen {
         viewer: this.driver.meId,
         cars: world.racers.map((r) => ({ ...poses.get(r.id)!, id: r.id, trackIndex: r.car.trackIndex, state: r.items, frozen: r.frozen })),
       },
+      this.pitScene(world, poses),
     );
   }
 

@@ -211,17 +211,18 @@ export class PitStops {
     }
     if (stopped) {
       if (swap >= 0.5) out.fitted.set(r.id, c.newTyre);
+      // Each jack's handle points away from the car, towards its jack man.
       for (const a of [3.2, -2.85]) {
         const [x, y] = place(a, 0);
-        out.jacks.push({ x, y, heading: at.heading });
+        out.jacks.push({ x, y, heading: at.heading + (a > 0 ? 0 : Math.PI) });
       }
     }
   }
 }
 
-/** The box light stands on a post at the front corner of the box, on the fast-lane side. */
+/** The box light stands on a post just outside the lane at the box's front, clear of every car. */
 function lightSpot(box: Pose, garage: number): { x: number; y: number } {
-  const a = 4.6;
-  const o = -1.9 * garage;
+  const a = 3.6;
+  const o = 2.4 * garage;
   return { x: box.x + Math.cos(box.heading) * a - Math.sin(box.heading) * o, y: box.y + Math.sin(box.heading) * a + Math.cos(box.heading) * o };
 }

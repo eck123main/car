@@ -4,6 +4,8 @@ import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
 import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
 import { Items3d, type ItemsFrame } from './items3d';
+import { Pit3d } from './pit3d';
+import type { PitScene } from '../render/pitStops';
 import { Scenery3d } from './scenery3d';
 import { Landmarks, lookOf, waterOf } from './landmarks';
 import { Terrain } from './terrain';
@@ -130,6 +132,8 @@ export class View3D {
   private safetyCar: SafetyCarModel | null = null;
   /** Party mode items, made the first time a frame has some. */
   private items: Items3d | null = null;
+  /** Pit boxes and crews, made the first time a frame has them. */
+  private pit: Pit3d | null = null;
   private time = 0;
   private width = 1;
   private readonly track: Track;
@@ -241,7 +245,7 @@ export class View3D {
     this.pitchReady = false;
   }
 
-  render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null, items: ItemsFrame | null = null): void {
+  render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null, items: ItemsFrame | null = null, pit: PitScene | null = null): void {
     this.time += dt;
     // Nose up on a climb, down on a descent (eased a little, like the car's suspension).
     const pitchTarget = Math.atan(this.uphill(own));
@@ -276,8 +280,10 @@ export class View3D {
         entry = { model, key };
         this.cars.set(car.id, entry);
       }
-      entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, car.compound);
-      entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex);
+      // In the pits: new tyres show once fitted, and other cars rise on their jacks (not our
+      // own, so the cockpit never moves round the camera).
+      entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, pit?.fitted.get(car.id) ?? car.compound);
+      entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex) + (car === own ? 0 : (pit?.lift.get(car.id) ?? 0) * 0.09);
       // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
       entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
     }
@@ -306,6 +312,14 @@ export class View3D {
       if (shake > 0) this.camera.position.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake * 0.5));
     }
     if (this.items) this.items.group.visible = !!items;
+    if (pit && this.track.pit) {
+      if (!this.pit) {
+        this.pit = new Pit3d((x, y) => this.heightAt(x, y, null));
+        this.scene.add(this.pit.group);
+      }
+      this.pit.update(pit, dt);
+    }
+    if (this.pit) this.pit.group.visible = !!pit;
 
     // The mirror (every other frame), while the sky sits round the mirror camera.
     if (this.mirror && this.mirrorFrame++ % 2 === 0) {
@@ -410,6 +424,7 @@ export class View3D {
     for (const { model } of this.cars.values()) model.dispose();
     this.safetyCar?.dispose();
     this.items?.dispose();
+    this.pit?.dispose();
     this.cars.clear();
     for (const d of this.disposables) d.dispose();
     this.renderer.dispose();
