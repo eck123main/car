@@ -10,13 +10,15 @@ export interface Settings {
   effects: boolean;
   /** The big live delta, top centre. */
   delta: boolean;
+  /** The ideal racing line on the track (green throttle, yellow hold, red brake). */
+  idealLine: boolean;
 }
 
 const KEY = 'f1td.settings';
 /** Saved settings older than this still have the engine on from when it was the default. */
 const VERSION = 2;
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true };
+export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

@@ -140,6 +140,28 @@ alone: DRS free in every zone, ERS, no other cars.
   `f1td.tt.driven.<playerId>`); the others get a green **NEW** tag. Each row shows your best and
   medal (signed in). Drive/Back stay pinned at the bottom of the card.
 
+## Ideal racing line (driving aid)
+
+**L** (or Settings: "Ideal racing line") paints the fastest line on the track, in 2D (from just
+behind the car to ~320 m ahead, `src/render/idealLine.ts`) and 3D (a ribbon on the road for the whole
+lap, `src/render3d/idealLine3d.ts`): **green** full throttle, **yellow** hold the corner, **red**
+brake. Off by default (`Settings.idealLine`), any mode.
+- **The line** (`src/sim/ai/idealLine.ts`): minimum curvature (curvature squared per metre of line,
+  not the bots' second differences, which counted the inside of corners as cheap and cut tight
+  apexes), solved on an 8 m grid by Gauss-Newton steps, each a bounded least-squares problem
+  (`boxQP`, active set + dense Cholesky). Through fast corners it is one wide arc, like the record
+  holders drive. Curvature for the speeds comes from the coarse points (resampling adds ripples).
+- **Speeds** (`idealSpeeds`): cornering limit with a share of the grip, braking worked backwards
+  with grip shared with cornering (as `Car.step` does). **Cues** (`cues`): an acceleration pass
+  (engine + ERS) finds the speed really reached, so red starts at the real braking point.
+- **Per track** (`src/tracks/ideal-lines.json`, made by `npx tsx scripts/ideal-lines.ts [id ...]`,
+  ~15-70 s a track): edge margin (0.2-1 m: onto the kerbs), corner and brake shares are searched by
+  driving laps in the real physics with `LineDriver` (time trial, must stay clean). The stored
+  offsets are the line; tracks without one (custom, or no clean lap) use the bots' line. Rerun it
+  for a track whose shape or width changes (the offsets must match its sample count).
+- The robot's laps are 2-8% off the author medals (Jeddah and Miami beat them): good players still
+  beat it, but it is far quicker than the bots' line (Silverstone 45.3 vs ~51 s).
+
 ## Garage (coins, skins, medals)
 
 "Garage" on the welcome screen (`src/app/garage.ts`): tabs **Daily**, **Skins**, **Medals**. The
@@ -346,6 +368,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
 | Use item (party mode) | **E** | Fires on the press |
+| Ideal racing line | **L** | Green throttle, yellow hold the corner, red brake (also in Settings) |
 | First-person view | **V** | A test (also the button bottom right); then **C** cycles the 8 cameras, **M** mirror on/off, hold **Q** to look behind |
 | Reset to track | **R** | 5 s wait, no penalty. Qualifying: back to pit exit |
 | Menu | **Esc** | No real pause online; just opens the menu |

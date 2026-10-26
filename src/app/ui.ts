@@ -65,6 +65,7 @@ const CONTROLS: [string, string][] = [
   ['← / →', 'Spectating: switch driver (after your qualifying lap, once you finish, or joining late)'],
   ['R / Enter', 'Time trial: restart the lap from the start'],
   ['G', 'Time trial: switch ghost (top players, your best, off)'],
+  ['L', 'Ideal racing line on / off: green full throttle, yellow hold the corner, red brake'],
   ['V', 'Test the first-person 3D view; C then changes camera, M mirror on/off, hold Q to look behind'],
   ['Esc', 'Menu'],
 ];
@@ -95,6 +96,7 @@ function settingsPanel(): HTMLElement {
   check('Engine, wind and tyre sounds (work in progress)', 'engine');
   check('DRS, ERS and start light beeps', 'effects');
   check('Big live delta (top centre)', 'delta');
+  check('Ideal racing line: green throttle, yellow hold, red brake (L)', 'idealLine');
   return box;
 }
 

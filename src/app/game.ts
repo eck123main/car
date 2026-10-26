@@ -22,7 +22,9 @@ import { drawLights, drawNameTag, drawScreenTag, drawSessionBanner, drawSpectati
 import { TileCache } from '../render/tiles';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
-import { settings } from './settings';
+import { settings, updateSettings } from './settings';
+import { idealLine } from '../sim/ai/idealLine';
+import { drawIdealLine } from '../render/idealLine';
 import { saveCam3d, savedCam3d, savedView, saveView } from './view';
 import { liveryFor } from '../render/livery';
 import type { Cam3d, CarView, View3D } from '../render3d/view3d';
@@ -579,6 +581,10 @@ export class GameScreen {
       this.view3d.mirror = !this.view3d.mirror;
       this.toasts.push({ text: this.view3d.mirror ? 'MIRROR ON' : 'MIRROR OFF', color: '#ffffff', until: this.driver.now() + 2 });
     }
+    if (this.keyboard.wasPressed('KeyL')) {
+      updateSettings({ idealLine: !settings().idealLine });
+      this.toasts.push({ text: settings().idealLine ? 'RACING LINE ON' : 'RACING LINE OFF', color: '#ffffff', until: this.driver.now() + 2 });
+    }
     if (this.keyboard.wasPressed('KeyC')) {
       if (this.view3d) void this.cycleCam3d();
       else this.toggleCamera();
@@ -691,6 +697,7 @@ export class GameScreen {
     const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ...look(r) }));
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
+    view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
       others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
     );
@@ -744,6 +751,7 @@ export class GameScreen {
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
     this.worldToScreen = ctx.getTransform();
     gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
+    if (settings().idealLine) drawIdealLine(ctx, world.track, idealLine(world.track), me.car.trackIndex);
     drawPitBoxes(ctx, world);
     const pit = this.pitScene(world, poses);
     drawPitUnder(ctx, pit, poses);

@@ -5,6 +5,8 @@ import type { Track } from '../track/track';
 import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
 import { Items3d, type ItemsFrame } from './items3d';
 import { Pit3d } from './pit3d';
+import { IdealLine3d } from './idealLine3d';
+import type { IdealLine } from '../sim/ai/idealLine';
 import type { PitScene } from '../render/pitStops';
 import { Scenery3d } from './scenery3d';
 import { Landmarks, lookOf, waterOf } from './landmarks';
@@ -134,6 +136,8 @@ export class View3D {
   private items: Items3d | null = null;
   /** Pit boxes and crews, made the first time a frame has them. */
   private pit: Pit3d | null = null;
+  /** The ideal line driving aid, made the first time it is switched on. */
+  private ideal: IdealLine3d | null = null;
   private time = 0;
   private width = 1;
   private readonly track: Track;
@@ -420,7 +424,17 @@ export class View3D {
     return this.track.roadHeight(x, y, trackIndex)?.z ?? 0;
   }
 
+  /** Show the ideal line on the road (null hides it). */
+  showIdealLine(ideal: IdealLine | null): void {
+    if (ideal && !this.ideal) {
+      this.ideal = new IdealLine3d(this.track, ideal);
+      this.scene.add(this.ideal.mesh);
+    }
+    if (this.ideal) this.ideal.mesh.visible = !!ideal;
+  }
+
   dispose(): void {
+    this.ideal?.dispose();
     for (const { model } of this.cars.values()) model.dispose();
     this.safetyCar?.dispose();
     this.items?.dispose();
