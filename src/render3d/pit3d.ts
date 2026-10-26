@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MAX_CREW, type PitScene } from '../render/pitStops';
-import { COMPOUNDS } from '../sim/tyres';
+import { Batch, Crew3d, WHITE } from './crew3d';
 
 /**
  * Pit stops in 3D, from the same `PitScene` the top-down view draws: painted boxes with the
@@ -21,46 +21,11 @@ const JACKS = 2 * BOXES;
 const SMOKE = 6 * BOXES;
 const RUBBER = 2 * BOXES;
 
-const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
-
-/** An instanced mesh that is filled from scratch each frame. */
-class Batch {
-  readonly mesh: THREE.InstancedMesh;
-  private n = 0;
-  constructor(geometry: THREE.BufferGeometry, material: THREE.Material, readonly capacity: number, colored: boolean) {
-    this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.frustumCulled = false;
-    if (colored) for (let i = 0; i < capacity; i++) this.mesh.setColorAt(i, WHITE);
-    for (let i = 0; i < capacity; i++) this.mesh.setMatrixAt(i, HIDDEN);
-  }
-  begin(): void {
-    this.n = 0;
-  }
-  add(m: THREE.Matrix4, color?: THREE.Color): void {
-    if (this.n >= this.capacity) return;
-    this.mesh.setMatrixAt(this.n, m);
-    if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.n, color);
-    this.n++;
-  }
-  end(): void {
-    for (let i = this.n; i < this.capacity; i++) this.mesh.setMatrixAt(i, HIDDEN);
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.mesh.count = this.capacity;
-  }
-}
-
-const WHITE = new THREE.Color('#ffffff');
 const POST = new THREE.MeshLambertMaterial({ color: '#2a2a2a' });
 
 export class Pit3d {
   readonly group = new THREE.Group();
-  private readonly torso: Batch;
-  private readonly legs: Batch;
-  private readonly helmet: Batch;
-  private readonly tyre: Batch;
-  private readonly tyreBand: Batch;
+  private readonly crew = new Crew3d(MAX_CREW);
   private readonly sparks: Batch;
   private readonly jacks: Batch;
   private readonly posts: Batch;
@@ -84,22 +49,6 @@ export class Pit3d {
     const lambert = (color?: string) => new THREE.MeshLambertMaterial({ color: color ?? '#ffffff', flatShading: true });
     const flat = (opts: THREE.MeshBasicMaterialParameters) =>
       new THREE.MeshBasicMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, depthWrite: false, ...opts });
-    // A crew member faces +x: torso and arms, legs, helmet with a dark visor.
-    const torso = mergeGeometries([
-      new THREE.BoxGeometry(0.32, 0.62, 0.5).translate(0, 1.13, 0),
-      new THREE.BoxGeometry(0.42, 0.14, 0.14).translate(0.14, 1.05, 0.3),
-      new THREE.BoxGeometry(0.42, 0.14, 0.14).translate(0.14, 1.05, -0.3),
-    ]);
-    const legs = mergeGeometries([new THREE.BoxGeometry(0.24, 0.82, 0.18).translate(0, 0.41, 0.12), new THREE.BoxGeometry(0.24, 0.82, 0.18).translate(0, 0.41, -0.12)]);
-    const helmet = mergeGeometries([new THREE.IcosahedronGeometry(0.15, 2).translate(0, 1.59, 0)]);
-    // A tyre held in front at waist height, its sidewall band in the compound colour.
-    const tyre = new THREE.CylinderGeometry(0.33, 0.33, 0.3, 14).rotateX(Math.PI / 2).translate(0.5, 0.95, 0);
-    const band = new THREE.TorusGeometry(0.26, 0.035, 4, 16).translate(0.5, 0.95, 0.16);
-    this.torso = new Batch(torso, lambert(), MAX_CREW, true);
-    this.legs = new Batch(legs, lambert('#1d1e22'), MAX_CREW, false);
-    this.helmet = new Batch(helmet, lambert('#f2f2f2'), MAX_CREW, false);
-    this.tyre = new Batch(tyre, lambert('#151515'), MAX_CREW, false);
-    this.tyreBand = new Batch(band, new THREE.MeshBasicMaterial(), MAX_CREW, true);
     this.sparks = new Batch(new THREE.IcosahedronGeometry(0.11, 0), new THREE.MeshBasicMaterial({ color: '#ffe680' }), SPARKS, false);
     // A trolley jack: a low base and a handle rising towards the jack man (+x).
     const jack = mergeGeometries([
@@ -115,13 +64,13 @@ export class Pit3d {
     this.fill = new Batch(square, flat({ transparent: true, opacity: 0.22 }), BOXES, true);
     this.rubber = new Batch(square, flat({ color: '#0a0a0a', transparent: true, opacity: 0.6 }), RUBBER, false);
     this.smoke = new Batch(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ color: '#e6e6e6', transparent: true, opacity: 0.55, depthWrite: false }), SMOKE, false);
-    for (const b of [this.fill, this.paint, this.rubber, this.legs, this.torso, this.helmet, this.tyre, this.tyreBand, this.jacks, this.posts, this.lamps, this.sparks, this.smoke]) this.group.add(b.mesh);
-    this.group.add(this.boards);
+    for (const b of [this.fill, this.paint, this.rubber, this.jacks, this.posts, this.lamps, this.sparks, this.smoke]) this.group.add(b.mesh);
+    this.group.add(this.boards, this.crew.group);
   }
 
   update(scene: PitScene, dt: number): void {
     this.time += dt;
-    const all = [this.torso, this.legs, this.helmet, this.tyre, this.tyreBand, this.sparks, this.jacks, this.posts, this.lamps, this.paint, this.fill, this.smoke, this.rubber];
+    const all = [this.sparks, this.jacks, this.posts, this.lamps, this.paint, this.fill, this.smoke, this.rubber];
     for (const b of all) b.begin();
 
     for (const box of scene.boxes) {
@@ -140,17 +89,7 @@ export class Pit3d {
       this.posts.add(this.m);
       this.lamps.add(this.m, this.c.set(l.state === 'green' ? '#2eff4a' : l.state === 'red' ? '#ff2a1f' : '#3a2a2a'));
     }
-    for (const m of scene.crew) {
-      const h = this.heightAt(m.x, m.y) + (m.walking ? Math.abs(Math.sin(this.time * 9 + m.x)) * 0.06 : 0);
-      this.place(m.x, m.y, h, m.heading, 1);
-      this.torso.add(this.m, this.c.set(m.color));
-      this.legs.add(this.m);
-      this.helmet.add(this.m);
-      if (m.tyre) {
-        this.tyre.add(this.m);
-        this.tyreBand.add(this.m, this.c.set(COMPOUNDS[m.tyre].color));
-      }
-    }
+    this.crew.update(scene.crew, this.time, this.heightAt);
     for (const s of scene.sparks) {
       this.m.makeTranslation(s.x, this.heightAt(s.x, s.y) + 0.33, s.y);
       this.sparks.add(this.m);
@@ -181,6 +120,7 @@ export class Pit3d {
 
   dispose(): void {
     this.clearBoards();
+    this.crew.dispose();
     this.group.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.geometry.dispose();

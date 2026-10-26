@@ -16,12 +16,22 @@ export interface Pose {
   heading: number;
 }
 
+/**
+ * What a crew member is doing, which sets their pose: walking to or from the garage, standing
+ * by, kneeling with the wheel gun, holding a tyre, hands on the car, on the jack, or cheering the
+ * car away.
+ */
+export type CrewAction = 'walk' | 'idle' | 'gun' | 'carry' | 'hold' | 'jack' | 'cheer';
+
 export interface CrewMember extends Pose {
   color: string;
+  action: CrewAction;
+  /** Working hard right now: the wheel gun spinning, the jack taking the car's weight. */
+  busy: boolean;
+  /** Each member's own number, so they don't all move in step. */
+  seed: number;
   /** A tyre held out in front. */
   tyre: Compound | null;
-  /** Walking (bobs up and down in 3D). */
-  walking: boolean;
 }
 
 export interface PitBox extends Pose {
@@ -67,6 +77,8 @@ interface CrewState {
 
 /** Crew walk-out time as the car comes in, and walk-back after it leaves (s). */
 const WALK = 1.2;
+/** The crew cheer the car away for this long before walking back (s). */
+const CHEER = 0.7;
 /** How long the release smoke and rubber marks last (s). */
 const SMOKE_TIME = 1.1;
 const RUBBER_TIME = 5;
@@ -82,11 +94,12 @@ const CREW: { a: number; o: number; role: Role; wheel: number }[] = [];
 (['front', 'rear'] as const).forEach((end, e) =>
   [-1, 1].forEach((side, s) => {
     const wheel = e * 2 + s;
-    CREW.push({ a: WHEEL_X[end], o: side * 1.55, role: 'gun', wheel });
+    CREW.push({ a: WHEEL_X[end], o: side * 1.75, role: 'gun', wheel });
     CREW.push({ a: WHEEL_X[end] + (end === 'front' ? 0.75 : -0.75), o: side * 1.6, role: 'carry', wheel });
   }),
 );
-CREW.push({ a: 3.6, o: 0, role: 'jack', wheel: 0 }, { a: -3.2, o: 0, role: 'jack', wheel: 0 }, { a: 0.3, o: 1.6, role: 'hold', wheel: 0 }, { a: 0.3, o: -1.6, role: 'hold', wheel: 0 });
+// Jack men stand at the end of their jack's handle.
+CREW.push({ a: 4.55, o: 0, role: 'jack', wheel: 0 }, { a: -4.2, o: 0, role: 'jack', wheel: 0 }, { a: 0.3, o: 1.6, role: 'hold', wheel: 0 }, { a: 0.3, o: -1.6, role: 'hold', wheel: 0 });
 
 /** Most crew a scene can hold (10 cars). */
 export const MAX_CREW = CREW.length * 10;
@@ -142,7 +155,7 @@ export class PitStops {
       const stopped = c.phase === 'stopped';
       const released = c.release && !stopped ? now - c.release.time : Infinity;
       // 0: in the garage, 1: in position round the car.
-      const walk = c.phase === 'in' ? Math.min(1, t / WALK) : stopped ? 1 : Math.max(0, 1 - released / WALK);
+      const walk = c.phase === 'in' ? Math.min(1, t / WALK) : stopped ? 1 : Math.max(0, 1 - Math.max(0, released - CHEER) / WALK);
       const go = (stopped && c.stopEnds - now < 0.35) || (c.phase === 'leaving' && walk > 0);
       out.lights.push({ ...lightSpot(box, garage), state: go ? 'green' : stopped ? 'red' : 'off' });
 
@@ -150,7 +163,7 @@ export class PitStops {
         const lift = Math.min(1, t / 0.25) * Math.min(1, Math.max(0, (c.stopEnds - now) / 0.25));
         out.lift.set(r.id, lift);
       }
-      if (walk > 0) this.crewFor(out, r, c, stopped ? p : box, garage, walk, now);
+      if (walk > 0) this.crewFor(out, r, c, stopped ? p : box, garage, walk, released, now);
 
       if (c.release && released < RUBBER_TIME) {
         // Two short black stripes where the rear tyres spun up.
@@ -181,7 +194,7 @@ export class PitStops {
     return out;
   }
 
-  private crewFor(out: PitScene, r: Racer, c: CrewState, at: Pose, garage: number, walk: number, now: number): void {
+  private crewFor(out: PitScene, r: Racer, c: CrewState, at: Pose, garage: number, walk: number, released: number, now: number): void {
     const stopped = c.phase === 'stopped';
     const t = now - c.since;
     const dur = Math.max(1, c.stopEnds - c.since);
@@ -194,7 +207,7 @@ export class PitStops {
       return [at.x + cos * a - sin * y, at.y + sin * a + cos * y];
     };
     const ease = walk * walk * (3 - 2 * walk);
-    for (const m of CREW) {
+    CREW.forEach((m, i) => {
       // From the garage (well out on the garage side) to the spot round the car.
       let o = m.o + (1 - ease) * (GARAGE - m.o);
       // Carriers wait holding the new tyres, then take the old ones off, stepping back with them.
@@ -202,13 +215,24 @@ export class PitStops {
       if (stopped && m.role === 'carry') o += Math.sign(m.o) * Math.sin(Math.min(1, swap * 2) * Math.PI) * 0.9;
       const [x, y] = place(m.a, o);
       // Facing the car: jack men along it, everyone else across it.
-      const facing = at.heading + (m.o === 0 ? (m.a > 0 ? Math.PI : 0) : (m.o > 0 ? -Math.PI / 2 : Math.PI / 2) * garage);
-      out.crew.push({ x, y, heading: facing, color: r.color, tyre, walking: walk < 1 });
-      if (m.role === 'gun' && stopped && ((t > 0.3 && t < 0.8) || (swap > 0.6 && swap < 0.95)) && Math.floor(now * 30 + m.wheel) % 2) {
+      let facing = at.heading + (m.o === 0 ? (m.a > 0 ? Math.PI : 0) : (m.o > 0 ? -Math.PI / 2 : Math.PI / 2) * garage);
+      const spinning = m.role === 'gun' && stopped && ((t > 0.3 && t < 0.8) || (swap > 0.6 && swap < 0.95));
+      let action: CrewAction;
+      if (walk < 1) {
+        action = 'walk';
+        // Walking: facing where they're going (out to the car, or back to the garage).
+        facing = at.heading + (c.phase === 'in' ? -Math.PI / 2 : Math.PI / 2) * garage;
+      } else if (!stopped && released <= CHEER) action = 'cheer';
+      else if (m.role === 'gun') action = 'gun';
+      else if (m.role === 'jack') action = 'jack';
+      else if (tyre) action = 'carry';
+      else action = stopped ? 'hold' : 'idle';
+      out.crew.push({ x, y, heading: facing, color: r.color, tyre, action, busy: spinning || (m.role === 'jack' && stopped), seed: i });
+      if (spinning && Math.floor(now * 30 + m.wheel) % 2) {
         const [wx, wy] = place(m.a, Math.sign(m.o) * WHEEL_Y);
         out.sparks.push({ x: wx, y: wy });
       }
-    }
+    });
     if (stopped) {
       if (swap >= 0.5) out.fitted.set(r.id, c.newTyre);
       // Each jack's handle points away from the car, towards its jack man.
