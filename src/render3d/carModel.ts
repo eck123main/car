@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR } from '../physics/car';
+import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR, type CarParts } from '../physics/car';
 import type { Livery } from '../render/livery';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { QuadBuilder } from './trackMesh';
@@ -109,6 +109,69 @@ export function rearWingGeometry(l: Livery): THREE.BufferGeometry {
   return q.build();
 }
 
+/** Damage this small doesn't show. */
+const SHOWS_FROM = 0.08;
+
+/** Stable 0..1 noise from a point (1 cm grid), so a dent is the same shape every frame. */
+function noise(x: number, y: number, z: number): number {
+  const v = Math.sin(Math.round(x * 100) * 12.9898 + Math.round(y * 100) * 78.233 + Math.round(z * 100) * 37.719) * 43758.5453;
+  return v - Math.floor(v);
+}
+
+/**
+ * How far a point of the body is pushed in by damage (car frame: x forward, y up, z right):
+ * the sidepods cave in on a damaged side, the nose crumples back with front wing damage and
+ * the tail with rear wing damage. Uneven (noise), and a function of position only, so faces
+ * that share a corner stay joined.
+ */
+export function dentAt(x: number, y: number, z: number, d: CarParts): [number, number, number] {
+  const n = noise(x, y, z);
+  let dx = 0;
+  let dy = 0;
+  let dz = 0;
+  const side = z >= 0 ? d.right : d.left;
+  if (side >= SHOWS_FROM) {
+    const across = Math.min(1, Math.max(0, (Math.abs(z) - 0.2) / 0.5));
+    const along = Math.min(1, Math.max(0, 1 - Math.max(0, Math.abs(x + 0.5) - 1.3) / 0.6));
+    const w = side * across * along;
+    dz -= Math.sign(z) * 0.16 * w * (0.5 + n);
+    dy -= 0.05 * w * n;
+  }
+  if (d.frontWing >= SHOWS_FROM && x > 1.4) {
+    const t = Math.min(1, (x - 1.4) / 1.2) * d.frontWing;
+    dx -= 0.28 * t * (0.6 + 0.8 * n);
+    dy -= 0.07 * t * n;
+    dz += 0.12 * t * (n - 0.5);
+  }
+  if (d.rearWing >= SHOWS_FROM && x < -1.7) {
+    const t = Math.min(1, (-1.7 - x) / 0.6) * d.rearWing;
+    dx += 0.14 * t * (0.5 + n);
+    dy -= 0.05 * t * n;
+  }
+  return [dx, dy, dz];
+}
+
+type Scuff = { zone: keyof CarParts; at: V3; size: V3; from: number };
+
+/** Bare carbon showing where the bodywork broke: on each sidepod (right listed, left mirrored), the nose and the engine cover. */
+const SCUFFS: Scuff[] = [
+  ...([
+    [-0.4, 0.3, 0.5, 0.12, SHOWS_FROM],
+    [0.1, 0.45, 0.3, 0.08, 0.2],
+    [-1.0, 0.2, 0.4, 0.1, 0.3],
+    [-0.7, 0.48, 0.3, 0.1, 0.45],
+    [-1.2, 0.35, 0.25, 0.12, 0.6],
+  ] as const).flatMap(([x, y, l, h, from]): Scuff[] => [
+    { zone: 'right', at: [x, y, 0.77], size: [l, h, 0.02], from },
+    { zone: 'left', at: [x, y, -0.77], size: [l, h, 0.02], from },
+  ]),
+  { zone: 'frontWing', at: [2.3, 0.33, 0.03], size: [0.25, 0.02, 0.1], from: SHOWS_FROM },
+  { zone: 'frontWing', at: [1.95, 0.4, -0.05], size: [0.3, 0.02, 0.12], from: 0.3 },
+  { zone: 'frontWing', at: [2.45, 0.3, -0.02], size: [0.15, 0.02, 0.08], from: 0.55 },
+  { zone: 'rearWing', at: [-2.1, 0.55, 0.05], size: [0.2, 0.02, 0.12], from: SHOWS_FROM },
+  { zone: 'rearWing', at: [-1.8, 0.65, -0.06], size: [0.25, 0.02, 0.1], from: 0.35 },
+];
+
 /** Halo: the hoop round the driver's head, the centre pillar and the rear legs. */
 function haloParts(): THREE.BufferGeometry[] {
   const hoop = new THREE.TorusGeometry(0.32, 0.028, 6, 18, Math.PI);
@@ -145,6 +208,7 @@ const shared = {
   wheelFront: null as THREE.BufferGeometry | null,
   wheelRear: null as THREE.BufferGeometry | null,
   shadow: null as THREE.Mesh | null,
+  scuff: null as THREE.BufferGeometry | null,
 };
 
 function wheelGeometry(radius: number, width: number): THREE.BufferGeometry {
@@ -160,7 +224,16 @@ export class CarModel {
   private readonly wheels: THREE.Group[] = [];
   private readonly frontWing: THREE.Mesh;
   private readonly rearWing = new THREE.Group();
+  /** The wings hang from these, so damage can droop and twist them about where they're fixed. */
+  private readonly frontWingMount = new THREE.Group();
+  private readonly rearWingMount = new THREE.Group();
   private lost = 0;
+  /** The undamaged body, and the damage it was last bent to (rounded). */
+  private readonly basePositions: Float32Array;
+  private damageKey = '';
+  private readonly scuffs: { mesh: THREE.Mesh; scuff: Scuff }[] = [];
+  /** Wheels turned out of line by a broken suspension (rad, FL FR RL RR). */
+  private readonly toe = [0, 0, 0, 0];
   private readonly flap: THREE.Mesh;
   private readonly helmet: THREE.Mesh;
   private readonly halo = new THREE.Group();
@@ -193,7 +266,16 @@ export class CarModel {
       helmet: lambert({ color: livery.helmet }),
     };
     this.bodyGeo = bodyGeometry(livery);
+    this.basePositions = (this.bodyGeo.getAttribute('position').array as Float32Array).slice();
     this.group.add(new THREE.Mesh(this.bodyGeo, this.mats.body));
+    shared.scuff ??= new THREE.BoxGeometry(1, 1, 1);
+    for (const scuff of SCUFFS) {
+      const mesh = new THREE.Mesh(shared.scuff, this.mats.carbon);
+      mesh.scale.set(...scuff.size);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.scuffs.push({ mesh, scuff });
+    }
     for (const g of haloParts()) {
       this.owned.push(g);
       this.halo.add(new THREE.Mesh(g, this.mats.carbon));
@@ -217,7 +299,13 @@ export class CarModel {
     this.owned.push(frontWingGeo, rearWingGeo);
     this.frontWing = new THREE.Mesh(frontWingGeo, this.mats.body);
     this.rearWing.add(new THREE.Mesh(rearWingGeo, this.mats.body));
-    this.group.add(this.frontWing, this.rearWing);
+    this.frontWingMount.position.set(2.3, 0.1, 0);
+    this.frontWing.position.set(-2.3, -0.1, 0);
+    this.frontWingMount.add(this.frontWing);
+    this.rearWingMount.position.set(-2.55, 0.33, 0);
+    this.rearWing.position.set(2.55, -0.33, 0);
+    this.rearWingMount.add(this.rearWing);
+    this.group.add(this.frontWingMount, this.rearWingMount);
 
     shared.wheelFront ??= wheelGeometry(0.33, 0.36);
     shared.wheelRear ??= wheelGeometry(0.36, 0.42);
@@ -253,7 +341,7 @@ export class CarModel {
   update(x: number, y: number, heading: number, steer: number, drsOpen: boolean, compound: Compound): void {
     this.group.position.set(x, 0, y);
     this.group.rotation.y = -heading;
-    for (const w of this.frontWheels) w.rotation.y = -steer * STEER_VISUAL;
+    this.frontWheels.forEach((w, i) => (w.rotation.y = -steer * STEER_VISUAL + this.toe[i]));
     if (drsOpen !== this.drs) {
       this.drs = drsOpen;
       this.flap.rotation.z = drsOpen ? 0.7 : 0;
@@ -273,6 +361,50 @@ export class CarModel {
     this.frontWing.visible = !(lost & LOST_FRONT_WING);
     this.rearWing.visible = !(lost & LOST_REAR_WING);
     [LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR].forEach((bit, i) => (this.wheels[i].visible = !(lost & bit)));
+  }
+
+  /**
+   * Show damage (Car.parts, 0-1): the body dented in where it was hit, bare carbon showing,
+   * wings drooping and twisted back on the side that hit, wheels out of line from 0.4.
+   */
+  setDamage(d: CarParts): void {
+    const q = (v: number) => (v < SHOWS_FROM ? 0 : Math.round(v * 20) / 20);
+    const parts: CarParts = { frontWing: q(d.frontWing), rearWing: q(d.rearWing), left: q(d.left), right: q(d.right) };
+    const key = `${parts.frontWing}|${parts.rearWing}|${parts.left}|${parts.right}`;
+    if (key === this.damageKey) return;
+    this.damageKey = key;
+    // Dents: move each corner of the body from where it was built.
+    const pos = this.bodyGeo.getAttribute('position') as THREE.BufferAttribute;
+    const base = this.basePositions;
+    const arr = pos.array as Float32Array;
+    for (let i = 0; i < base.length; i += 3) {
+      const [dx, dy, dz] = dentAt(base[i], base[i + 1], base[i + 2], parts);
+      arr[i] = base[i] + dx;
+      arr[i + 1] = base[i + 1] + dy;
+      arr[i + 2] = base[i + 2] + dz;
+    }
+    pos.needsUpdate = true;
+    this.bodyGeo.computeVertexNormals();
+    this.bodyGeo.computeBoundingSphere();
+    for (const { mesh, scuff } of this.scuffs) {
+      mesh.visible = parts[scuff.zone] >= scuff.from;
+      if (!mesh.visible) continue;
+      const [x, y, z] = scuff.at;
+      const [dx, dy, dz] = dentAt(x, y, z, parts);
+      mesh.position.set(x + dx, y + dy, z + dz);
+    }
+    // Wings: the side that took the hit (z+ = right) droops and is pushed back.
+    const side = parts.left > parts.right ? -1 : 1;
+    this.frontWingMount.rotation.set(side * parts.frontWing * 0.2, -side * parts.frontWing * 0.18, -parts.frontWing * 0.1);
+    this.rearWingMount.rotation.set(side * parts.rearWing * 0.25, side * parts.rearWing * 0.2, parts.rearWing * 0.15);
+    // Broken suspension: the wheel leans and turns out of line.
+    [parts.left, parts.right, parts.left, parts.right].forEach((v, i) => {
+      const bent = Math.max(0, v - 0.4);
+      const s = i % 2 === 0 ? -1 : 1;
+      this.wheels[i].rotation.x = s * bent * 0.6;
+      this.toe[i] = s * bent * 0.5 * (i < 2 ? -1 : 1);
+      if (i >= 2) this.wheels[i].rotation.y = this.toe[i];
+    });
   }
 
   /** Paint the whole body one glowing colour (party mode's rainbow), or null for the livery again. */

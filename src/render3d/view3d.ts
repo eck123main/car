@@ -6,6 +6,7 @@ import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carMo
 import { Items3d, type ItemsFrame } from './items3d';
 import { Debris3d } from './debris3d';
 import type { Debris } from '../sim/debris';
+import type { CarParts } from '../physics/car';
 import { Pit3d } from './pit3d';
 import { IdealLine3d } from './idealLine3d';
 import type { IdealLine } from '../sim/ai/idealLine';
@@ -88,6 +89,8 @@ export interface CarView {
   trackIndex?: number | null;
   /** Parts knocked off (Car.lost bits). */
   lost?: number;
+  /** Damage per part (Car.parts), shown on the body. */
+  parts?: CarParts;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -303,6 +306,7 @@ export class View3D {
       // own, so the cockpit never moves round the camera).
       entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, pit?.fitted.get(car.id) ?? car.compound);
       entry.model.setLost(car.lost ?? 0);
+      if (car.parts) entry.model.setDamage(car.parts);
       entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex) + (car === own ? 0 : (pit?.lift.get(car.id) ?? 0) * 0.09);
       // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
       entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
