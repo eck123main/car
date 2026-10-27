@@ -467,7 +467,15 @@ The timing tower is always shown (no Tab needed).
   the part: **front wing** (understeer: up to -40% turning grip), **rear wing** (-45%
   downforce, -12% power), **left/right side** (more drag, -15% grip, and the car pulls
   towards the damaged side). Overall damage = the worst part. Shown as a green/yellow/red
-  car diagram under the minimap. Visual damage on the car itself may come later.
+  car diagram under the minimap.
+- **Visual damage** on the car itself (looks only, from `Car.parts`, so the same for everyone;
+  shows from 8%): 2D (`drawCar` `parts`) bare carbon patches and scratches on the damaged side,
+  nose or tail, more of them the worse it is; wings twisted back on the side that took the hit,
+  with a crack, losing that endplate past 45% (front) / 50% (rear); wheels knocked out of line
+  past 40% side damage. 3D (`CarModel.setDamage`): the body mesh dented in (`dentAt`: sidepods
+  cave in, the nose crumples back, the tail pushed in; uneven but a function of position only, so
+  faces stay joined; rebuilt only when damage changes by 5%), carbon scuffs on the panels, wings
+  drooping and twisted on their mounts, wheels leaning and turned out of line.
 - **Hit reactions** (`Car.upset`, 0-1): a hit over 5 m/s along the normal (walls count 60%)
   unsettles the car for up to ~0.8 s: 65% less sideways grip and the steering barely holds the
   rotation, so the push and spin from the impulse play out (a T-bone shoves the car across the
