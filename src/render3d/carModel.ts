@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR } from '../physics/car';
 import type { Livery } from '../render/livery';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { QuadBuilder } from './trackMesh';
@@ -78,13 +79,7 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
   // Engine cover rising to the airbox behind the driver.
   tbox(q, -2.25, -0.78, 0.3, 0.62, 0.07, 0.5, 0.07, 0.96, l.body);
   tbox(q, -0.84, -0.74, 0.28, 0.28, 0.9, 1.05, 0.9, 1.05, '#0d0d0f');
-  // Front wing: two elements and endplates.
-  tbox(q, 2.3, 2.82, 1.9, 1.9, 0.06, 0.1, 0.06, 0.1, l.wings);
-  tbox(q, 2.2, 2.48, 1.8, 1.8, 0.16, 0.19, 0.12, 0.15, l.wings);
-  for (const z of [-0.94, 0.94]) tbox(q, 2.15, 2.84, 0.04, 0.04, 0.05, 0.32, 0.05, 0.28, l.endplates, z);
-  // Rear wing: endplates, main plane, a pylon and the beam wing.
-  for (const z of [-0.5, 0.5]) tbox(q, -2.86, -2.28, 0.04, 0.04, 0.32, 1.0, 0.32, 0.98, l.endplates, z);
-  tbox(q, -2.82, -2.52, 1.0, 1.0, 0.82, 0.87, 0.84, 0.89, l.wings);
+  // Rear wing pylon (the wing itself is separate, it can come off) and the beam wing.
   tbox(q, -2.6, -2.3, 0.06, 0.06, 0.3, 0.84, 0.3, 0.84, CARBON);
   tbox(q, -2.7, -2.45, 0.9, 0.9, 0.36, 0.39, 0.37, 0.4, CARBON);
   // Suspension.
@@ -94,6 +89,23 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
     strut(q, [-1.4, 0.38, side * 0.3], [-1.72, 0.44, side * 0.6], 0.04, CARBON);
     strut(q, [-1.9, 0.2, side * 0.3], [-1.76, 0.22, side * 0.6], 0.04, CARBON);
   }
+  return q.build();
+}
+
+/** Front wing (two elements and endplates), in the car's frame; it can be knocked off. */
+export function frontWingGeometry(l: Livery): THREE.BufferGeometry {
+  const q = new QuadBuilder();
+  tbox(q, 2.3, 2.82, 1.9, 1.9, 0.06, 0.1, 0.06, 0.1, l.wings);
+  tbox(q, 2.2, 2.48, 1.8, 1.8, 0.16, 0.19, 0.12, 0.15, l.wings);
+  for (const z of [-0.94, 0.94]) tbox(q, 2.15, 2.84, 0.04, 0.04, 0.05, 0.32, 0.05, 0.28, l.endplates, z);
+  return q.build();
+}
+
+/** Rear wing main plane and endplates, in the car's frame (the DRS flap is separate). */
+export function rearWingGeometry(l: Livery): THREE.BufferGeometry {
+  const q = new QuadBuilder();
+  for (const z of [-0.5, 0.5]) tbox(q, -2.86, -2.28, 0.04, 0.04, 0.32, 1.0, 0.32, 0.98, l.endplates, z);
+  tbox(q, -2.82, -2.52, 1.0, 1.0, 0.82, 0.87, 0.84, 0.89, l.wings);
   return q.build();
 }
 
@@ -144,6 +156,11 @@ function wheelGeometry(radius: number, width: number): THREE.BufferGeometry {
 export class CarModel {
   readonly group = new THREE.Group();
   private readonly frontWheels: THREE.Group[] = [];
+  /** Wheels FL, FR, RL, RR and the wings, hidden when knocked off. */
+  private readonly wheels: THREE.Group[] = [];
+  private readonly frontWing: THREE.Mesh;
+  private readonly rearWing = new THREE.Group();
+  private lost = 0;
   private readonly flap: THREE.Mesh;
   private readonly helmet: THREE.Mesh;
   private readonly halo = new THREE.Group();
@@ -194,7 +211,13 @@ export class CarModel {
     this.owned.push(flapGeo);
     this.flap = new THREE.Mesh(flapGeo, this.mats.wing);
     this.flap.position.set(-2.52, 0.93, 0);
-    this.group.add(this.flap);
+    this.rearWing.add(this.flap);
+    const frontWingGeo = frontWingGeometry(livery);
+    const rearWingGeo = rearWingGeometry(livery);
+    this.owned.push(frontWingGeo, rearWingGeo);
+    this.frontWing = new THREE.Mesh(frontWingGeo, this.mats.body);
+    this.rearWing.add(new THREE.Mesh(rearWingGeo, this.mats.body));
+    this.group.add(this.frontWing, this.rearWing);
 
     shared.wheelFront ??= wheelGeometry(0.33, 0.36);
     shared.wheelRear ??= wheelGeometry(0.36, 0.42);
@@ -208,6 +231,7 @@ export class CarModel {
       r.position.z = Math.sign(z) * (width / 2 + 0.005);
       g.add(r);
       this.group.add(g);
+      this.wheels.push(g);
       return g;
     };
     this.frontWheels.push(addWheel(1.8, 0.33, -0.75, shared.wheelFront, 0.36), addWheel(1.8, 0.33, 0.75, shared.wheelFront, 0.36));
@@ -240,6 +264,15 @@ export class CarModel {
       this.mats.ring.color.set(COMPOUNDS[compound].color);
     }
     this.wheel?.turn(steer);
+  }
+
+  /** Hide parts that were knocked off (Car.lost bits). */
+  setLost(lost: number): void {
+    if (lost === this.lost) return;
+    this.lost = lost;
+    this.frontWing.visible = !(lost & LOST_FRONT_WING);
+    this.rearWing.visible = !(lost & LOST_REAR_WING);
+    [LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR].forEach((bit, i) => (this.wheels[i].visible = !(lost & bit)));
   }
 
   /** Paint the whole body one glowing colour (party mode's rainbow), or null for the livery again. */

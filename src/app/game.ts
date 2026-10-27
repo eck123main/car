@@ -8,6 +8,7 @@ import { Camera } from '../render/camera';
 import { drawDamage } from '../render/damage';
 import { skinLivery } from '../cosmetics/skins';
 import { drawCar } from '../render/drawCar';
+import { drawDebris } from '../render/debris';
 import { drawCarEffects, drawDrops, drawItemBoxes, drawItemSlot, drawRockets, drawSmoke, drawTether, rainbowColor } from '../render/items';
 import { ITEM_INFO, SMOKE_RADIUS } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
@@ -687,6 +688,7 @@ export class GameScreen {
         compound: r.tyres.compound,
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
         trackIndex: r.car.trackIndex,
+        lost: r.car.lost,
       };
     };
     // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
@@ -698,6 +700,15 @@ export class GameScreen {
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
     view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
+    view.showDebris(
+      world.debris,
+      (id) => {
+        const r = world.racer(id);
+        return skinLivery(r?.skin) ?? liveryFor(r?.color ?? '#888888');
+      },
+      world.time,
+      dt,
+    );
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
       others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
     );
@@ -760,6 +771,7 @@ export class GameScreen {
       drawItemBoxes(ctx, items, this.driver.now());
       drawDrops(ctx, items, this.driver.meId, this.driver.now());
     }
+    drawDebris(ctx, world.debris, world.racers, world.time);
     const ghosts = session?.phase === 'qualifying';
     // Time trial ghosts, under the real cars.
     for (const g of this.driver.ghostCars?.() ?? []) {
@@ -785,6 +797,7 @@ export class GameScreen {
         livery: rainbow ? null : skinLivery(r.skin),
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
+        lost: r.car.lost,
         rainLight: world.options.wetness >= 0.3,
         time: world.time,
       });

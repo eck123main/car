@@ -1,3 +1,4 @@
+import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR } from '../physics/car';
 import type { CarParams } from '../physics/carParams';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { liveryFor, type Livery } from './livery';
@@ -13,6 +14,8 @@ export interface CarLook {
   time?: number;
   /** A skin's paint, in place of the colour's team livery. */
   livery?: Livery | null;
+  /** Parts knocked off (Car.lost bits): not drawn. */
+  lost?: number;
 }
 
 const CARBON = '#1b1b1b';
@@ -35,6 +38,7 @@ export function drawCar(
   const hl = p.length / 2;
   const hw = p.width / 2;
   const liv = look.livery ?? liveryFor(color);
+  const lost = look.lost ?? 0;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
@@ -68,10 +72,10 @@ export function drawCar(
     }
     ctx.restore();
   };
-  wheel(p.cgToFront, -hw + 0.2, steer);
-  wheel(p.cgToFront, hw - 0.2, steer);
-  wheel(-p.cgToRear, -hw + 0.22, 0);
-  wheel(-p.cgToRear, hw - 0.22, 0);
+  if (!(lost & LOST_WHEEL_FL)) wheel(p.cgToFront, -hw + 0.2, steer);
+  if (!(lost & LOST_WHEEL_FR)) wheel(p.cgToFront, hw - 0.2, steer);
+  if (!(lost & LOST_WHEEL_RL)) wheel(-p.cgToRear, -hw + 0.22, 0);
+  if (!(lost & LOST_WHEEL_RR)) wheel(-p.cgToRear, hw - 0.22, 0);
   // Suspension arms out to the wheels.
   ctx.strokeStyle = CARBON;
   ctx.lineWidth = 0.09;
@@ -163,27 +167,23 @@ export function drawCar(
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.fillRect(-2.25, -0.05, 1.7, 0.1);
 
-  // Front wing: two elements and endplates.
-  ctx.fillStyle = liv.wings;
-  ctx.fillRect(hl - 0.42, -hw + 0.08, 0.2, p.width - 0.16);
-  ctx.fillStyle = liv.endplates;
-  ctx.fillRect(hl - 0.18, -hw + 0.12, 0.13, p.width - 0.24);
-  ctx.fillRect(hl - 0.5, -hw + 0.02, 0.48, 0.12);
-  ctx.fillRect(hl - 0.5, hw - 0.14, 0.48, 0.12);
+  // Front wing: two elements and endplates. Knocked off: just the broken pylons on the nose.
+  if (lost & LOST_FRONT_WING) {
+    ctx.fillStyle = CARBON;
+    ctx.fillRect(hl - 0.45, -0.22, 0.3, 0.08);
+    ctx.fillRect(hl - 0.45, 0.14, 0.3, 0.08);
+  } else drawFrontWing(ctx, liv, hl, hw, p.width);
 
   // Rear wing: mainplane and endplates; the whole wing lights up green with DRS open.
-  if (look.drsOpen) {
+  if (lost & LOST_REAR_WING) {
+    ctx.fillStyle = CARBON;
+    ctx.fillRect(-hl + 0.1, -0.08, 0.45, 0.16);
+  } else if (look.drsOpen) {
     ctx.fillStyle = 'rgba(46, 204, 64, 0.35)';
     ctx.fillRect(-hl - 0.9, -0.85, 0.9, 1.7);
     ctx.fillStyle = '#39ff5a';
     ctx.fillRect(-hl - 0.1, -0.95, 0.6, 1.9);
-  } else {
-    ctx.fillStyle = liv.wings;
-    ctx.fillRect(-hl, -0.8, 0.45, 1.6);
-    ctx.fillStyle = liv.endplates;
-    ctx.fillRect(-hl - 0.02, -0.92, 0.5, 0.14);
-    ctx.fillRect(-hl - 0.02, 0.78, 0.5, 0.14);
-  }
+  } else drawRearWing(ctx, liv, -hl);
 
   // Rain light: blinks red on a wet track, as the rules require.
   if (look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0) {
@@ -216,4 +216,23 @@ export function drawCar(
   ctx.stroke();
 
   ctx.restore();
+}
+
+/** Front wing, nose along +x, its front edge at x = hl (also drawn on its own as debris). */
+export function drawFrontWing(ctx: CanvasRenderingContext2D, liv: Livery, hl: number, hw: number, width: number): void {
+  ctx.fillStyle = liv.wings;
+  ctx.fillRect(hl - 0.42, -hw + 0.08, 0.2, width - 0.16);
+  ctx.fillStyle = liv.endplates;
+  ctx.fillRect(hl - 0.18, -hw + 0.12, 0.13, width - 0.24);
+  ctx.fillRect(hl - 0.5, -hw + 0.02, 0.48, 0.12);
+  ctx.fillRect(hl - 0.5, hw - 0.14, 0.48, 0.12);
+}
+
+/** Rear wing, its back edge at x = back. */
+export function drawRearWing(ctx: CanvasRenderingContext2D, liv: Livery, back: number): void {
+  ctx.fillStyle = liv.wings;
+  ctx.fillRect(back, -0.8, 0.45, 1.6);
+  ctx.fillStyle = liv.endplates;
+  ctx.fillRect(back - 0.02, -0.92, 0.5, 0.14);
+  ctx.fillRect(back - 0.02, 0.78, 0.5, 0.14);
 }

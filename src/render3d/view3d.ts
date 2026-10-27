@@ -4,6 +4,8 @@ import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
 import { CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
 import { Items3d, type ItemsFrame } from './items3d';
+import { Debris3d } from './debris3d';
+import type { Debris } from '../sim/debris';
 import { Pit3d } from './pit3d';
 import { IdealLine3d } from './idealLine3d';
 import type { IdealLine } from '../sim/ai/idealLine';
@@ -84,6 +86,8 @@ export interface CarView {
   ghostOpacity?: number;
   /** Which stretch of track it's on (Car.trackIndex), for the height of the road there. */
   trackIndex?: number | null;
+  /** Parts knocked off (Car.lost bits). */
+  lost?: number;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -134,6 +138,7 @@ export class View3D {
   private safetyCar: SafetyCarModel | null = null;
   /** Party mode items, made the first time a frame has some. */
   private items: Items3d | null = null;
+  private debris: Debris3d | null = null;
   /** Pit boxes and crews, made the first time a frame has them. */
   private pit: Pit3d | null = null;
   /** The ideal line driving aid, made the first time it is switched on. */
@@ -249,6 +254,16 @@ export class View3D {
     this.pitchReady = false;
   }
 
+  /** Parts knocked off cars, lying on the track (call before render). */
+  showDebris(debris: readonly Debris[], liveryOf: (owner: string) => Livery, time: number, dt: number): void {
+    if (!this.debris) {
+      if (debris.length === 0) return;
+      this.debris = new Debris3d((x, y, i) => this.heightAt(x, y, i));
+      this.scene.add(this.debris.group);
+    }
+    this.debris.update(debris, liveryOf, time, dt);
+  }
+
   render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null, items: ItemsFrame | null = null, pit: PitScene | null = null): void {
     this.time += dt;
     // Nose up on a climb, down on a descent (eased a little, like the car's suspension).
@@ -287,6 +302,7 @@ export class View3D {
       // In the pits: new tyres show once fitted, and other cars rise on their jacks (not our
       // own, so the cockpit never moves round the camera).
       entry.model.update(car.x, car.y, car.heading, car.steer, car.drsOpen, pit?.fitted.get(car.id) ?? car.compound);
+      entry.model.setLost(car.lost ?? 0);
       entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex) + (car === own ? 0 : (pit?.lift.get(car.id) ?? 0) * 0.09);
       // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
       entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
@@ -438,6 +454,7 @@ export class View3D {
     for (const { model } of this.cars.values()) model.dispose();
     this.safetyCar?.dispose();
     this.items?.dispose();
+    this.debris?.dispose();
     this.pit?.dispose();
     this.cars.clear();
     for (const d of this.disposables) d.dispose();
