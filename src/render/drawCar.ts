@@ -1,4 +1,4 @@
-import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR } from '../physics/car';
+import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR, type CarParts } from '../physics/car';
 import type { CarParams } from '../physics/carParams';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { liveryFor, type Livery } from './livery';
@@ -16,7 +16,35 @@ export interface CarLook {
   livery?: Livery | null;
   /** Parts knocked off (Car.lost bits): not drawn. */
   lost?: number;
+  /** Damage per part (0-1): shows as bare carbon, scratches, bent wings and wheels out of line. */
+  parts?: CarParts;
 }
+
+/** Damage this small doesn't show. */
+const SHOWS_FROM = 0.08;
+
+/**
+ * Patches of bare carbon where the paint and bodywork are gone, on the right side of the car
+ * (mirrored for the left): x, y (centre), length, width, and the damage from which each shows.
+ */
+const SIDE_SCUFFS: [number, number, number, number, number][] = [
+  [-0.4, 0.5, 0.5, 0.12, SHOWS_FROM],
+  [0.15, 0.52, 0.28, 0.09, 0.2],
+  [-1.05, 0.44, 0.42, 0.1, 0.3],
+  [-0.65, 0.33, 0.32, 0.13, 0.45],
+  [-1.35, 0.3, 0.26, 0.14, 0.6],
+  [0.3, 0.38, 0.2, 0.14, 0.75],
+];
+const NOSE_SCUFFS: [number, number, number, number, number][] = [
+  [2.45, 0.05, 0.3, 0.14, SHOWS_FROM],
+  [2.05, -0.1, 0.35, 0.1, 0.3],
+  [1.65, 0.12, 0.3, 0.1, 0.55],
+];
+const TAIL_SCUFFS: [number, number, number, number, number][] = [
+  [-2.25, 0.12, 0.25, 0.14, SHOWS_FROM],
+  [-1.9, -0.15, 0.3, 0.1, 0.35],
+  [-2.3, -0.2, 0.2, 0.12, 0.6],
+];
 
 const CARBON = '#1b1b1b';
 const TYRE = '#121212';
@@ -39,6 +67,14 @@ export function drawCar(
   const hw = p.width / 2;
   const liv = look.livery ?? liveryFor(color);
   const lost = look.lost ?? 0;
+  const dmg = look.parts;
+  // Wings bend towards the side that took the hit.
+  const hitSide = dmg && dmg.left > dmg.right ? -1 : 1;
+  /** A broken suspension knocks the wheel out of line (front: toe out, rear: toe in). */
+  const toe = (side: number, front: boolean) => {
+    const d = dmg ? (side > 0 ? dmg.right : dmg.left) : 0;
+    return d > 0.4 ? (d - 0.4) * 0.6 * side * (front ? 1 : -1) : 0;
+  };
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
@@ -72,10 +108,10 @@ export function drawCar(
     }
     ctx.restore();
   };
-  if (!(lost & LOST_WHEEL_FL)) wheel(p.cgToFront, -hw + 0.2, steer);
-  if (!(lost & LOST_WHEEL_FR)) wheel(p.cgToFront, hw - 0.2, steer);
-  if (!(lost & LOST_WHEEL_RL)) wheel(-p.cgToRear, -hw + 0.22, 0);
-  if (!(lost & LOST_WHEEL_RR)) wheel(-p.cgToRear, hw - 0.22, 0);
+  if (!(lost & LOST_WHEEL_FL)) wheel(p.cgToFront, -hw + 0.2, steer + toe(-1, true));
+  if (!(lost & LOST_WHEEL_FR)) wheel(p.cgToFront, hw - 0.2, steer + toe(1, true));
+  if (!(lost & LOST_WHEEL_RL)) wheel(-p.cgToRear, -hw + 0.22, toe(-1, false));
+  if (!(lost & LOST_WHEEL_RR)) wheel(-p.cgToRear, hw - 0.22, toe(1, false));
   // Suspension arms out to the wheels.
   ctx.strokeStyle = CARBON;
   ctx.lineWidth = 0.09;
@@ -157,6 +193,7 @@ export function drawCar(
   // Nose tip.
   ctx.fillStyle = liv.nose;
   ctx.fillRect(hl - 0.75, -hw, 0.75, p.width);
+  if (dmg) drawBodyDamage(ctx, dmg);
   ctx.restore();
 
   // Sidepod inlets.
@@ -172,7 +209,7 @@ export function drawCar(
     ctx.fillStyle = CARBON;
     ctx.fillRect(hl - 0.45, -0.22, 0.3, 0.08);
     ctx.fillRect(hl - 0.45, 0.14, 0.3, 0.08);
-  } else drawFrontWing(ctx, liv, hl, hw, p.width);
+  } else drawFrontWing(ctx, liv, hl, hw, p.width, dmg?.frontWing ?? 0, hitSide);
 
   // Rear wing: mainplane and endplates; the whole wing lights up green with DRS open.
   if (lost & LOST_REAR_WING) {
@@ -183,7 +220,7 @@ export function drawCar(
     ctx.fillRect(-hl - 0.9, -0.85, 0.9, 1.7);
     ctx.fillStyle = '#39ff5a';
     ctx.fillRect(-hl - 0.1, -0.95, 0.6, 1.9);
-  } else drawRearWing(ctx, liv, -hl);
+  } else drawRearWing(ctx, liv, -hl, dmg?.rearWing ?? 0, hitSide);
 
   // Rain light: blinks red on a wet track, as the rules require.
   if (look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0) {
@@ -218,21 +255,87 @@ export function drawCar(
   ctx.restore();
 }
 
-/** Front wing, nose along +x, its front edge at x = hl (also drawn on its own as debris). */
-export function drawFrontWing(ctx: CanvasRenderingContext2D, liv: Livery, hl: number, hw: number, width: number): void {
+/** Bare carbon and scratches where the body took hits (inside the body outline). */
+function drawBodyDamage(ctx: CanvasRenderingContext2D, dmg: CarParts): void {
+  const patches = (list: [number, number, number, number, number][], d: number, flip: number) => {
+    for (const [x, y, l, w, from] of list) {
+      if (d < from) continue;
+      // Ragged: a skewed quad rather than a neat rectangle.
+      const yy = y * flip;
+      ctx.beginPath();
+      ctx.moveTo(x - l / 2, yy - w / 2);
+      ctx.lineTo(x + l / 2 - w * 0.4, yy - w / 2);
+      ctx.lineTo(x + l / 2, yy + w / 2);
+      ctx.lineTo(x - l / 2 + w * 0.3, yy + w / 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  };
+  ctx.fillStyle = CARBON;
+  patches(SIDE_SCUFFS, dmg.right, 1);
+  patches(SIDE_SCUFFS, dmg.left, -1);
+  patches(NOSE_SCUFFS, dmg.frontWing, 1);
+  patches(TAIL_SCUFFS, dmg.rearWing, 1);
+  // Scratches along a damaged side.
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.lineWidth = 0.035;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    const d = side > 0 ? dmg.right : dmg.left;
+    if (d < 0.15) continue;
+    ctx.moveTo(-1.5, side * 0.5);
+    ctx.lineTo(-0.2, side * 0.58);
+    if (d < 0.35) continue;
+    ctx.moveTo(-1.1, side * 0.36);
+    ctx.lineTo(0.3, side * 0.48);
+  }
+  ctx.stroke();
+}
+
+/**
+ * Front wing, nose along +x, its front edge at x = hl (also drawn on its own as debris).
+ * bend: damage (0-1), twisting it back on the `side` it was hit (+1 right) and, from 0.45,
+ * knocking that endplate off.
+ */
+export function drawFrontWing(ctx: CanvasRenderingContext2D, liv: Livery, hl: number, hw: number, width: number, bend = 0, side = 1): void {
+  const bent = bend >= SHOWS_FROM;
+  ctx.save();
+  if (bent) {
+    ctx.translate(hl - 0.3, 0);
+    ctx.rotate(side * bend * 0.22);
+    ctx.translate(-(hl - 0.3), 0);
+  }
   ctx.fillStyle = liv.wings;
   ctx.fillRect(hl - 0.42, -hw + 0.08, 0.2, width - 0.16);
   ctx.fillStyle = liv.endplates;
   ctx.fillRect(hl - 0.18, -hw + 0.12, 0.13, width - 0.24);
-  ctx.fillRect(hl - 0.5, -hw + 0.02, 0.48, 0.12);
-  ctx.fillRect(hl - 0.5, hw - 0.14, 0.48, 0.12);
+  if (!(bend > 0.45 && side < 0)) ctx.fillRect(hl - 0.5, -hw + 0.02, 0.48, 0.12);
+  if (!(bend > 0.45 && side > 0)) ctx.fillRect(hl - 0.5, hw - 0.14, 0.48, 0.12);
+  if (bent) {
+    // A crack across the elements, near the damaged end.
+    ctx.fillStyle = CARBON;
+    ctx.fillRect(hl - 0.46, side * (hw - 0.45) - 0.04, 0.42, 0.08);
+  }
+  ctx.restore();
 }
 
-/** Rear wing, its back edge at x = back. */
-export function drawRearWing(ctx: CanvasRenderingContext2D, liv: Livery, back: number): void {
+/** Rear wing, its back edge at x = back. bend: as for the front wing (endplate gone from 0.5). */
+export function drawRearWing(ctx: CanvasRenderingContext2D, liv: Livery, back: number, bend = 0, side = 1): void {
+  const bent = bend >= SHOWS_FROM;
+  ctx.save();
+  if (bent) {
+    ctx.translate(back + 0.22, 0);
+    ctx.rotate(-side * bend * 0.25);
+    ctx.translate(-(back + 0.22), 0);
+  }
   ctx.fillStyle = liv.wings;
   ctx.fillRect(back, -0.8, 0.45, 1.6);
   ctx.fillStyle = liv.endplates;
-  ctx.fillRect(back - 0.02, -0.92, 0.5, 0.14);
-  ctx.fillRect(back - 0.02, 0.78, 0.5, 0.14);
+  if (!(bend > 0.5 && side < 0)) ctx.fillRect(back - 0.02, -0.92, 0.5, 0.14);
+  if (!(bend > 0.5 && side > 0)) ctx.fillRect(back - 0.02, 0.78, 0.5, 0.14);
+  if (bent) {
+    ctx.fillStyle = CARBON;
+    ctx.fillRect(back + 0.05, side * 0.45 - 0.04, 0.35, 0.08);
+  }
+  ctx.restore();
 }

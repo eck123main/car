@@ -689,6 +689,7 @@ export class GameScreen {
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
         trackIndex: r.car.trackIndex,
         lost: r.car.lost,
+        parts: r.car.parts,
       };
     };
     // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
@@ -798,6 +799,7 @@ export class GameScreen {
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         lost: r.car.lost,
+        parts: r.car.parts,
         rainLight: world.options.wetness >= 0.3,
         time: world.time,
       });
