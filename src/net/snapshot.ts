@@ -2,7 +2,8 @@ import { GRID_MAX_TIME, type Session } from '../sim/session';
 import { Tyres, type Compound } from '../sim/tyres';
 import type { PlayerInput, Racer } from '../sim/world';
 import type { ItemSystem } from '../sim/items';
-import type { CarSnap, ItemsSnap, PackedInput, SessionSnap, TimingSnap } from './protocol';
+import { DEBRIS_KINDS, type Debris } from '../sim/debris';
+import type { CarSnap, DebrisSnap, ItemsSnap, PackedInput, SessionSnap, TimingSnap } from './protocol';
 
 /**
  * Round for sending. Full-precision numbers are ~18 characters of JSON each; millimetres and
@@ -28,6 +29,8 @@ export function carSnap(r: Racer, ack: number): CarSnap {
     brk: round(c.brake),
     parts: [round(c.parts.frontWing), round(c.parts.rearWing), round(c.parts.left), round(c.parts.right)],
     ret: c.retired,
+    ...(c.lost ? { lost: c.lost } : {}),
+    ...(c.upset > 0 ? { up: round(c.upset) } : {}),
     frozen: r.frozen,
     grip: round(c.gripFactor, 4),
     drag: round(c.dragFactor, 4),
@@ -68,6 +71,36 @@ export function itemsSnap(items: ItemSystem, time: number): ItemsSnap {
 }
 
 const TYRE_ORDER: Compound[] = ['soft', 'medium', 'hard', 'inter', 'wet'];
+
+/** Debris on the track, or nothing when there is none. */
+export function debrisSnap(debris: readonly Debris[]): DebrisSnap[] | undefined {
+  if (debris.length === 0) return undefined;
+  return debris.map((p) => [
+    p.id,
+    DEBRIS_KINDS.indexOf(p.kind),
+    p.owner,
+    p.compound ? TYRE_ORDER.indexOf(p.compound) : -1,
+    round(p.x, 2),
+    round(p.y, 2),
+    round(p.z, 2),
+    round(p.heading, 3),
+    round(p.vx, 2),
+    round(p.vy, 2),
+    round(p.vz, 2),
+    round(p.spin, 2),
+    round(p.born, 2),
+  ]);
+}
+
+/** The other way round (on a client). Where on the track each piece is gets worked out locally. */
+export function readDebris(snaps: readonly DebrisSnap[], locate: (x: number, y: number) => { index: number; s: number; d: number } | null): Debris[] {
+  return snaps.flatMap(([id, kind, owner, tyre, x, y, z, heading, vx, vy, vz, spin, born]) => {
+    const k = DEBRIS_KINDS[kind];
+    if (!k) return [];
+    const q = locate(x, y);
+    return [{ id, kind: k, owner, compound: TYRE_ORDER[tyre] ?? null, x, y, z, heading, vx, vy, vz, spin, born, trackIndex: q?.index ?? null, s: q?.s ?? 0, d: q?.d ?? 0 }];
+  });
+}
 const FLAGS = ['drs', 'ers', 'limiter', 'reset', 'ready', 'useItem'] as const;
 
 /** An input in a few bytes, for the 120-a-second stream from each player to the host. */
@@ -116,6 +149,8 @@ export function applyCarPhysics(r: Racer, s: CarSnap): void {
   c.brake = s.brk;
   c.parts = { frontWing: s.parts[0], rearWing: s.parts[1], left: s.parts[2], right: s.parts[3] };
   c.retired = s.ret;
+  c.lost = s.lost ?? 0;
+  c.upset = s.up ?? 0;
   c.gripFactor = s.grip;
   c.dragFactor = s.drag;
   c.extraPower = s.power;

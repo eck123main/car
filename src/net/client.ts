@@ -1,12 +1,13 @@
 import { isSkinId } from '../cosmetics/skins';
 import { placeItemBoxes, type ItemView } from '../sim/items';
+import { debrisAlive, moveDebris } from '../sim/debris';
 import type { SafetyCarSnap } from '../sim/safetyCar';
 import type { SessionEvent } from '../sim/session';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
 import { parseTrackDef } from '../track/io';
 import { Track } from '../track/track';
 import { PROTOCOL_VERSION, type CarSnap, type HostMessage, type ItemsSnap, type LobbyState, type NetInfo, type SessionSnap } from './protocol';
-import { applyCarPhysics, applyCarStatus, applyTiming, packInput } from './snapshot';
+import { applyCarPhysics, applyCarStatus, applyTiming, packInput, readDebris } from './snapshot';
 import type { Connection } from './transport';
 
 /** Other cars are drawn this far in the past, so there are two snapshots to blend between. */
@@ -85,6 +86,12 @@ export class ClientGame {
     this.outbox.push(item);
     const me = this.me;
     if (me && this.predicting()) me.car.step(input, dt, this.track);
+    // Debris flies and slides on between snapshots (the host decides what hits it).
+    const world = this.world;
+    if (world && world.debris.length > 0) {
+      world.debris = world.debris.filter((p) => debrisAlive(p, this.serverTime()));
+      for (const p of world.debris) moveDebris(this.track, p, dt);
+    }
   }
 
   /** Send queued inputs (call once per frame), with the last few the host hasn't acknowledged. */
@@ -157,7 +164,12 @@ export class ClientGame {
       case 'start': {
         this.track = new Track(parseTrackDef(msg.track));
         this.world = new RaceWorld(this.track, { drsRule: 'race', wetness: 0 });
-        for (const p of msg.players) this.world.addRacer(p.id, p.name, p.color).skin = isSkinId(p.skin) ? p.skin : undefined;
+        for (const p of msg.players) {
+          const r = this.world.addRacer(p.id, p.name, p.color);
+          r.skin = isSkinId(p.skin) ? p.skin : undefined;
+          // Only the host makes debris; we get it in each snapshot.
+          r.car.onShed = undefined;
+        }
         this.snaps = [];
         this.boxLayout = null;
         this.items = null;
@@ -169,6 +181,10 @@ export class ClientGame {
       }
       case 'snap':
         this.onSnap(msg.time, msg.cars, msg.sc);
+        if (this.world && this.track && msg.time >= this.world.time) {
+          const track = this.track;
+          this.world.debris = readDebris(msg.debris ?? [], (x, y) => track.query(x, y));
+        }
         if (msg.items && (!this.items || msg.time > this.items.time)) this.items = { time: msg.time, snap: msg.items };
         break;
       case 'state':

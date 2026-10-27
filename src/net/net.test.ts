@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LOST_FRONT_WING } from '../physics/car';
 import { botInput } from '../sim/bot';
 import { IDLE_INPUT } from '../sim/world';
 import { TRACKS } from '../tracks';
@@ -159,6 +160,30 @@ describe('Online race', () => {
     expect(clientSawOpen).toBe(true);
     // The client's own (predicted) car gets the lower drag too.
     expect(clientDrag).toBeLessThan(0.7);
+  });
+
+  it("debris: a part knocked off on the host lies on every client's track too, and the car shows it gone", () => {
+    const { host, join, tick } = setup(0.05);
+    const c = join('Alice');
+    for (let i = 0; i < 20; i++) tick();
+    host.updateSettings({ trackId: 'test', qualifying: false });
+    host.start();
+    for (let i = 0; i < 20; i++) tick();
+    // The host's car loses its front wing in a big hit.
+    const hostCar = host.session!.world.racer(HostGame.HOST_ID)!.car;
+    hostCar.impact(16, 2.8, 0);
+    expect(hostCar.lost & LOST_FRONT_WING).toBeTruthy();
+    for (let t = 0; t < 0.5; t += DT) {
+      host.step(DT, READY);
+      c.step(DT, READY);
+      c.flush();
+      tick();
+    }
+    const wing = c.world!.debris.find((p) => p.kind === 'frontWing');
+    expect(wing?.owner).toBe(HostGame.HOST_ID);
+    const hostWing = host.session!.world.debris.find((p) => p.kind === 'frontWing')!;
+    expect(Math.hypot(wing!.x - hostWing.x, wing!.y - hostWing.y)).toBeLessThan(3);
+    expect(c.world!.racer(HostGame.HOST_ID)!.car.lost & LOST_FRONT_WING).toBeTruthy();
   });
 
   it('party mode: the client sees the boxes, its item and the rocket it fires', () => {

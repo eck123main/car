@@ -5,7 +5,7 @@ import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { Track } from '../track/track';
 import type { TrackDef } from '../track/types';
 import { MAX_PLAYERS, PROTOCOL_VERSION, type ClientMessage, type HostMessage, type LobbyPlayer, type LobbyState, type NetInfo } from './protocol';
-import { carSnap, itemsSnap, sessionSnap, timingSnap, unpackInput } from './snapshot';
+import { carSnap, debrisSnap, itemsSnap, sessionSnap, timingSnap, unpackInput } from './snapshot';
 import type { Connection, HostTransport } from './transport';
 
 /** Distinct car colours, handed out in order. */
@@ -214,7 +214,8 @@ export class HostGame {
     if (this.steps % SNAP_EVERY === 0) {
       const cars = session.world.racers.map((r) => carSnap(r, this.remotes.get(r.id)?.ack ?? 0));
       const items = session.items ? itemsSnap(session.items, session.world.time) : undefined;
-      this.broadcast({ t: 'snap', time: session.world.time, cars, sc: session.safetyCar?.snap(), items }, true);
+      const debris = debrisSnap(session.world.debris);
+      this.broadcast({ t: 'snap', time: session.world.time, cars, sc: session.safetyCar?.snap(), items, debris }, true);
     }
     if (this.steps % STATE_EVERY === 0 || events.some((e) => e.kind === 'phase')) this.sendState();
   }

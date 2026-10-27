@@ -9,7 +9,7 @@ import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -48,6 +48,9 @@ export interface CarSnap {
   brk: number;
   parts: [number, number, number, number];
   ret: boolean;
+  /** Parts knocked off (Car.lost bits) and how unsettled the car is after a hit; only sent when not 0. */
+  lost?: number;
+  up?: number;
   frozen: boolean;
   /** Modifiers the client needs to predict its own car the same way. */
   grip: number;
@@ -89,6 +92,12 @@ export interface ItemsSnap {
   off: number[];
   rockets: [number, number, number, number, MissileKind][];
 }
+
+/**
+ * A piece of debris on the track: [id, kind (DEBRIS_KINDS index), owner, tyre (wheels; index or -1),
+ * x, y, z, heading, vx, vy, vz, spin, born].
+ */
+export type DebrisSnap = [number, number, string, number, number, number, number, number, number, number, number, number, number];
 
 export interface TimingSnap extends TimerState {
   id: string;
@@ -142,7 +151,7 @@ export type HostMessage =
   | { t: 'reject'; reason: string }
   | { t: 'lobby'; lobby: LobbyState }
   | { t: 'start'; track: TrackDef; settings: RaceSettings; players: PlayerInfo[] }
-  | { t: 'snap'; time: number; cars: CarSnap[]; sc?: SafetyCarSnap; items?: ItemsSnap }
+  | { t: 'snap'; time: number; cars: CarSnap[]; sc?: SafetyCarSnap; items?: ItemsSnap; debris?: DebrisSnap[] }
   | { t: 'state'; time: number; session: SessionSnap; timing: TimingSnap[] }
   | { t: 'events'; time: number; events: SessionEvent[] }
   /** Sent about once a second; the client answers with a pong to measure the round trip. */
