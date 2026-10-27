@@ -22,6 +22,10 @@ export interface CarWorld {
 }
 
 const G = 9.81;
+/** A wall hit unsettles the car less than a car hit (it bounces off rather than being shoved). */
+const WALL_UPSET = 0.6;
+/** What hit the car: walls are forgiving (only a wreck takes a wheel off). */
+export type ImpactSource = 'car' | 'wall';
 /** Limits on how much a crest or a dip changes the car's weight on the tyres. */
 const MIN_WEIGHT = 0.3;
 const MAX_WEIGHT = 1.8;
@@ -44,6 +48,39 @@ export const PART_NAMES: Record<keyof CarParts, string> = {
 const noDamage = (): CarParts => ({ frontWing: 0, rearWing: 0, left: 0, right: 0 });
 
 /**
+ * Parts that have come off the car, as bits of `Car.lost`. Wheels: front/rear, left/right.
+ * Order matters: it is sent over the network as a number.
+ */
+export const LOST_FRONT_WING = 1;
+export const LOST_REAR_WING = 2;
+export const LOST_WHEEL_FL = 4;
+export const LOST_WHEEL_FR = 8;
+export const LOST_WHEEL_RL = 16;
+export const LOST_WHEEL_RR = 32;
+
+/** A part flying off the car, at a point in the car's own frame (x forward, y right). */
+export interface ShedPart {
+  kind: 'frontWing' | 'rearWing' | 'wheel' | 'shard';
+  localX: number;
+  localY: number;
+  /** How hard the hit was (m/s), for how fast it flies off. */
+  speed: number;
+}
+
+/** Hits harder than this (m/s, along the normal) knock the wings off. Only the big ones, like F1. */
+export const FRONT_WING_OFF = 13;
+export const REAR_WING_OFF = 15;
+/** Another car hitting the side this hard breaks the suspension: the wheel comes off and the car is out. */
+export const WHEEL_OFF = 19;
+/** Hits from this speed leave a few carbon fibre shards on the track. */
+const SHARDS_FROM = 9;
+/** An upset car's tyres have lost their bite: a hit's spin and push carry on for a moment. */
+const UPSET_FROM = 5;
+const UPSET_RANGE = 15;
+/** Upset fades this much per second (gone ~0.8 s after the biggest hit). */
+const UPSET_DECAY = 1.25;
+
+/**
  * Top-down car: grip from weight + downforce, shared between braking/accelerating and
  * cornering. Steering sets a turn rate capped by that grip, so the car runs wide
  * instead of spinning. Local frame: x = forward, y = right.
@@ -64,6 +101,16 @@ export class Car {
   parts: CarParts = noDamage();
   retired = false;
   lastImpact = 0;
+  /** Parts that came off (LOST_* bits). Lost wings work as fully damaged ones until the pits. */
+  lost = 0;
+  /**
+   * 0..1 how unsettled the car is after a hit: the tyres hold less, and the steering has less
+   * say over the car's rotation, so the spin and push from the impact play out (a spin-out after
+   * a hard hit in the side or the rear) before the car settles again.
+   */
+  upset = 0;
+  /** Host only: called when a part comes off, so the race world can put it on the track. */
+  onShed?: (part: ShedPart) => void;
 
   // Set by the race world each step (tyres, weather, DRS, slipstream, ERS, pit limiter).
   /** Grip multiplier from tyres and weather. */
@@ -134,6 +181,8 @@ export class Car {
     this.parts = noDamage();
     this.retired = false;
     this.lastImpact = 0;
+    this.lost = 0;
+    this.upset = 0;
   }
 
   step(input: DriverInput, dt: number, world: CarWorld): void {
@@ -181,6 +230,9 @@ export class Car {
     this.surfaceFront = surfF.type;
     this.surfaceRear = surfR.type;
     const gripMul = (1 - 0.15 * sides) * this.gripFactor;
+    // Unsettled after a hit: less grip to stop the slide, and the steering barely holds the spin.
+    const upset = this.upset;
+    this.upset = Math.max(0, upset - UPSET_DECAY * dt);
     const grip = p.mu * gripMul * (surfF.grip * loadF + surfR.grip * loadR);
 
     // --- Longitudinal: engine, brakes, reverse. Limited by grip (no wheelspin or lockups).
@@ -205,7 +257,7 @@ export class Car {
     // Braking or accelerating hard leaves less grip for cornering, but only partly, so
     // braking into a corner while steering (natural on a keyboard) still turns the car.
     const longUse = fx / grip;
-    const lateralGrip = grip * Math.sqrt(Math.max(0, 1 - p.combinedGripPenalty * longUse * longUse));
+    const lateralGrip = grip * Math.sqrt(Math.max(0, 1 - p.combinedGripPenalty * longUse * longUse)) * (1 - 0.65 * upset);
     const wantedFy = (-m * vy) / dt;
     const fy = clampAbs(wantedFy, lateralGrip);
     // How hard the tyres are working, for tyre wear: share of grip used, and whether they
@@ -222,7 +274,7 @@ export class Car {
     const pull = 0.12 * (dmg.right - dmg.left) * Math.min(1, forward / 20);
     const steerIn = Math.max(-1, Math.min(1, this.steer + pull));
     const targetYaw = steerIn * Math.min(geometricLimit, gripLimit) * Math.sign(vx);
-    this.yawRate += (targetYaw - this.yawRate) * Math.min(1, p.yawResponse * dt);
+    this.yawRate += (targetYaw - this.yawRate) * Math.min(1, p.yawResponse * (1 - 0.9 * upset) * dt);
 
     // --- Resistance: aero drag, rolling resistance and surface drag.
     let fxTotal = fx;
@@ -305,39 +357,86 @@ export class Car {
       this.vy += jt * ty * invM;
       this.yawRate += rt * jt * invI;
 
-      this.impact(-vn, lx, ly);
+      this.impact(-vn, lx, ly, 'wall');
     }
   }
 
   /**
    * Take damage from a hit at this speed (m/s along the contact normal), at a point in the
-   * car's own frame (x forward, y right). Where it hits decides which parts break.
-   * A big enough hit retires the car.
+   * car's own frame (x forward, y right). Where it hits decides which parts break; only the
+   * hardest hits knock parts off (onto the track, see onShed). A big enough hit retires the car.
    */
-  impact(impactSpeed: number, localX: number, localY: number): void {
+  impact(impactSpeed: number, localX: number, localY: number, source: ImpactSource = 'car'): void {
     const p = this.params;
     this.lastImpact = impactSpeed;
+    const upsetScale = source === 'wall' ? WALL_UPSET : 1;
+    this.upset = Math.max(this.upset, Math.min(1, ((impactSpeed - UPSET_FROM) / UPSET_RANGE) * upsetScale));
     if (this.retired) return;
-    if (impactSpeed > p.crashSpeed) {
+    const along = localX / (p.length / 2);
+    const side: keyof CarParts = localY >= 0 ? 'right' : 'left';
+    if (impactSpeed >= SHARDS_FROM) {
+      const n = impactSpeed >= p.crashSpeed ? 4 : impactSpeed >= FRONT_WING_OFF ? 3 : 2;
+      for (let i = 0; i < n; i++) this.shed('shard', localX, localY, impactSpeed);
+    }
+    if (impactSpeed > p.crashSpeed || (source === 'car' && Math.abs(along) <= 0.5 && impactSpeed >= WHEEL_OFF)) {
       this.retired = true;
       this.parts = { frontWing: 1, rearWing: 1, left: 1, right: 1 };
+      // The wing at the end that hit, and the wheel nearest the hit; a huge one takes both on that side.
+      if (along > 0.3) this.loseWing(LOST_FRONT_WING, impactSpeed);
+      if (along < -0.3) this.loseWing(LOST_REAR_WING, impactSpeed);
+      const right = localY >= 0;
+      const front = localX >= 0;
+      this.loseWheel(front, right, impactSpeed);
+      if (impactSpeed > p.crashSpeed * 1.4) this.loseWheel(!front, right, impactSpeed);
     } else if (impactSpeed > p.damageThreshold) {
       const amount = (impactSpeed - p.damageThreshold) * p.damagePerSpeed;
-      const along = localX / (p.length / 2);
-      const side: keyof CarParts = localY >= 0 ? 'right' : 'left';
       const add = (part: keyof CarParts, share: number) => {
         this.parts[part] = Math.min(p.maxDamage, this.parts[part] + amount * share);
       };
       if (along > 0.5) {
         add('frontWing', 1);
         add(side, 0.3);
+        if (impactSpeed >= FRONT_WING_OFF) this.loseWing(LOST_FRONT_WING, impactSpeed);
       } else if (along < -0.5) {
         add('rearWing', 1);
         add(side, 0.3);
+        if (impactSpeed >= REAR_WING_OFF) this.loseWing(LOST_REAR_WING, impactSpeed);
       } else {
         add(side, 1);
       }
     }
+  }
+
+  /** Debris on the track hit this point of the car (own frame) at this speed: a little damage, no parts off. */
+  hitDebris(localX: number, localY: number, damage: number, upset: number): void {
+    if (this.retired) return;
+    const max = this.params.maxDamage;
+    const part: keyof CarParts = localX > this.params.length / 4 ? 'frontWing' : localY >= 0 ? 'right' : 'left';
+    this.parts[part] = Math.min(max, this.parts[part] + damage);
+    this.upset = Math.max(this.upset, upset);
+  }
+
+  private loseWing(bit: number, speed: number): void {
+    if (this.lost & bit) return;
+    this.lost |= bit;
+    const front = bit === LOST_FRONT_WING;
+    // Without a wing the car drives as if it were fully broken (until the pit crew fit a new one).
+    if (front) this.parts.frontWing = Math.max(this.parts.frontWing, this.params.maxDamage);
+    else this.parts.rearWing = Math.max(this.parts.rearWing, this.params.maxDamage);
+    const hl = this.params.length / 2;
+    this.shed(front ? 'frontWing' : 'rearWing', front ? hl - 0.25 : -hl + 0.2, 0, speed);
+  }
+
+  private loseWheel(front: boolean, right: boolean, speed: number): void {
+    const bit = front ? (right ? LOST_WHEEL_FR : LOST_WHEEL_FL) : right ? LOST_WHEEL_RR : LOST_WHEEL_RL;
+    if (this.lost & bit) return;
+    this.lost |= bit;
+    const p = this.params;
+    this.shed('wheel', front ? p.cgToFront : -p.cgToRear, (right ? 1 : -1) * (p.width / 2 - 0.2), speed);
+  }
+
+  private shed(kind: ShedPart['kind'], localX: number, localY: number, speed: number): void {
+    this.onShed?.({ kind, localX, localY, speed });
   }
 }
 

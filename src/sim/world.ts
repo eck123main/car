@@ -3,6 +3,7 @@ import { Car, type DriverInput } from '../physics/car';
 import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
 import { resolveCollisions } from './collisions';
+import { collideCarDebris, debrisAlive, MAX_DEBRIS, moveDebris, spawnDebris, type Debris, type DebrisKind } from './debris';
 import { applyItemEffects, newItemState, type ItemState } from './items';
 import { newPitState, PIT_SPEED_LIMIT, PIT_SPEEDING_PENALTY, updatePit, type PitEvent, type PitState } from './pit';
 import { type Compound, Tyres, tyreLife } from './tyres';
@@ -143,6 +144,8 @@ export type WorldEvent = (
   | { kind: 'penalty'; penalty: Penalty }
   /** A significant hit with another car, and who (if anyone) was blamed. */
   | { kind: 'contact'; other: string; verdict: 'incident' | 'yourFault' | 'theirFault'; warning?: boolean; reason?: string }
+  /** A part came off this car ('lost'), or it ran into a piece of debris ('hit'). */
+  | { kind: 'debris'; what: 'lost' | 'hit'; part: DebrisKind }
 ) & { racerId: string };
 
 /**
@@ -156,6 +159,11 @@ export class RaceWorld {
   private readonly detections: { time: number; id: string }[];
   private readonly contactCooldowns = new Map<string, number>();
   private nextTrail = 0;
+  /** Parts knocked off cars, lying on the track (see debris.ts). */
+  debris: Debris[] = [];
+  private debrisId = 0;
+  /** Parts lost this step, reported as events. */
+  private shedEvents: WorldEvent[] = [];
 
   constructor(
     readonly track: Track,
@@ -189,6 +197,12 @@ export class RaceWorld {
       trail: [],
       items: newItemState(),
     };
+    racer.car.onShed = (part) => {
+      const piece = spawnDebris(this.track, racer.car, id, racer.tyres.compound, part, ++this.debrisId, this.time);
+      this.debris.push(piece);
+      if (this.debris.length > MAX_DEBRIS) this.debris.shift();
+      if (part.kind !== 'shard') this.shedEvents.push({ kind: 'debris', what: 'lost', part: part.kind, racerId: id });
+    };
     this.racers.push(racer);
     return racer;
   }
@@ -209,7 +223,27 @@ export class RaceWorld {
       this.recordTrails();
       this.handleContacts(events);
     }
+    this.stepDebris(dt, events);
+    events.push(...this.shedEvents);
+    this.shedEvents = [];
     return events;
+  }
+
+  /** Debris flies, slides and is cleared after a while; cars that run into it knock it on. */
+  private stepDebris(dt: number, events: WorldEvent[]): void {
+    if (this.debris.length === 0) return;
+    this.debris = this.debris.filter((p) => debrisAlive(p, this.time));
+    for (const p of this.debris) moveDebris(this.track, p, dt);
+    for (const r of this.racers) {
+      // Cars that pass through everything (parked, in the pits, party mode ghosts) miss it too.
+      if (r.frozen || r.pit.phase !== 'out' || r.items.ghost > 0 || r.car.retired) continue;
+      for (const p of this.debris) {
+        // A part that just came off can't hit its own car straight away.
+        if (p.owner === r.id && this.time - p.born < 0.6) continue;
+        const hit = collideCarDebris(r.car, r.id, p, this.time);
+        if (hit && hit.kind !== 'shard') events.push({ kind: 'debris', what: 'hit', part: hit.kind, racerId: r.id });
+      }
+    }
   }
 
   private recordTrails(): void {

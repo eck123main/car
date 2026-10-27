@@ -45,7 +45,8 @@ describe('Spectating', () => {
   }, 60_000);
 
   it('in a race: only once finished', () => {
-    const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test', qualifying: false, laps: 1, mandatoryStop: false }, players);
+    // (No contact: these simple drivers all follow one line, and a pile-up could keep 'me' from finishing.)
+    const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: 'test', qualifying: false, laps: 1, mandatoryStop: false, noContact: true }, players);
     run(session, 15, ['me', 'b', 'c']);
     expect(session.phase).toBe('race');
     expect(isSpectating(sessionSnap(session), session.world, 'me')).toBe(false);

@@ -3,6 +3,7 @@ import type { Track } from '../../track/track';
 import { HOMING_RANGE, HOOK_RANGE, MAGNET_RANGE, TELEPORT_RANGE } from '../items';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
 import { onOtherStretches } from '../collisions';
+import { DEBRIS_SPEC } from '../debris';
 import { safetyCarProfile, SC_SLOW_CAR } from '../safetyCar';
 import type { Session } from '../session';
 import { pitAdvice } from '../strategy';
@@ -76,6 +77,8 @@ const SAFETY_CAR_GAP = 18;
 const START_COLUMN_TIME = 4;
 /** A car behind closer than this many seconds (at the closing speed) is too close to move across in front of. */
 const CHOP_TIME = 1;
+/** Debris closer than this to our path (centre to centre across the track, m) gets steered round. */
+const DEBRIS_CLEARANCE = 2.6;
 
 /**
  * A computer driver: follows a racing line at its difficulty's pace, brakes to a planned
@@ -219,6 +222,7 @@ export class BotDriver {
     if (braking || pitting || !collisionsOn || noOvertaking || ctx.phase !== 'race') this.defenceLateral = null;
     else if (sinceStart > START_COLUMN_TIME && this.skill.defends) this.defend(world, me, q.s, q.index, speed);
     if (this.defenceLateral !== null) wanted = this.defenceLateral;
+    if (me.pit.phase === 'out' && !pitting) wanted = this.avoidDebris(world, q.s, q.index, wanted, speed);
     let minLateral = -Infinity;
     let maxLateral = Infinity;
     if (collisionsOn && me.pit.phase !== 'in' && me.pit.phase !== 'stopped') {
@@ -298,6 +302,33 @@ export class BotDriver {
     const useItem = want && !this.usedLast;
     this.usedLast = useItem;
     return { ...base, throttle, brake, steer, drs: true, ers: useErs, useItem };
+  }
+
+  /**
+   * Steer round debris (a wing or wheel on the road) lying where we're about to drive: pass the
+   * nearest piece on the side closer to our line, if there's room. Shards are just driven over.
+   */
+  private avoidDebris(world: RaceWorld, s: number, index: number, wanted: number, speed: number): number {
+    // Hard and medium bots spot it from further away.
+    const range = 30 + speed * (this.skill.pace > 0.8 ? 1.6 : 1.1);
+    const lineHere = this.line.offset[index];
+    let nearest: { gap: number; d: number; index: number } | null = null;
+    for (const p of world.debris) {
+      if (!DEBRIS_SPEC[p.kind].hazard || p.z > 0.8 || p.trackIndex === null) continue;
+      const gap = this.track.forwardDistance(s, p.s);
+      if (gap > range || (nearest && gap > nearest.gap)) continue;
+      // Where we'd be across the track when we get there, keeping our current offset from the line.
+      const ours = this.line.offset[p.trackIndex] + (wanted - lineHere);
+      if (Math.abs(p.d - ours) < DEBRIS_CLEARANCE) nearest = { gap, d: p.d, index: p.trackIndex };
+    }
+    if (!nearest) return wanted;
+    const ours = this.line.offset[nearest.index] + (wanted - lineHere);
+    const half = this.track.samples[nearest.index].halfWidth - 1.4;
+    const sides = [nearest.d - DEBRIS_CLEARANCE, nearest.d + DEBRIS_CLEARANCE].filter((v) => Math.abs(v) <= half);
+    if (sides.length === 0) return wanted;
+    const pass = sides.reduce((a, b) => (Math.abs(b - ours) < Math.abs(a - ours) ? b : a));
+    // As an offset from the racing line there, carried back to here.
+    return lineHere + (pass - this.line.offset[nearest.index]);
   }
 
   /** No real corner in the next `samples` track samples. */

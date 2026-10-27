@@ -1,6 +1,9 @@
 import { COMPOUNDS } from '../sim/tyres';
 import type { SessionEvent } from '../sim/session';
 import { formatLapTime, type Toast } from './hud';
+import type { DebrisKind } from '../sim/debris';
+
+const DEBRIS_NAMES: Record<DebrisKind, string> = { frontWing: 'FRONT WING', rearWing: 'REAR WING', wheel: 'WHEEL', shard: 'CARBON' };
 
 /** Turn a race event for the local driver into a short on-screen message. */
 export function eventToast(e: SessionEvent, now: number): Toast | null {
@@ -35,6 +38,11 @@ export function eventToast(e: SessionEvent, now: number): Toast | null {
         return { text: `WARNING: contact with ${e.other} (${why}next time is a penalty)`, color: '#ffb347', until: now + 4 };
       }
       return null;
+    case 'debris': {
+      const part = DEBRIS_NAMES[e.part];
+      if (e.what === 'lost') return { text: `${part} GONE${e.part === 'wheel' ? '' : ' · box for a new one'}`, color: '#ff4136', until: now + 4 };
+      return { text: `Hit debris (${part.toLowerCase()})`, color: '#ffb347', until };
+    }
     case 'reset':
       return { text: e.note.toUpperCase(), color: '#ffffff', until };
     case 'item':
