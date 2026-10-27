@@ -468,6 +468,26 @@ The timing tower is always shown (no Tab needed).
   downforce, -12% power), **left/right side** (more drag, -15% grip, and the car pulls
   towards the damaged side). Overall damage = the worst part. Shown as a green/yellow/red
   car diagram under the minimap. Visual damage on the car itself may come later.
+- **Hit reactions** (`Car.upset`, 0-1): a hit over 5 m/s along the normal (walls count 60%)
+  unsettles the car for up to ~0.8 s: 65% less sideways grip and the steering barely holds the
+  rotation, so the push and spin from the impulse play out (a T-bone shoves the car across the
+  track, a hit on a rear corner spins it) before the tyres bite again. Sent in `CarSnap.up`.
+- **Parts come off only in the biggest hits** (`Car.impact`, `Car.lost` bits `LOST_*`): front
+  wing from 13 m/s at the nose (a car-to-car hit counts 60%, so ~78 km/h closing), rear wing from
+  15 m/s at the back, a wheel (and the car is out) from a 19 m/s side hit or any wreck (above 30%
+  over the crash speed, both wheels on that side). A lost wing works as a fully broken one (0.8)
+  until a pit stop or reset repairs it; 2-4 carbon shards from 9 m/s. HUD: "FRONT WING GONE · box
+  for a new one". Drawn without the part in 2D (`drawCar` `lost`) and 3D (`CarModel.setLost`).
+- **Debris** (`src/sim/debris.ts`, `RaceWorld.debris`, max 48): the part flies off with the car's
+  speed plus a kick outwards and up, bounces (wheels hop and roll far), slides to a stop (3x
+  quicker on grass/gravel), bounces off walls, and is cleared after **30 s** (fades/shrinks the
+  last 2 s). Cars knock it on; a hit over 6 m/s damages the car where it touched (wing up to 0.12,
+  wheel up to 0.22 + upset and a sideways kick), once per piece per 0.8 s, never knocking parts
+  off. Shards are harmless. Pieces in the air over 0.8 m pass over cars; cars in the pits, parked,
+  wrecked or party-mode ghosts miss it. **Bots steer round** wings and wheels on their path
+  (`BotDriver.avoidDebris`, 2.6 m clearance, seen 30 m + 1.6 s ahead; easy bots 1.1 s). Host only;
+  clients get it in each snapshot (`DebrisSnap`) and move it on between them. Drawn by
+  `src/render/debris.ts` and `src/render3d/debris3d.ts`. Tests: `src/sim/debris.test.ts`.
 - Below the crash threshold, a damaged car **always stays drivable enough to reach the
   pits**. Normal damage has a cap and never stops the car. Repairs happen at a pit stop
   (and add time to the stop).
