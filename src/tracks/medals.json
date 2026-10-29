@@ -46,5 +46,11 @@
   "brands-hatch": {"author":33.96,"gold":35.32,"silver":37.36,"bronze":40.76},
   "jerez": {"author":40.57,"gold":42.2,"silver":44.63,"bronze":48.69},
   "zolder": {"author":35.33,"gold":36.75,"silver":38.87,"bronze":42.4},
-  "donington": {"author":35.21,"gold":36.62,"silver":38.74,"bronze":42.26}
+  "donington": {"author":35.21,"gold":36.62,"silver":38.74,"bronze":42.26},
+  "dijon": {"author":28.8,"gold":29.96,"silver":31.68,"bronze":34.56},
+  "jarama": {"author":36.6,"gold":38.07,"silver":40.26,"bronze":43.92},
+  "anderstorp": {"author":35.94,"gold":37.38,"silver":39.54,"bronze":43.13},
+  "mosport": {"author":28.73,"gold":29.88,"silver":31.61,"bronze":34.48},
+  "aida": {"author":36.49,"gold":37.95,"silver":40.14,"bronze":43.79},
+  "bahrain-outer": {"author":26.03,"gold":27.08,"silver":28.64,"bronze":31.24}
 }

@@ -33,6 +33,8 @@ const FEATURES: Record<string, string> = {
   kyalami: 'za-1961', 'watkins-glen': 'us-1956',
   // Traced from OpenStreetMap (scripts/osm-circuit.ts).
   'brands-hatch': 'osm-brands-hatch', jerez: 'osm-jerez', zolder: 'osm-zolder', donington: 'osm-donington',
+  dijon: 'osm-dijon', jarama: 'osm-jarama', anderstorp: 'osm-anderstorp', mosport: 'osm-mosport', aida: 'osm-aida',
+  'bahrain-outer': 'osm-bahrain-outer',
 };
 
 /** Heights every this many metres of the (game) lap. */

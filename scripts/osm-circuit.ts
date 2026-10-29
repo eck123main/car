@@ -33,7 +33,7 @@ const exclude = ids('exclude');
 const required = [...ids('require')];
 
 const ways = await download();
-const isPit = (w: Way) => /(^|\s)pit/i.test(w.tags?.name ?? '') || /pit_?lane/.test(`${w.tags?.service} ${w.tags?.raceway}`) || w.tags?.pit_lane === 'yes';
+const isPit = (w: Way) => /(^|\s)pit/i.test(`${w.tags?.name} ${w.tags?.['name:en']}`) || /pit_?lane/.test(`${w.tags?.service} ${w.tags?.raceway}`) || w.tags?.pit_lane === 'yes';
 const track = ways.filter(
   (w) =>
     w.type === 'way' &&
@@ -148,16 +148,32 @@ let startAt = flag('start')?.split(',').map(Number).reverse() as [number, number
 if (!startAt) {
   const length = (w: Way) => w.geometry.reduce((t, g, i) => (i ? t + Math.hypot(g.lon - w.geometry[i - 1].lon, g.lat - w.geometry[i - 1].lat) : 0), 0);
   const pit = ways.filter((w) => isPit(w) && !w.tags?.disused && !/old|disused/i.test(w.tags?.name ?? '')).sort((a, b) => length(b) - length(a))[0];
-  if (pit) startAt = [pit.geometry[pit.geometry.length >> 1].lon, pit.geometry[pit.geometry.length >> 1].lat];
+  if (pit) {
+    // Halfway along the pit lane.
+    const g = pit.geometry;
+    let left = length(pit) / 2;
+    for (let i = 1; i < g.length && !startAt; i++) {
+      const step = Math.hypot(g[i].lon - g[i - 1].lon, g[i].lat - g[i - 1].lat);
+      if (step >= left) startAt = [g[i - 1].lon + ((g[i].lon - g[i - 1].lon) * left) / step, g[i - 1].lat + ((g[i].lat - g[i - 1].lat) * left) / step];
+      left -= step;
+    }
+  }
   else console.log('  no pit lane mapped: give --start');
 }
 if (startAt) {
+  // The nearest point of the lap (on a segment: straights may have nodes only at their ends).
   const [x, y] = startAt;
-  let best = 0;
-  coords.forEach((c, i) => {
-    if (Math.hypot(c[0] - x, c[1] - y) < Math.hypot(coords[best][0] - x, coords[best][1] - y)) best = i;
+  const k = Math.cos((lat0 * Math.PI) / 180);
+  let best = { d: Infinity, i: 0, p: coords[0] };
+  coords.forEach((a, i) => {
+    const b = coords[(i + 1) % coords.length];
+    const [dx, dy] = [(b[0] - a[0]) * k, b[1] - a[1]];
+    const t = Math.max(0, Math.min(1, (((x - a[0]) * k * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)) || 0));
+    const p: [number, number] = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    const d = Math.hypot((p[0] - x) * k, p[1] - y);
+    if (d < best.d) best = { d, i, p };
   });
-  coords = [...coords.slice(best), ...coords.slice(0, best)];
+  coords = [best.p, ...coords.slice(best.i + 1), ...coords.slice(0, best.i + 1)].filter((c, i) => i === 0 || c[0] !== best.p[0] || c[1] !== best.p[1]);
 }
 coords.push(coords[0]);
 writeFileSync(out, JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { id: `osm-${id}` }, geometry: { type: 'LineString', coordinates: coords } }] }));

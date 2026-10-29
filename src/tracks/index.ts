@@ -1,6 +1,9 @@
 import { parseTrackDef } from '../track/io';
 import type { TrackDef } from '../track/types';
+import aida from './aida.json';
 import albertPark from './albert-park.json';
+import anderstorp from './anderstorp.json';
+import bahrainOuter from './bahrain-outer.json';
 import bahrain from './bahrain.json';
 import baku from './baku.json';
 import barcelona from './barcelona.json';
@@ -8,6 +11,7 @@ import brandsHatch from './brands-hatch.json';
 import buddh from './buddh.json';
 import buenosAires from './buenos-aires.json';
 import cota from './cota.json';
+import dijon from './dijon.json';
 import donington from './donington.json';
 import estoril from './estoril.json';
 import fuji from './fuji.json';
@@ -18,6 +22,7 @@ import indianapolis from './indianapolis.json';
 import interlagos from './interlagos.json';
 import istanbul from './istanbul.json';
 import jacarepagua from './jacarepagua.json';
+import jarama from './jarama.json';
 import jeddah from './jeddah.json';
 import jerez from './jerez.json';
 import kyalami from './kyalami.json';
@@ -30,6 +35,7 @@ import miami from './miami.json';
 import monaco from './monaco.json';
 import montreal from './montreal.json';
 import monza from './monza.json';
+import mosport from './mosport.json';
 import mugello from './mugello.json';
 import nurburgring from './nurburgring.json';
 import paulRicard from './paul-ricard.json';
@@ -104,6 +110,12 @@ export const TRACKS: Record<string, TrackDef> = {
   jerez: parseTrackDef(jerez),
   zolder: parseTrackDef(zolder),
   donington: parseTrackDef(donington),
+  dijon: parseTrackDef(dijon),
+  jarama: parseTrackDef(jarama),
+  anderstorp: parseTrackDef(anderstorp),
+  mosport: parseTrackDef(mosport),
+  aida: parseTrackDef(aida),
+  'bahrain-outer': parseTrackDef(bahrainOuter),
   test: parseTrackDef(testCircuit),
 };
 
