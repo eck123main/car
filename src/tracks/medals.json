@@ -42,5 +42,9 @@
   "fuji": {"author":36.72,"gold":38.19,"silver":40.4,"bronze":44.07},
   "valencia": {"author":39.08,"gold":40.65,"silver":42.99,"bronze":46.9},
   "yeongam": {"author":46.68,"gold":48.55,"silver":51.35,"bronze":56.02},
-  "buddh": {"author":42.37,"gold":44.07,"silver":46.61,"bronze":50.85}
+  "buddh": {"author":42.37,"gold":44.07,"silver":46.61,"bronze":50.85},
+  "brands-hatch": {"author":33.96,"gold":35.32,"silver":37.36,"bronze":40.76},
+  "jerez": {"author":40.57,"gold":42.2,"silver":44.63,"bronze":48.69},
+  "zolder": {"author":35.33,"gold":36.75,"silver":38.87,"bronze":42.4},
+  "donington": {"author":35.21,"gold":36.62,"silver":38.74,"bronze":42.26}
 }

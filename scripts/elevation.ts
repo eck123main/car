@@ -2,16 +2,18 @@
  * Real elevation for the circuits: samples terrain heights (SRTM, 30 m, via the free
  * OpenTopoData API) along each track and writes them into its file as `"elevation"`.
  *
- *   npx tsx scripts/elevation.ts <f1-circuits.geojson> [--cache dir] [--dry] [track ids...]
+ *   npx tsx scripts/elevation.ts <f1-circuits.geojson> [more.geojson ...] [--cache dir] [--dry] [track ids...]
  *
- * The GeoJSON is bacinger/f1-circuits' combined file (f1-circuits.geojson). Each track was
+ * The GeoJSON is bacinger/f1-circuits' combined file (f1-circuits.geojson), plus, for circuits
+ * traced from OpenStreetMap, the trace each was imported from (a feature with id `osm-<track id>`,
+ * see scripts/osm-circuit.ts). Each track was
  * imported from it centred on the mean of its coordinates and scaled (see trackFromGeoJson), so
  * the script finds the scale that fits best, checks the fit, and maps every point of the lap
  * back to latitude/longitude. Heights are scaled like the track (real gradients on a half-size
  * track: half the height), smoothed (the data includes trees and buildings), and stored every
  * STEP metres of the lap from the start line, lowest point = 0, with side-by-side stretches
- * evened out (scripts/level-heights.ts). Tracks traced from OpenStreetMap
- * (not in the file) are skipped. --dry prints without writing. --cache keeps API answers.
+ * evened out (scripts/level-heights.ts). Tracks without source coordinates (Fuji, Valencia,
+ * Yeongam, Buddh: their traces weren't kept) are skipped. --dry prints without writing. --cache keeps API answers.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Track } from '../src/track/track';
@@ -29,6 +31,8 @@ const FEATURES: Record<string, string> = {
   jacarepagua: 'br-1977', jeddah: 'sa-2021', miami: 'us-2022', lusail: 'qa-2004', madrid: 'es-2026',
   baku: 'az-2016', 'las-vegas': 'us-2023', indianapolis: 'us-1909', 'buenos-aires': 'ar-1952',
   kyalami: 'za-1961', 'watkins-glen': 'us-1956',
+  // Traced from OpenStreetMap (scripts/osm-circuit.ts).
+  'brands-hatch': 'osm-brands-hatch', jerez: 'osm-jerez', zolder: 'osm-zolder', donington: 'osm-donington',
 };
 
 /** Heights every this many metres of the (game) lap. */
@@ -58,12 +62,14 @@ const flag = (name: string) => {
 const dry = args.includes('--dry');
 if (dry) args.splice(args.indexOf('--dry'), 1);
 const cacheDir = flag('cache');
-const [geoFile, ...only] = args;
-if (!geoFile) {
-  console.error('Usage: elevation.ts <f1-circuits.geojson> [--cache dir] [--dry] [track ids...]');
+const geoFiles = args.filter((a) => a.endsWith('.geojson'));
+const only = args.filter((a) => !a.endsWith('.geojson'));
+if (!geoFiles.length) {
+  console.error('Usage: elevation.ts <f1-circuits.geojson> [more.geojson ...] [--cache dir] [--dry] [track ids...]');
   process.exit(1);
 }
-const geo = JSON.parse(readFileSync(geoFile, 'utf8')) as { features: { properties: { id: string }; geometry: { coordinates: [number, number][] } }[] };
+type Feature = { properties: { id: string }; geometry: { coordinates: [number, number][] } };
+const geo = { features: geoFiles.flatMap((f) => (JSON.parse(readFileSync(f, 'utf8')) as { features: Feature[] }).features) };
 if (cacheDir && !existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
 
 for (const id of only.length ? only : Object.keys(FEATURES)) {

@@ -4,9 +4,11 @@ import albertPark from './albert-park.json';
 import bahrain from './bahrain.json';
 import baku from './baku.json';
 import barcelona from './barcelona.json';
+import brandsHatch from './brands-hatch.json';
 import buddh from './buddh.json';
 import buenosAires from './buenos-aires.json';
 import cota from './cota.json';
+import donington from './donington.json';
 import estoril from './estoril.json';
 import fuji from './fuji.json';
 import hockenheim from './hockenheim.json';
@@ -17,6 +19,7 @@ import interlagos from './interlagos.json';
 import istanbul from './istanbul.json';
 import jacarepagua from './jacarepagua.json';
 import jeddah from './jeddah.json';
+import jerez from './jerez.json';
 import kyalami from './kyalami.json';
 import lasVegas from './las-vegas.json';
 import lusail from './lusail.json';
@@ -45,6 +48,7 @@ import watkinsGlen from './watkins-glen.json';
 import yasMarina from './yas-marina.json';
 import yeongam from './yeongam.json';
 import zandvoort from './zandvoort.json';
+import zolder from './zolder.json';
 
 /**
  * Built-in tracks, by id: the 2026 F1 calendar in race order, then well-known circuits from
@@ -96,6 +100,10 @@ export const TRACKS: Record<string, TrackDef> = {
   valencia: parseTrackDef(valencia),
   yeongam: parseTrackDef(yeongam),
   buddh: parseTrackDef(buddh),
+  'brands-hatch': parseTrackDef(brandsHatch),
+  jerez: parseTrackDef(jerez),
+  zolder: parseTrackDef(zolder),
+  donington: parseTrackDef(donington),
   test: parseTrackDef(testCircuit),
 };
 
