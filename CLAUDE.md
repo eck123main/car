@@ -161,7 +161,7 @@ brake. Off by default (`Settings.idealLine`), any mode.
   for a track whose shape or width changes (the offsets must match its sample count).
 - The robot's laps are mostly 2-10% off the author medals (Estoril, Watkins Glen, Interlagos ~15%;
   Imola, Sochi, Jeddah, Miami beat them): good players still beat it, but it is far quicker than the
-  bots' line (Silverstone 45.3 vs ~51 s). Ten tracks only got a clean lap with the gentler fallback
+  bots' line (Silverstone 45.3 vs ~51 s). Eleven tracks (Mosport the latest) only got a clean lap with the gentler fallback
   settings (1.4-2 m margin, 90-94% grip), so their lines keep further from the edges.
 
 ## Garage (coins, skins, medals)
@@ -180,7 +180,7 @@ coin balance shows in the account bar, with a red dot when today's reward or spi
 - **Skins** (`src/cosmetics/skins.ts`): shop common 300 / rare 750 / epic 1500 (prices also in
   `skin_shop`; `skins.test.ts` keeps SQL and TS in sync, also rewards and spin odds). **Medal
   skins** count a medal towards every lower one: Bronze 10 bronze+, Silver 15 silver+, Gold 20
-  gold+, Author 5 author, Perfectionist author on every track (44). They're worked out from the
+  gold+, Author 5 author, Perfectionist author on every track (54). They're worked out from the
   board like medals, so the database lets any `medal-*` id be equipped (not checked there).
 - The equipped skin is cached per account (`f1td.skin.<id>`) so a game starts without waiting,
   sent in `hello` (and the host's constructor), checked with `isSkinId`, carried in
@@ -247,7 +247,7 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   (Suzuka, Singapore Flyer), sphere (Las Vegas), flames (Baku's towers), sands (Marina Bay Sands),
   walls (Baku's old city), strip (Las Vegas), stadium (Mexico's Foro Sol), sign (Wall of
   Champions). Big landmarks move further out until clear of every part of the track, and warn in
-  the console if there's no room. 22 circuits have a block; the rest look as before.
+  the console if there's no room. 31 circuits have a block; the rest look as before.
   Note: Monaco's start line and pits in the track file are at Casino Square, not on the real
   start straight (corners match the real lap from there).
 - **Party items** (`items3d.ts`, from the same `ItemView` / `ItemState` the 2D view draws): Mario Kart
@@ -577,7 +577,7 @@ The timing tower is always shown (no Tab needed).
   (`Car.trackIndex`, `Track.query` hint; kept through resets and while held still), and
   cars on different stretches of the lap never collide (`onOtherStretches`: one goes over
   the bridge, the other under). Bots ignore cars on other stretches too.
-  **20 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
+  **30 circuits from earlier seasons** too (listed after the calendar in `TRACKS`): Imola, Hockenheim
   (0.6 scale, 18.5 m: its hairpin folded onto itself at 0.5), Nürburgring, Sepang, Istanbul Park,
   Portimão, Paul Ricard (the GeoJSON ran backwards; reversed to the real clockwise direction),
   Mugello, Estoril, Indianapolis (F1 road course), Magny-Cours (0.6 scale: at 0.5
@@ -585,6 +585,15 @@ The timing tower is always shown (no Tab needed).
   scale, DRS was worth too little at 0.5), Kyalami (current anticlockwise layout, 3 DRS zones),
   Watkins Glen, and four traced from OpenStreetMap (not in bacinger's data): Fuji, Valencia
   (street circuit; two short gaps in the OSM ways bridged straight), Yeongam (Korea), Buddh (India).
+  Ten more traced from OpenStreetMap with `scripts/osm-circuit.ts` (finds the lap among a circuit's
+  raceway ways; its GeoJSON also feeds `scripts/elevation.ts`, so these have real hills): Brands Hatch
+  (GP loop), Jerez, Zolder, Donington Park (GP, Melbourne Loop), Dijon-Prenois, Jarama, Anderstorp,
+  Mosport, Aida (TI Circuit) and Bahrain Outer (2020 Sakhir GP). All at **0.6 scale** (at 0.5 DRS
+  was worth under 0.4 s) except Bahrain Outer (0.5); 3-4 DRS zones each on the bot's full-throttle
+  runs. OSM has today's layouts: Jarama is the 3.9 km circuit, Zolder has its later chicanes. Start
+  lines moved up the straight at Brands Hatch, Jerez and Anderstorp (the time trial rolling start
+  needs straight road behind the line; Anderstorp's real pits are away from the start).
+  Adelaide and Long Beach aren't mapped as circuits in OSM (street tracks), so they're not in.
   Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
   `scripts/import-track.ts` (see its header).
