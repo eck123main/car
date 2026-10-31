@@ -170,6 +170,8 @@ export class PracticeDriver implements GameDriver {
     const s = ss[i];
     me.car.place(s.x, s.y, Math.atan2(s.ty, s.tx), i);
     me.car.repair();
+    // Alone on track, so the parts from the crash go too.
+    this.w.debris = [];
     me.timer.abortLap();
     me.pit.phase = 'out';
   }
