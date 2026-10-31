@@ -124,6 +124,17 @@ describe('Time trial', () => {
     expect(tt.lapTime()).not.toBeNull();
     expect(tt.me.timer.valid).toBe(true);
   });
+
+  it('a restart clears debris from the last crash off the track', () => {
+    const tt = new TimeTrial(track, 'test', 'Me', '#e10600');
+    const c = tt.me.car;
+    tt.world.debris.push({
+      id: 1, kind: 'frontWing', owner: 'me', compound: 'soft', x: c.x, y: c.y, z: 0, vx: 0, vy: 0, vz: 0,
+      heading: 0, spin: 0, born: tt.world.time, trackIndex: c.trackIndex, s: 0, d: 0,
+    });
+    tt.restart();
+    expect(tt.world.debris).toEqual([]);
+  });
 });
 
 describe('Local leaderboard', () => {

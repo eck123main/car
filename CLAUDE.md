@@ -99,7 +99,7 @@ alone: DRS free in every zone, ERS, no other cars.
 - **Every lap is set on the same terms**: it starts from the same rolling start (the
   straightest spot 60-300 m before the line, 45 m/s), on fresh softs and a full ERS battery.
   Crossing the line to finish a lap puts the car straight back there, so nobody carries
-  speed out of the last corner into the next lap.
+  speed out of the last corner into the next lap. Every restart also clears debris off the track.
 - **All four wheels off** (`LapTimer.offTrack`; kerbs count as track), or entering the pit
   lane, cancels the lap. A prompt offers **R / ENTER = restart from the start** or keep
   driving. R, ENTER or the Esc menu's **Restart lap** restart at any time (no wait). Esc

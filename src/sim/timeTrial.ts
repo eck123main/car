@@ -61,6 +61,8 @@ export class TimeTrial {
     me.car.vx = s.tx * speed;
     me.car.vy = s.ty * speed;
     me.car.repair();
+    // A clean track too: parts from the last crash would still be lying there for 30 s.
+    this.world.debris = [];
     me.frozen = false;
     me.timer.abortLap();
     me.pit.phase = 'out';
