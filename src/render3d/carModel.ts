@@ -711,10 +711,10 @@ export class SteeringWheel {
   }
 
   /** Turn the wheel for the car's movement and move the hands (every frame). */
-  drive(steer: number, speed: number, yawRate: number, info: WheelInfo, dt: number): void {
-    // The hands ease the wheel round: quick, but never a snap.
+  drive(steer: number, speed: number, yawRate: number, info: WheelInfo, dt: number, shake = 0): void {
+    // The hands ease the wheel round: quick, but never a snap. Kerbs and hits kick it about.
     const target = wheelAngle(steer, speed, yawRate);
-    this.angle += (target - this.angle) * Math.min(1, dt * 14);
+    this.angle += (target - this.angle) * Math.min(1, dt * 14) + shake * 2 * (Math.random() * 2 - 1);
     this.group.rotation.x = this.angle;
 
     const [left, right] = this.hands;

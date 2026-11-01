@@ -14,6 +14,7 @@ import type { PitScene } from '../render/pitStops';
 import { Scenery3d } from './scenery3d';
 import { Landmarks, lookOf, waterOf } from './landmarks';
 import { Terrain } from './terrain';
+import { HeadMotion, type Feel, type HeadPose } from './feel';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -109,7 +110,11 @@ export interface OwnCarView extends CarView {
   speed: number;
   yawRate: number;
   wheel: WheelInfo;
+  /** What moves the driver's head (g-forces, kerbs, hits); none: the camera stays still. */
+  feel?: Feel;
 }
+
+const STILL_HEAD: HeadPose = { x: 0, y: 0, z: 0, roll: 0, pitch: 0, shake: 0 };
 
 export class View3D {
   readonly canvas: HTMLCanvasElement;
@@ -124,6 +129,8 @@ export class View3D {
   private readonly cars = new Map<string, { model: CarModel; key: string; heat: number }>();
   private readonly disposables: { dispose(): void }[] = [];
   private chaseHeading: number | null = null;
+  private readonly headMotion = new HeadMotion();
+  private headPose: HeadPose = STILL_HEAD;
   private look = 0;
   private pitch = 0;
   private pitchReady = false;
@@ -326,7 +333,8 @@ export class View3D {
     const def = CAMS[this.mode];
     mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
-    mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt);
+    this.headPose = own.feel ? this.headMotion.step(own.feel, dt) : STILL_HEAD;
+    mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt, this.headPose.shake);
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
 
@@ -425,14 +433,20 @@ export class View3D {
       const sin = Math.sin(h);
       return new THREE.Vector3(own.x + p[0] * cos - p[2] * sin, p[1] + lift, own.y + p[0] * sin + p[2] * cos);
     };
+    // The driver's head moves with the g-forces and shakes; cameras bolted to the car only shake.
+    const hp = this.headPose;
+    const head = cam.inside && !this.lookBack;
+    const off: [number, number, number] = head ? [hp.x, hp.y, hp.z] : [0, hp.y * (cam.chase ? 0.4 : 1), 0];
+    const add = (q: [number, number, number], up = 0): [number, number, number] => [q[0] + off[0], q[1] + off[1] + up, q[2] + off[2]];
     // The chase camera is placed from the smoothed heading but stays centred on the car.
-    const eye = toWorld(cam.eye);
+    const eye = toWorld(add(cam.eye));
     if (cam.chase) {
       const d = Math.hypot(cam.eye[0], cam.eye[2]);
-      eye.set(own.x - Math.cos(heading) * d, cam.eye[1] + lift, own.y - Math.sin(heading) * d);
+      eye.set(own.x - Math.cos(heading) * d, cam.eye[1] + off[1] + lift, own.y - Math.sin(heading) * d);
     }
     this.camera.position.copy(eye);
-    this.camera.lookAt(toWorld(cam.look, cam.chase ? 0 : this.look));
+    this.camera.lookAt(toWorld(add(cam.look, head ? hp.pitch * 30 : 0), cam.chase ? 0 : this.look));
+    if (head) this.camera.rotateZ(hp.roll);
     this.camera.fov = cam.fov + FOV_SPEED * Math.min(1, own.speed / 90);
     this.camera.updateProjectionMatrix();
   }

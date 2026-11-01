@@ -724,6 +724,13 @@ export class GameScreen {
         ...look(me),
         speed: me.car.speed,
         yawRate: me.car.yawRate,
+        feel: {
+          longG: me.car.longG,
+          latG: me.car.latG,
+          speed: me.car.speed,
+          surface: loudestSurface(me.car.surfaceFront, me.car.surfaceRear),
+          upset: me.car.upset,
+        },
         wheel: {
           speedKmh: me.car.speed * 3.6,
           drsOpen: me.drsOpen,
