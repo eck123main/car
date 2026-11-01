@@ -705,6 +705,7 @@ export class GameScreen {
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
     view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
+    view.setRace({ lights: session?.phase === 'lights' ? session.lights : 0 });
     view.showDebris(
       world.debris,
       (id) => {

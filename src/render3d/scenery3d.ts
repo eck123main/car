@@ -48,11 +48,17 @@ export interface SceneryOptions {
   base?: number;
 }
 
+const LAMP_ON = '#ff1a1a';
+const LAMP_OFF = '#2a0808';
+
 export class Scenery3d {
   readonly group = new THREE.Group();
   private readonly rnd: () => number;
   private readonly ss: TrackSample[];
   private readonly solid = new QuadBuilder();
+  /** One material per column of start lights, so they light up one by one. */
+  private readonly lamps: THREE.MeshBasicMaterial[] = [];
+  private lit = -1;
 
   constructor(
     private readonly track: Track,
@@ -227,6 +233,30 @@ export class Scenery3d {
       const off = (k - 2) * 1.6;
       q.quad(at(s, off - 0.5, 6.3, -0.55), at(s, off + 0.5, 6.3, -0.55), at(s, off + 0.5, 7.9, -0.55), at(s, off - 0.5, 7.9, -0.55), '#111111');
     }
+    // Two red lamps in each pod, lit by setStartLights.
+    const lamp = new THREE.CircleGeometry(0.3, 14);
+    const facing = new THREE.Vector3(-s.tx, 0, -s.ty);
+    for (let k = 0; k < 5; k++) {
+      const mat = new THREE.MeshBasicMaterial({ color: LAMP_OFF, side: THREE.DoubleSide });
+      this.lamps.push(mat);
+      for (const h of [7.45, 6.75]) {
+        const m = new THREE.Mesh(lamp, mat);
+        m.position.set(...at(s, (k - 2) * 1.6, h, -0.58));
+        m.lookAt(m.position.clone().add(facing));
+        this.group.add(m);
+      }
+    }
+  }
+
+  /** Light the first `n` columns of start lights (0-5: 0 = all out). */
+  setStartLights(n: number): void {
+    if (n === this.lit) return;
+    this.lit = n;
+    this.lamps.forEach((m, k) => m.color.set(k < n ? LAMP_ON : LAMP_OFF));
+  }
+
+  dispose(): void {
+    for (const m of this.lamps) m.dispose();
   }
 
   private addTrees(): void {

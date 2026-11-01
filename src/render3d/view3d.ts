@@ -114,6 +114,12 @@ export interface OwnCarView extends CarView {
   feel?: Feel;
 }
 
+/** What the race looks like around the cars (see View3D.setRace). */
+export interface RaceLook {
+  /** Red start lights showing (0-5). */
+  lights: number;
+}
+
 const STILL_HEAD: HeadPose = { x: 0, y: 0, z: 0, roll: 0, pitch: 0, shake: 0 };
 
 export class View3D {
@@ -159,6 +165,7 @@ export class View3D {
   private time = 0;
   private width = 1;
   private readonly track: Track;
+  private readonly scenery: Scenery3d;
 
   constructor(track: Track) {
     this.canvas = document.createElement('canvas');
@@ -200,7 +207,7 @@ export class View3D {
     const landmarks = new Landmarks(track, look, terrain, water);
     this.scene.add(landmarks.group);
     this.disposables.push(landmarks);
-    const scenery = new Scenery3d(track, solid, {
+    const scenery = (this.scenery = new Scenery3d(track, solid, {
       trees: look.trees,
       blocked: (x, y, margin) => landmarks.blocked(x, y, margin),
       hills: hillColor(track.scenery),
@@ -208,7 +215,8 @@ export class View3D {
       heightAt: (x, y) => this.heightAt(x, y),
       groundAt: (x, y) => terrain.heightAt(x, y),
       base: terrain.base,
-    });
+    }));
+    this.disposables.push(scenery);
     this.scene.add(scenery.group);
     scenery.group.traverse((o) => {
       if (o instanceof THREE.Mesh) this.disposables.push(o.geometry);
@@ -462,6 +470,11 @@ export class View3D {
   heightAt(x: number, y: number, trackIndex: number | null = null): number {
     if (!this.track.hilly) return 0;
     return this.track.roadHeight(x, y, trackIndex)?.z ?? 0;
+  }
+
+  /** Race state the scenery shows: start lights lit (0-5) on the gantry. */
+  setRace(race: RaceLook): void {
+    this.scenery.setStartLights(race.lights);
   }
 
   /** Show the ideal line on the road (null hides it). */
