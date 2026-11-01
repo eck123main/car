@@ -15,6 +15,7 @@ import { Scenery3d } from './scenery3d';
 import { Landmarks, lookOf, waterOf } from './landmarks';
 import { Terrain } from './terrain';
 import { HeadMotion, type Feel, type HeadPose } from './feel';
+import { Sparks3d, type SparkCar } from './sparks3d';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -166,6 +167,7 @@ export class View3D {
   private width = 1;
   private readonly track: Track;
   private readonly scenery: Scenery3d;
+  private readonly sparks = new Sparks3d();
 
   constructor(track: Track) {
     this.canvas = document.createElement('canvas');
@@ -216,7 +218,8 @@ export class View3D {
       groundAt: (x, y) => terrain.heightAt(x, y),
       base: terrain.base,
     }));
-    this.disposables.push(scenery);
+    this.disposables.push(scenery, this.sparks);
+    this.scene.add(this.sparks.mesh);
     this.scene.add(scenery.group);
     scenery.group.traverse((o) => {
       if (o instanceof THREE.Mesh) this.disposables.push(o.geometry);
@@ -331,6 +334,7 @@ export class View3D {
       // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
       entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
     }
+    this.updateSparks([own, ...others], dt);
     for (const [id, entry] of this.cars) {
       if (seen.has(id)) continue;
       entry.model.group.removeFromParent();
@@ -457,6 +461,19 @@ export class View3D {
     if (head) this.camera.rotateZ(hp.roll);
     this.camera.fov = cam.fov + FOV_SPEED * Math.min(1, own.speed / 90);
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Sparks from the floors of cars pressed down hard (not ghosts). */
+  private updateSparks(cars: CarView[], dt: number): void {
+    const list = new Map<string, SparkCar>();
+    for (const car of cars) {
+      if (car.ghost || !car.speed) continue;
+      const slope = this.track.slope(car.trackIndex ?? null);
+      // As Car.step: the road's vertical curve makes the car heavier in a dip.
+      const weight = slope ? Math.max(0.3, Math.min(1.8, 1 + (car.speed * car.speed * slope.vcurv) / 9.81)) : 1;
+      list.set(car.id, { x: car.x, y: car.y, heading: car.heading, speed: car.speed, weight, ground: this.heightAt(car.x, car.y, car.trackIndex) });
+    }
+    this.sparks.update(list, dt);
   }
 
   /** Rise per metre along a car's nose, from the slope of the road where it is. */
