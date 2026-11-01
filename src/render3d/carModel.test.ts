@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armJoints, dentAt, wheelAngle } from './carModel';
+import { armJoints, brakeHeat, dentAt, discGlow, wheelAngle } from './carModel';
 
 const NONE = { frontWing: 0, rearWing: 0, left: 0, right: 0 };
 
@@ -61,5 +61,24 @@ describe('Steering wheel and the driver\'s arms', () => {
     // Right turn at full lock: the left hand goes over the top to the right.
     expect(armJoints(2, -1).wrist.z).toBeGreaterThan(0);
     expect(armJoints(0, -1).wrist.z).toBeLessThan(0);
+  });
+});
+
+describe('Brake discs', () => {
+  const run = (heat: number, brake: number, speed: number, seconds: number) => {
+    for (let t = 0; t < seconds; t += 1 / 60) heat = brakeHeat(heat, brake, speed, 1 / 60);
+    return heat;
+  };
+
+  it('glow after a big stop from top speed, then cool off in a few seconds', () => {
+    const hot = run(0, 1, 85, 1.2);
+    expect(discGlow(hot)).toBeGreaterThan(0.6);
+    expect(discGlow(run(hot, 0, 60, 2))).toBeGreaterThan(0);
+    expect(discGlow(run(hot, 0, 60, 5))).toBe(0);
+  });
+
+  it('stay dark with light braking or at low speed', () => {
+    expect(discGlow(run(0, 0.3, 30, 10))).toBeLessThan(0.15);
+    expect(discGlow(run(0, 1, 5, 10))).toBe(0);
   });
 });

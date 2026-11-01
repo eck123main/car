@@ -213,7 +213,26 @@ interface Materials {
   ring: THREE.MeshLambertMaterial;
   wing: THREE.MeshLambertMaterial;
   helmet: THREE.Material;
+  disc: THREE.MeshLambertMaterial;
+  visor: THREE.Material;
 }
+
+/**
+ * Brake disc heat (0-1): builds up while braking hard from speed, cools off over a few seconds.
+ * Glows orange past ~0.25 (see `discGlow`).
+ */
+export function brakeHeat(heat: number, brake: number, speed: number, dt: number): number {
+  const warming = brake * Math.min(1, speed / 60) * 0.9;
+  return Math.max(0, Math.min(1, heat + (warming - heat * 0.45) * dt));
+}
+
+/** How brightly the discs glow (0-1) at a heat. */
+export function discGlow(heat: number): number {
+  return Math.max(0, Math.min(1, (heat - 0.25) / 0.6));
+}
+
+const DISC_DARK = new THREE.Color('#34312e');
+const DISC_HOT = new THREE.Color('#ff5a10');
 
 const shared = {
   wheelFront: null as THREE.BufferGeometry | null,
@@ -247,6 +266,9 @@ export class CarModel {
   private readonly toe = [0, 0, 0, 0];
   private readonly flap: THREE.Mesh;
   private readonly helmet: THREE.Mesh;
+  private readonly head = new THREE.Group();
+  private readonly miniWheel: THREE.Mesh;
+  private glow = -1;
   private readonly halo = new THREE.Group();
   private readonly mirrors = new THREE.Group();
   private mirrorMat: THREE.Material | null = null;
@@ -277,6 +299,8 @@ export class CarModel {
       ring: lambert({ color: '#ffffff' }) as THREE.MeshLambertMaterial,
       wing: lambert({ color: livery.wings }) as THREE.MeshLambertMaterial,
       helmet: lambert({ color: livery.helmet }),
+      disc: lambert({ color: DISC_DARK }) as THREE.MeshLambertMaterial,
+      visor: lambert({ color: '#0b0c10' }),
     };
     this.bodyGeo = bodyGeometry(livery);
     this.basePositions = (this.bodyGeo.getAttribute('position').array as Float32Array).slice();
@@ -296,9 +320,22 @@ export class CarModel {
     this.group.add(this.halo);
     const helmetGeo = new THREE.SphereGeometry(0.15, 12, 8);
     this.owned.push(helmetGeo);
+    // The driver's head: helmet with a dark visor, so you can see it turn into corners.
     this.helmet = new THREE.Mesh(helmetGeo, this.mats.helmet);
-    this.helmet.position.set(-0.42, 0.78, 0);
-    this.group.add(this.helmet);
+    const visorGeo = new THREE.BoxGeometry(0.06, 0.06, 0.2);
+    this.owned.push(visorGeo);
+    const visor = new THREE.Mesh(visorGeo, this.mats.visor);
+    visor.position.set(0.115, 0.02, 0);
+    this.head.add(this.helmet, visor);
+    this.head.position.set(-0.42, 0.78, 0);
+    this.group.add(this.head);
+    // A small steering wheel for other cars' drivers (our own car gets the full one).
+    const miniGeo = new THREE.BoxGeometry(0.03, 0.12, 0.26);
+    this.owned.push(miniGeo);
+    this.miniWheel = new THREE.Mesh(miniGeo, this.mats.carbon);
+    this.miniWheel.position.set(0.02, 0.74, 0);
+    this.miniWheel.rotation.z = 0.35;
+    this.group.add(this.miniWheel);
 
     // DRS flap, hinged at its leading edge.
     const flapGeo = new THREE.BoxGeometry(0.22, 0.035, 1.0);
@@ -323,14 +360,19 @@ export class CarModel {
     shared.wheelFront ??= wheelGeometry(0.33, 0.36);
     shared.wheelRear ??= wheelGeometry(0.36, 0.42);
     const ring = new THREE.TorusGeometry(0.24, 0.025, 4, 16);
-    this.owned.push(ring);
+    // Brake disc seen through the wheel rim; glows orange when hot.
+    const disc = new THREE.CircleGeometry(0.15, 12);
+    this.owned.push(ring, disc);
     const addWheel = (x: number, y: number, z: number, geo: THREE.BufferGeometry, width: number) => {
       const g = new THREE.Group();
       g.position.set(x, y, z);
       g.add(new THREE.Mesh(geo, this.mats.tyre));
       const r = new THREE.Mesh(ring, this.mats.ring);
       r.position.z = Math.sign(z) * (width / 2 + 0.005);
-      g.add(r);
+      const d = new THREE.Mesh(disc, this.mats.disc);
+      d.position.z = Math.sign(z) * (width / 2 + 0.003);
+      if (z < 0) d.rotation.y = Math.PI;
+      g.add(r, d);
       this.group.add(g);
       this.wheels.push(g);
       return g;
@@ -355,6 +397,9 @@ export class CarModel {
     this.group.position.set(x, 0, y);
     this.group.rotation.y = -heading;
     this.frontWheels.forEach((w, i) => (w.rotation.y = -steer * STEER_VISUAL + this.toe[i]));
+    // The driver looks into the corner and leans out of it; their wheel turns.
+    this.head.rotation.set(-steer * 0.12, -steer * 0.35, 0);
+    this.miniWheel.rotation.x = steer * 1.2;
     if (drsOpen !== this.drs) {
       this.drs = drsOpen;
       this.flap.rotation.z = drsOpen ? 0.7 : 0;
@@ -434,7 +479,16 @@ export class CarModel {
 
   /** Inside the car: the helmet would fill the view. */
   set driverVisible(on: boolean) {
-    this.helmet.visible = on;
+    this.head.visible = on;
+  }
+
+  /** Brake disc heat (0-1, from `brakeHeat`): hot discs glow orange. */
+  setBrakeHeat(heat: number): void {
+    const glow = Math.round(discGlow(heat) * 20) / 20;
+    if (glow === this.glow || this.ghost) return;
+    this.glow = glow;
+    this.mats.disc.color.copy(DISC_DARK).lerp(DISC_HOT, glow);
+    this.mats.disc.emissive.copy(DISC_HOT).multiplyScalar(glow * 0.9);
   }
 
   /** Some cameras hide the halo: its centre pillar blocks the middle of the view. */
@@ -467,6 +521,7 @@ export class CarModel {
   /** Add the steering wheel and the driver's arms on it (own car only). */
   addSteeringWheel(): SteeringWheel {
     this.wheel = new SteeringWheel(this.livery);
+    this.miniWheel.visible = false;
     this.group.add(this.wheel.group, this.wheel.arms);
     return this.wheel;
   }

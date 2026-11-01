@@ -692,6 +692,8 @@ export class GameScreen {
         trackIndex: r.car.trackIndex,
         lost: r.car.lost,
         parts: r.car.parts,
+        speed: r.car.speed,
+        brake: r.car.brake,
       };
     };
     // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
