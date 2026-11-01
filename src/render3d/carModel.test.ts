@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armJoints, brakeHeat, dentAt, discGlow, wheelAngle } from './carModel';
+import { armJoints, brakeHeat, dentAt, discGlow, shiftLights, SHIFT_LEDS, wheelAngle } from './carModel';
 
 const NONE = { frontWing: 0, rearWing: 0, left: 0, right: 0 };
 
@@ -80,5 +80,16 @@ describe('Brake discs', () => {
   it('stay dark with light braking or at low speed', () => {
     expect(discGlow(run(0, 0.3, 30, 10))).toBeLessThan(0.15);
     expect(discGlow(run(0, 1, 5, 10))).toBe(0);
+  });
+});
+
+describe('Shift lights', () => {
+  it('fill up through each gear and flash at the shift point', () => {
+    expect(shiftLights(9000)).toBe(0);
+    const mid = shiftLights(10500);
+    expect(mid).toBeGreaterThan(3);
+    expect(mid).toBeLessThan(SHIFT_LEDS);
+    expect(shiftLights(11600)).toBe(SHIFT_LEDS);
+    expect(shiftLights(12000)).toBe(SHIFT_LEDS + 1);
   });
 });

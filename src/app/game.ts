@@ -738,6 +738,7 @@ export class GameScreen {
           ers: me.ers,
           ersActive: me.ersActive,
           limiter: me.input.limiter,
+          throttle: me.car.throttle,
         },
       },
       others,

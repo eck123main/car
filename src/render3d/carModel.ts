@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR, type CarParts } from '../physics/car';
 import type { Livery } from '../render/livery';
-import { gearFor } from '../audio/sound';
+import { engineRpm, gearFor } from '../audio/sound';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { QuadBuilder } from './trackMesh';
 
@@ -600,7 +600,17 @@ export interface WheelInfo {
   ers: number;
   ersActive: boolean;
   limiter: boolean;
+  /** For the revs on the shift lights (0-1). */
+  throttle?: number;
 }
+
+/** Shift lights: how many of the 15 LEDs are lit at these revs, or 16 = all flashing (shift now). */
+export const SHIFT_LEDS = 15;
+export function shiftLights(rpm: number): number {
+  if (rpm >= 11650) return SHIFT_LEDS + 1;
+  return Math.max(0, Math.min(SHIFT_LEDS, Math.ceil(((rpm - 9300) / (11650 - 9300)) * SHIFT_LEDS)));
+}
+const LED_COLORS = ['#20e040', '#ff2a2a', '#7a5cff'];
 
 /** One gloved hand on a grip, and the arm to it. */
 interface Hand {
@@ -636,6 +646,10 @@ export class SteeringWheel {
   private angle = 0;
   private gear = 1;
   private drs = false;
+  private readonly ledCanvas = document.createElement('canvas');
+  private readonly ledCtx: CanvasRenderingContext2D;
+  private readonly ledTex: THREE.CanvasTexture;
+  private lit = -1;
 
   constructor(livery?: Livery) {
     this.group.position.set(...WHEEL_POS);
@@ -667,6 +681,19 @@ export class SteeringWheel {
     screen.rotation.y = -Math.PI / 2;
     screen.position.set(-0.021, 0.01, 0);
     inner.add(screen);
+    // Shift lights in a row across the top of the wheel: green, red, then blue.
+    this.ledCanvas.width = 128;
+    this.ledCanvas.height = 8;
+    this.ledCtx = this.ledCanvas.getContext('2d')!;
+    this.ledTex = new THREE.CanvasTexture(this.ledCanvas);
+    this.ledTex.colorSpace = THREE.SRGBColorSpace;
+    const ledGeo = new THREE.PlaneGeometry(0.2, 0.0125);
+    const ledMat = new THREE.MeshBasicMaterial({ map: this.ledTex });
+    this.disposables.push(this.ledTex, ledGeo, ledMat);
+    const leds = new THREE.Mesh(ledGeo, ledMat);
+    leds.rotation.y = -Math.PI / 2;
+    leds.position.set(-0.021, 0.056, 0);
+    inner.add(leds);
     this.buildHands(livery);
   }
 
@@ -760,17 +787,22 @@ export class SteeringWheel {
   }
 
   show(info: WheelInfo): void {
-    const key = `${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}`;
+    this.showLeds(shiftLights(engineRpm(info.speedKmh, info.throttle ?? 0)));
+    const key = `${gearFor(info.speedKmh)}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}`;
     if (key === this.last) return;
     this.last = key;
     const c = this.ctx;
     c.fillStyle = '#050608';
     c.fillRect(0, 0, 128, 64);
-    c.fillStyle = info.limiter ? '#4dd2ff' : '#ffffff';
-    c.font = 'bold 30px system-ui, sans-serif';
+    // Gear big in the middle, speed to the right.
     c.textAlign = 'center';
     c.textBaseline = 'middle';
-    c.fillText(String(Math.round(info.speedKmh)), 64, 26);
+    c.fillStyle = '#ffffff';
+    c.font = 'bold 34px system-ui, sans-serif';
+    c.fillText(String(gearFor(info.speedKmh)), 64, 26);
+    c.fillStyle = info.limiter ? '#4dd2ff' : '#d8dade';
+    c.font = 'bold 16px system-ui, sans-serif';
+    c.fillText(String(Math.round(info.speedKmh)), 104, 26);
     // DRS light (left), ERS bar (bottom).
     c.fillStyle = info.drsOpen ? DRS_GREEN : info.drsAvailable ? '#ffd400' : '#2a2b30';
     c.fillRect(6, 8, 18, 18);
@@ -779,6 +811,25 @@ export class SteeringWheel {
     c.fillStyle = info.ersActive ? '#ffd400' : '#4dd2ff';
     c.fillRect(8, 50, 112 * info.ers, 8);
     this.tex.needsUpdate = true;
+  }
+
+  private showLeds(lit: number): void {
+    // Shift now: all of them flash.
+    const flash = lit > SHIFT_LEDS;
+    const state = flash ? (Math.floor(performance.now() / 70) % 2 === 0 ? 99 : 98) : lit;
+    if (state === this.lit) return;
+    this.lit = state;
+    const c = this.ledCtx;
+    c.fillStyle = '#050608';
+    c.fillRect(0, 0, 128, 8);
+    for (let i = 0; i < SHIFT_LEDS; i++) {
+      const on = flash ? state === 99 : i < lit;
+      c.fillStyle = on ? (flash ? LED_COLORS[2] : LED_COLORS[Math.floor(i / 5)]) : '#1c1d22';
+      c.beginPath();
+      c.arc(5 + i * 8.4, 4, 3, 0, Math.PI * 2);
+      c.fill();
+    }
+    this.ledTex.needsUpdate = true;
   }
 
   dispose(): void {
