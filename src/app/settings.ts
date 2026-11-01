@@ -12,13 +12,15 @@ export interface Settings {
   delta: boolean;
   /** The ideal racing line on the track (green throttle, yellow hold, red brake). */
   idealLine: boolean;
+  /** 3D view: the driver's head moves with g-forces and the camera shakes on kerbs and hits. Off by default: a steady view is easier to drive. */
+  headMotion: boolean;
 }
 
 const KEY = 'f1td.settings';
 /** Saved settings older than this still have the engine on from when it was the default. */
 const VERSION = 2;
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false };
+export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false, headMotion: false };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

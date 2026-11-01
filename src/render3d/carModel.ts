@@ -576,7 +576,7 @@ export function elbowFor(s: THREE.Vector3, w: THREE.Vector3, upper: number, fore
 }
 
 /** Steering wheel hub (car frame) and how far it is tilted back towards the driver (rad). */
-const WHEEL_POS: V3 = [0.02, 0.79, 0];
+const WHEEL_POS: V3 = [0.03, 0.755, 0];
 const WHEEL_TILT = 0.35;
 
 /** Shoulder, elbow and wrist (car frame) of one arm (side -1 left, 1 right) with the wheel at `angle`. */

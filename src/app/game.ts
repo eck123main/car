@@ -705,7 +705,7 @@ export class GameScreen {
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
     view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
-    view.setRace({ lights: session?.phase === 'lights' ? session.lights : 0 });
+    view.setRace({ lights: session?.phase === 'lights' ? session.lights : 0, wetness: world.options.wetness });
     view.showDebris(
       world.debris,
       (id) => {
@@ -725,13 +725,14 @@ export class GameScreen {
         ...look(me),
         speed: me.car.speed,
         yawRate: me.car.yawRate,
-        feel: {
+        // Head movement and shaking only when the player turns it on (steady view by default).
+        feel: settings().headMotion ? {
           longG: me.car.longG,
           latG: me.car.latG,
           speed: me.car.speed,
           surface: loudestSurface(me.car.surfaceFront, me.car.surfaceRear),
           upset: me.car.upset,
-        },
+        } : undefined,
         wheel: {
           speedKmh: me.car.speed * 3.6,
           drsOpen: me.drsOpen,
@@ -846,7 +847,8 @@ export class GameScreen {
     const w = canvas.width / dpr;
     const h = canvas.height / dpr;
     const now = this.driver.now();
-    drawRain(ctx, world.options.wetness, w, h, now);
+    // The 3D view has its own rain.
+    if (!this.view3d) drawRain(ctx, world.options.wetness, w, h, now);
     this.gfx!.minimap.draw(
       ctx,
       w,

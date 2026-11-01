@@ -33,8 +33,26 @@ export function sparkRate(speed: number, weight: number): number {
   return Math.min(160, fast + pressed);
 }
 
+/** A small soft glow. */
+function dotTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.6)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+}
+
 export class Sparks3d {
-  readonly mesh: THREE.LineSegments;
+  /** The streaks and a glowing dot at each end (same geometry). */
+  readonly mesh = new THREE.Group();
+  private readonly lines: THREE.LineSegments;
+  private readonly dots: THREE.Points;
+  private readonly dot: THREE.Texture;
   private readonly pos = new Float32Array(MAX * 3);
   private readonly vel = new Float32Array(MAX * 3);
   private readonly ground = new Float32Array(MAX);
@@ -54,8 +72,13 @@ export class Sparks3d {
     geo.setAttribute('position', this.positions);
     geo.setAttribute('color', this.colors);
     const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-    this.mesh = new THREE.LineSegments(geo, mat);
-    this.mesh.frustumCulled = false;
+    this.lines = new THREE.LineSegments(geo, mat);
+    this.lines.frustumCulled = false;
+    this.dot = dotTexture();
+    const dotMat = new THREE.PointsMaterial({ size: 0.22, map: this.dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.dots = new THREE.Points(geo, dotMat);
+    this.dots.frustumCulled = false;
+    this.mesh.add(this.lines, this.dots);
   }
 
   update(cars: ReadonlyMap<string, SparkCar>, dt: number): void {
@@ -91,7 +114,7 @@ export class Sparks3d {
       const t = 1 - this.age[i] / this.life[i];
       for (let k = 0; k < 3; k++) {
         p[i * 6 + k] = this.pos[j + k];
-        p[i * 6 + 3 + k] = this.pos[j + k] - this.vel[j + k] * 0.025;
+        p[i * 6 + 3 + k] = this.pos[j + k] - this.vel[j + k] * 0.04;
       }
       // White-hot to orange, fading out.
       const r = t;
@@ -127,7 +150,9 @@ export class Sparks3d {
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    this.lines.geometry.dispose();
+    (this.lines.material as THREE.Material).dispose();
+    (this.dots.material as THREE.Material).dispose();
+    this.dot.dispose();
   }
 }

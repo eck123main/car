@@ -265,7 +265,21 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   flashes, knocked-out cars spinning (own car: camera shake). Name tags hide inside smoke. Repeated
   things are instanced; effects are camera-facing quads in a few shared meshes (~10 draw calls).
 - **Pit stops**: painted boxes, name boards, box lights and the crew at work (see Pit stops).
-- Not yet: rain spray / wet look, lights on the gantry.
+- **Wheel display**: 15 shift lights (green, red, blue; all flash at the shift point, `shiftLights`
+  from `engineRpm`), gear big in the middle, speed to the right.
+- **Head movement** (`feel.ts`, `HeadMotion`; Settings "3D view: head moves...", `headMotion`,
+  **off by default**: a steady view is easier to drive, and handling is never affected): g-forces
+  push the head on a spring (forward under braking, out of corners), kerbs drum, gravel shakes,
+  a hit (`Car.upset` jumping) jolts it. Bolted-on cameras only shake.
+- **Race look** (`View3D.setRace`): start lights on the gantry (`Scenery3d.setStartLights`), and
+  wetness: grey sky and fog, duller light, darker road; rain falling round the camera (streaks
+  towards you at speed) while it is wet or getting wetter (not while drying); spray behind cars
+  (`rain3d.ts`); drops on the visor in the cockpit cameras, blown outwards at speed (`Visor`).
+  The 2D rain overlay is top-down only.
+- **Brake discs** glow orange after big stops (`brakeHeat`, from each car's synced brake and
+  speed). **Sparks** (`sparks3d.ts`) from the floor at top speed and in compressions (the road's
+  vertical curve, as `Car.step` weighs the car). Drivers' helmets (with a visor) turn into
+  corners and lean out of them; other cars have a small steering wheel.
 
 ## Sound & settings
 

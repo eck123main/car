@@ -16,6 +16,7 @@ import { Landmarks, lookOf, waterOf } from './landmarks';
 import { Terrain } from './terrain';
 import { HeadMotion, type Feel, type HeadPose } from './feel';
 import { Sparks3d, type SparkCar } from './sparks3d';
+import { Rain3d, Visor, type SprayCar } from './rain3d';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -119,7 +120,11 @@ export interface OwnCarView extends CarView {
 export interface RaceLook {
   /** Red start lights showing (0-5). */
   lights: number;
+  /** Track wetness (0-1): rain, spray, grey skies. */
+  wetness?: number;
 }
+
+const RAIN_GREY = new THREE.Color('#7f868f');
 
 const STILL_HEAD: HeadPose = { x: 0, y: 0, z: 0, roll: 0, pitch: 0, shake: 0 };
 
@@ -168,6 +173,16 @@ export class View3D {
   private readonly track: Track;
   private readonly scenery: Scenery3d;
   private readonly sparks = new Sparks3d();
+  private readonly rain = new Rain3d();
+  private readonly visor = new Visor();
+  private readonly visorScene = new THREE.Scene();
+  /** Track wetness (0-1) and what the dry look was, to grey it over in the rain. */
+  private wetness = 0;
+  private shownWet = -1;
+  private drying = false;
+  private readonly dry: { fog: THREE.Color; near: number; far: number; lights: [THREE.Light, number][] };
+  private readonly skyMat: THREE.MeshBasicMaterial;
+  private readonly groundMat: THREE.MeshLambertMaterial;
 
   constructor(track: Track) {
     this.canvas = document.createElement('canvas');
@@ -178,16 +193,20 @@ export class View3D {
     this.track = track;
     this.renderer.setClearColor(look.skyHorizon);
     this.scene.fog = new THREE.Fog(look.skyHorizon, look.fogNear, look.fogFar);
+    const lights: [THREE.Light, number][] = [];
 
     for (const scene of [this.scene, this.near]) {
-      scene.add(new THREE.HemisphereLight(look.night ? '#9fb4ff' : '#e8f1ff', '#4a5a3a', look.ambient));
+      const hemi = new THREE.HemisphereLight(look.night ? '#9fb4ff' : '#e8f1ff', '#4a5a3a', look.ambient);
       const sun = new THREE.DirectionalLight(look.sunColor, look.sun);
       sun.position.set(0.5, 1, 0.3);
-      scene.add(sun);
+      scene.add(hemi, sun);
+      lights.push([hemi, look.ambient], [sun, look.sun]);
     }
 
     const noise = noiseTexture();
     const ground = new THREE.MeshLambertMaterial({ vertexColors: true, map: noise, side: THREE.DoubleSide });
+    this.groundMat = ground;
+    this.dry = { fog: new THREE.Color(look.skyHorizon), near: look.fogNear, far: look.fogFar, lights };
     const solid = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const paint = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
     // The land, following the track's real heights (and under any water).
@@ -218,8 +237,13 @@ export class View3D {
       groundAt: (x, y) => terrain.heightAt(x, y),
       base: terrain.base,
     }));
-    this.disposables.push(scenery, this.sparks);
-    this.scene.add(this.sparks.mesh);
+    this.disposables.push(scenery, this.sparks, this.rain, this.visor);
+    this.scene.add(this.sparks.mesh, this.rain.group);
+    // Rain on the visor: a see-through picture over the whole screen (cockpit cameras).
+    const visorQuad = new THREE.PlaneGeometry(2, 2);
+    const visorMat = new THREE.MeshBasicMaterial({ map: this.visor.texture, transparent: true, depthTest: false, depthWrite: false });
+    this.visorScene.add(new THREE.Mesh(visorQuad, visorMat));
+    this.disposables.push(visorQuad, visorMat);
     this.scene.add(scenery.group);
     scenery.group.traverse((o) => {
       if (o instanceof THREE.Mesh) this.disposables.push(o.geometry);
@@ -239,6 +263,7 @@ export class View3D {
     }
     skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     const skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+    this.skyMat = skyMat;
     this.sky = new THREE.Mesh(skyGeo, skyMat);
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
@@ -351,6 +376,7 @@ export class View3D {
     mine.mirrorsVisible = this.mirror;
 
     this.placeCamera(own, dt);
+    this.updateRain(own, [own, ...others], def.inside === true && !this.lookBack, dt);
     if (items) {
       if (!this.items) {
         this.items = new Items3d(this.track, (x, y, i) => this.heightAt(x, y, i ?? null));
@@ -396,6 +422,10 @@ export class View3D {
     this.nearCamera.updateProjectionMatrix();
     this.renderer.render(this.near, this.nearCamera);
 
+    if (def.inside && !this.lookBack && this.visor.visible) {
+      this.renderer.clearDepth();
+      this.renderer.render(this.visorScene, this.screenCamera);
+    }
     // Outside the cockpit the car's own mirrors can't be seen: show one at the top of the screen.
     if (this.mirror && !def.inside && !this.lookBack) this.drawScreenMirror();
   }
@@ -463,6 +493,21 @@ export class View3D {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Rain round the camera, spray behind the cars, drops on the visor. */
+  private updateRain(own: OwnCarView, cars: CarView[], visor: boolean, dt: number): void {
+    const spray = new Map<string, SprayCar>();
+    if (this.wetness > 0.15) {
+      for (const car of cars) {
+        if (car.ghost || !car.speed) continue;
+        spray.set(car.id, { x: car.x, y: car.y, heading: car.heading, speed: car.speed, ground: this.heightAt(car.x, car.y, car.trackIndex) });
+      }
+    }
+    const vel = new THREE.Vector3(Math.cos(own.heading) * own.speed, 0, Math.sin(own.heading) * own.speed);
+    const rain = this.drying ? 0 : this.wetness;
+    this.rain.update(rain, this.wetness, this.camera.position, vel, spray, dt);
+    this.visor.update(visor ? rain : 0, own.speed, dt);
+  }
+
   /** Sparks from the floors of cars pressed down hard (not ghosts). */
   private updateSparks(cars: CarView[], dt: number): void {
     const list = new Map<string, SparkCar>();
@@ -492,6 +537,23 @@ export class View3D {
   /** Race state the scenery shows: start lights lit (0-5) on the gantry. */
   setRace(race: RaceLook): void {
     this.scenery.setStartLights(race.lights);
+    const wet = race.wetness ?? 0;
+    // A track drying out means the rain has stopped (it rains while it is wet or getting wetter).
+    if (wet < this.wetness - 1e-6) this.drying = true;
+    else if (wet > this.wetness + 1e-6 || wet === 0) this.drying = false;
+    this.wetness = wet;
+    const w = Math.round(this.wetness * 50) / 50;
+    if (w === this.shownWet) return;
+    this.shownWet = w;
+    // Wet: a grey sky, mist closing in, duller light, a darker road.
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(this.dry.fog).lerp(RAIN_GREY, w * 0.9);
+    fog.near = this.dry.near * (1 - 0.55 * w);
+    fog.far = this.dry.far * (1 - 0.5 * w);
+    this.renderer.setClearColor(fog.color);
+    this.skyMat.color.setScalar(1).lerp(RAIN_GREY, w * 0.85);
+    for (const [light, base] of this.dry.lights) light.intensity = base * (1 - 0.35 * w);
+    this.groundMat.color.setScalar(1 - 0.22 * w);
   }
 
   /** Show the ideal line on the road (null hides it). */
