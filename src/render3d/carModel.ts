@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR, type CarParts } from '../physics/car';
 import type { Livery } from '../render/livery';
+import { gearFor } from '../audio/sound';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { QuadBuilder } from './trackMesh';
 
@@ -15,8 +16,18 @@ type V3 = [number, number, number];
 const CARBON = '#1c1d20';
 const TYRE = '#161616';
 const DRS_GREEN = '#2ecc40';
-/** Steering wheel turn at full lock (rad). */
-const WHEEL_LOCK = 1.3;
+/**
+ * Steering wheel angle (rad) per 1/m of curvature driven: like a real car, the wheel follows the
+ * radius of the corner, so a hairpin (7.5 m, the tightest turn) is about 2 rad and the driver's
+ * arms cross, while a fast sweeper is a few degrees.
+ */
+const WHEEL_PER_CURVATURE = 15;
+/** The most the wheel turns (rad, ~130 degrees). */
+const WHEEL_MAX = 2.3;
+/** How much the steering input itself shows on top (rad at full input), e.g. when understeering. */
+const WHEEL_INPUT = 0.35;
+/** Turn at full input with the car (nearly) stopped (rad), where the corner radius means nothing. */
+const WHEEL_PARKED = 1.2;
 /** Front wheel turn at full lock (rad), as drawn in 2D. */
 const STEER_VISUAL = 0.35;
 
@@ -247,12 +258,14 @@ export class CarModel {
   private drs = false;
   private painted: string | null = null;
   private readonly ghost: boolean;
+  private readonly livery: Livery;
   wheel: SteeringWheel | null = null;
 
   /** ghost: see-through in this colour (opacity: how see-through; party mode's ghost item is nearly invisible). */
   constructor(livery: Livery, opts: { ghost?: string; opacity?: number } = {}) {
     const ghost = opts.ghost;
     this.ghost = !!ghost;
+    this.livery = livery;
     this.wingBase = ghost ?? livery.wings;
     const opacity = opts.opacity ?? 0.35;
     const lambert = (p: THREE.MeshLambertMaterialParameters) =>
@@ -351,7 +364,6 @@ export class CarModel {
       this.compound = compound;
       this.mats.ring.color.set(COMPOUNDS[compound].color);
     }
-    this.wheel?.turn(steer);
   }
 
   /** Hide parts that were knocked off (Car.lost bits). */
@@ -452,10 +464,10 @@ export class CarModel {
     this.mirrors.visible = on;
   }
 
-  /** Add the steering wheel (own car only). */
+  /** Add the steering wheel and the driver's arms on it (own car only). */
   addSteeringWheel(): SteeringWheel {
-    this.wheel = new SteeringWheel();
-    this.group.add(this.wheel.group);
+    this.wheel = new SteeringWheel(this.livery);
+    this.group.add(this.wheel.group, this.wheel.arms);
     return this.wheel;
   }
 
@@ -468,6 +480,63 @@ export class CarModel {
   }
 }
 
+/**
+ * Steering wheel angle (rad, + = clockwise as the driver sees it) for the car's own movement:
+ * mostly the radius of the turn it is really making (yaw rate / speed), plus a little of the
+ * steering input. Stopped, it is just the input.
+ */
+export function wheelAngle(steer: number, speed: number, yawRate: number): number {
+  const moving = Math.min(1, Math.max(0, (speed - 1) / 4));
+  const curvature = yawRate / Math.max(speed, 1);
+  const driven = curvature * WHEEL_PER_CURVATURE + steer * WHEEL_INPUT;
+  const angle = moving * driven + (1 - moving) * steer * WHEEL_PARKED;
+  return Math.max(-WHEEL_MAX, Math.min(WHEEL_MAX, angle));
+}
+
+/** Right shoulder (car frame; the left is mirrored) and arm lengths (m). */
+const SHOULDER: V3 = [-0.46, 0.66, 0.17];
+const UPPER_ARM = 0.29;
+const FOREARM = 0.28;
+/** The elbows hang down and out a little, inside the cockpit sides. */
+const ELBOW_POLE = new THREE.Vector3(0, -1, 0.6).normalize();
+/** Where the forearm meets the right glove (wheel frame). */
+const WRIST: V3 = [-0.05, -0.025, 0.155];
+/** A paddle flick lasts this long (s). */
+const FLICK = 0.14;
+
+/**
+ * Elbow for a two-bone arm from shoulder s to wrist w, bending towards `pole` (its part across
+ * the arm). The arm is never stretched past straight.
+ */
+export function elbowFor(s: THREE.Vector3, w: THREE.Vector3, upper: number, fore: number, pole: THREE.Vector3): THREE.Vector3 {
+  const dir = w.clone().sub(s);
+  const d = Math.min(Math.max(dir.length(), 1e-4), upper + fore - 1e-4);
+  dir.normalize();
+  const a = (upper * upper - fore * fore + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, upper * upper - a * a));
+  const across = pole.clone().addScaledVector(dir, -pole.dot(dir));
+  if (across.lengthSq() < 1e-8) across.set(0, -1, 0);
+  across.normalize();
+  return s.clone().addScaledVector(dir, a).addScaledVector(across, h);
+}
+
+/** Steering wheel hub (car frame) and how far it is tilted back towards the driver (rad). */
+const WHEEL_POS: V3 = [0.02, 0.79, 0];
+const WHEEL_TILT = 0.35;
+
+/** Shoulder, elbow and wrist (car frame) of one arm (side -1 left, 1 right) with the wheel at `angle`. */
+export function armJoints(angle: number, side: number): { shoulder: THREE.Vector3; elbow: THREE.Vector3; wrist: THREE.Vector3 } {
+  // The arm going over the top of the wheel (left in a right turn) rolls its shoulder forward.
+  const reach = Math.max(0, angle * -side) / WHEEL_MAX;
+  const shoulder = new THREE.Vector3(SHOULDER[0] + 0.04 * reach, SHOULDER[1], side * (SHOULDER[2] - 0.02 * reach));
+  const wrist = new THREE.Vector3(WRIST[0], WRIST[1], side * WRIST[2])
+    .applyAxisAngle(new THREE.Vector3(0, 0, 1), WHEEL_TILT)
+    .applyAxisAngle(new THREE.Vector3(1, 0, 0), angle)
+    .add(new THREE.Vector3(...WHEEL_POS));
+  const pole = new THREE.Vector3(ELBOW_POLE.x, ELBOW_POLE.y, side * ELBOW_POLE.z);
+  return { shoulder, elbow: elbowFor(shoulder, wrist, UPPER_ARM, FOREARM, pole), wrist };
+}
+
 /** What the steering wheel's display shows. */
 export interface WheelInfo {
   speedKmh: number;
@@ -478,20 +547,46 @@ export interface WheelInfo {
   limiter: boolean;
 }
 
-/** The F1 steering wheel in front of the driver, with a small live display. */
+/** One gloved hand on a grip, and the arm to it. */
+interface Hand {
+  fingers: THREE.Mesh;
+  thumb: THREE.Mesh;
+  thumbRest: THREE.Vector3;
+  paddle: THREE.Mesh;
+  upper: THREE.Mesh;
+  fore: THREE.Mesh;
+  cuff: THREE.Mesh;
+  /** Time left on a paddle flick / thumb press (s). */
+  flick: number;
+  press: number;
+}
+
+/**
+ * The F1 steering wheel in front of the driver, with a small live display, and the driver's
+ * arms and gloved hands on it. Like real F1 drivers, the hands never leave the grips: in a
+ * hairpin the wheel goes past 90 degrees and the arms cross. Fingers flick the paddles on gear
+ * changes (right up, left down), the right thumb presses DRS and the left holds the ERS button.
+ */
 export class SteeringWheel {
   readonly group = new THREE.Group();
+  /** Upper arms and forearms, in the car's frame (they don't turn with the wheel). */
+  readonly arms = new THREE.Group();
+  private readonly inner = new THREE.Group();
   private readonly canvas = document.createElement('canvas');
   private readonly ctx: CanvasRenderingContext2D;
   private readonly tex: THREE.CanvasTexture;
   private readonly disposables: { dispose(): void }[] = [];
+  private readonly hands: Hand[] = [];
   private last = '';
+  private angle = 0;
+  private gear = 1;
+  private drs = false;
 
-  constructor() {
-    this.group.position.set(0.04, 0.72, 0);
+  constructor(livery?: Livery) {
+    this.group.position.set(...WHEEL_POS);
     // Tilted back towards the driver.
-    const inner = new THREE.Group();
-    inner.rotation.z = 0.35;
+    const inner = this.inner;
+    inner.rotation.z = WHEEL_TILT;
     this.group.add(inner);
     const mat = new THREE.MeshLambertMaterial({ color: '#202124' });
     const grip = new THREE.MeshLambertMaterial({ color: '#0e0e0f' });
@@ -517,10 +612,96 @@ export class SteeringWheel {
     screen.rotation.y = -Math.PI / 2;
     screen.position.set(-0.021, 0.01, 0);
     inner.add(screen);
+    this.buildHands(livery);
   }
 
-  turn(steer: number): void {
-    this.group.rotation.x = steer * WHEEL_LOCK;
+  private buildHands(livery?: Livery): void {
+    const suit = new THREE.MeshLambertMaterial({ color: livery?.body ?? '#c0c0c0' });
+    const glove = new THREE.MeshLambertMaterial({ color: '#e9e9ec' });
+    const accent = new THREE.MeshLambertMaterial({ color: livery?.helmet ?? '#333333' });
+    const paddleMat = new THREE.MeshLambertMaterial({ color: '#3a3b40' });
+    const palmGeo = new THREE.BoxGeometry(0.075, 0.1, 0.07);
+    const fingerGeo = new THREE.BoxGeometry(0.03, 0.09, 0.062);
+    const thumbGeo = new THREE.BoxGeometry(0.026, 0.028, 0.06);
+    const knuckleGeo = new THREE.BoxGeometry(0.012, 0.075, 0.04);
+    const paddleGeo = new THREE.BoxGeometry(0.008, 0.07, 0.07);
+    // Arm pieces are 1 m long along +y from their base, scaled to length each frame.
+    const upperGeo = new THREE.CylinderGeometry(0.042, 0.048, 1, 7).translate(0, 0.5, 0);
+    const foreGeo = new THREE.CylinderGeometry(0.033, 0.042, 1, 7).translate(0, 0.5, 0);
+    const cuffGeo = new THREE.CylinderGeometry(0.037, 0.037, 0.05, 7);
+    this.disposables.push(suit, glove, accent, paddleMat, palmGeo, fingerGeo, thumbGeo, knuckleGeo, paddleGeo, upperGeo, foreGeo, cuffGeo);
+    for (const side of [-1, 1]) {
+      // Glove round the grip: palm on the driver's side and outside, fingers round the front.
+      const palm = new THREE.Mesh(palmGeo, glove);
+      palm.position.set(-0.022, -0.005, side * 0.152);
+      const knuckles = new THREE.Mesh(knuckleGeo, accent);
+      knuckles.position.set(-0.06, -0.005, side * 0.158);
+      const fingers = new THREE.Mesh(fingerGeo, glove);
+      fingers.position.set(0.035, -0.005, side * 0.148);
+      // Thumb resting on the wheel's face, pointing in towards the display.
+      const thumbRest = new THREE.Vector3(-0.032, 0.04, side * 0.112);
+      const thumb = new THREE.Mesh(thumbGeo, glove);
+      thumb.position.copy(thumbRest);
+      thumb.rotation.x = side * 0.35;
+      // Shift paddle behind the wheel (right: up, left: down), under the fingertips.
+      const paddle = new THREE.Mesh(paddleGeo, paddleMat);
+      paddle.position.set(0.058, 0.035, side * 0.1);
+      this.inner.add(palm, knuckles, fingers, thumb, paddle);
+      const upper = new THREE.Mesh(upperGeo, suit);
+      const fore = new THREE.Mesh(foreGeo, suit);
+      const cuff = new THREE.Mesh(cuffGeo, accent);
+      this.arms.add(upper, fore, cuff);
+      this.hands.push({ fingers, thumb, thumbRest, paddle, upper, fore, cuff, flick: 0, press: 0 });
+    }
+  }
+
+  /** Turn the wheel for the car's movement and move the hands (every frame). */
+  drive(steer: number, speed: number, yawRate: number, info: WheelInfo, dt: number): void {
+    // The hands ease the wheel round: quick, but never a snap.
+    const target = wheelAngle(steer, speed, yawRate);
+    this.angle += (target - this.angle) * Math.min(1, dt * 14);
+    this.group.rotation.x = this.angle;
+
+    const [left, right] = this.hands;
+    const gear = gearFor(info.speedKmh);
+    if (gear > this.gear) right.flick = FLICK;
+    else if (gear < this.gear) left.flick = FLICK;
+    this.gear = gear;
+    if (info.drsOpen && !this.drs) right.press = 0.22;
+    this.drs = info.drsOpen;
+    if (info.ersActive) left.press = Math.max(left.press, 0.05);
+
+    for (const [i, hand] of this.hands.entries()) {
+      const side = i === 0 ? -1 : 1;
+      hand.flick = Math.max(0, hand.flick - dt);
+      hand.press = Math.max(0, hand.press - dt);
+      // Fingers pull the paddle back towards the wheel, then let go.
+      const f = Math.sin((hand.flick / FLICK) * Math.PI);
+      hand.paddle.position.x = 0.058 - 0.022 * f;
+      hand.fingers.rotation.z = 0.5 * f;
+      // Thumb pushes forward onto a button.
+      const p = hand.press > 0 ? 1 : 0;
+      hand.thumb.position.set(hand.thumbRest.x + 0.012 * p, hand.thumbRest.y - 0.012 * p, hand.thumbRest.z - side * 0.008 * p);
+    }
+    this.placeArms();
+  }
+
+  /** Arms from the shoulders to the gloves, wherever the wheel has taken them. */
+  private placeArms(): void {
+    const up = new THREE.Vector3(0, 1, 0);
+    const segment = (mesh: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) => {
+      const d = b.clone().sub(a);
+      mesh.position.copy(a);
+      mesh.scale.set(1, d.length(), 1);
+      mesh.quaternion.setFromUnitVectors(up, d.normalize());
+    };
+    for (const [i, hand] of this.hands.entries()) {
+      const { shoulder, elbow, wrist } = armJoints(this.angle, i === 0 ? -1 : 1);
+      segment(hand.upper, shoulder, elbow);
+      segment(hand.fore, elbow, wrist);
+      hand.cuff.position.copy(wrist);
+      hand.cuff.quaternion.copy(hand.fore.quaternion);
+    }
   }
 
   show(info: WheelInfo): void {

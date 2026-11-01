@@ -217,6 +217,12 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   `view3d.ts`): cockpit (halo, steering wheel with a live speed / DRS / ERS display), cockpit
   without the halo (its centre bar blocks the view), T-cam above the airbox, nose cam, front-wing
   cam, rear-wing cam, chase cam, far chase cam.
+- **Driver's hands** (`SteeringWheel` in `carModel.ts`, own car only): arms in the team colour
+  and white gloves that never leave the grips. The wheel angle follows the radius the car is
+  really turning (`wheelAngle`: yaw rate / speed, plus a little input), so a hairpin is ~2 rad and
+  the arms cross like real drivers', a fast corner a few degrees. Arms are two-bone IK
+  (`armJoints`, tested to stay inside the cockpit); fingers flick the paddles on gear changes
+  (right up, left down), right thumb presses on DRS, left thumb held while ERS is on.
 - **Rear-view mirror** (M toggles): one small render (512x128, every other frame) of what's
   behind, shown on the car's wing mirrors from inside the cockpit and as a mirror at the top of
   the screen from the other cameras.

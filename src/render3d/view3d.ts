@@ -321,6 +321,7 @@ export class View3D {
     const def = CAMS[this.mode];
     mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
+    mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt);
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
 
