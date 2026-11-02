@@ -1,3 +1,4 @@
+import { holdingUp, safetyCarProfile } from './safetyCar';
 import { describe, expect, it } from 'vitest';
 import { Track } from '../track/track';
 import { TRACKS } from '../tracks';
@@ -34,6 +35,16 @@ function race(id: string, settings: Partial<RaceSettings> = {}) {
   };
   return { track, session, events, step, runUntil, spread };
 }
+
+describe('Holding up the queue', () => {
+  it('is well under the safety car pace, or crawling', () => {
+    expect(holdingUp(3, 10)).toBe(true);
+    expect(holdingUp(12, 40)).toBe(true);
+    expect(holdingUp(30, 40)).toBe(false);
+    // Slow because the road is slow here: just the queue, not holding anyone up.
+    expect(holdingUp(14, 18)).toBe(false);
+  });
+});
 
 describe('Safety car', () => {
   it('comes out for a wreck, bunches the field, comes in and restarts at the line', () => {
@@ -160,6 +171,38 @@ describe('Safety car', () => {
     step();
     expect(third.penalties.map((p) => p.reason)).toContain('Passing the safety car');
     expect(events.filter((e) => e.kind === 'penalty' && e.racerId === leader.id)).toEqual([]);
+  }, 60_000);
+
+  it('never fines the car behind for passing someone who brake-tested the queue', () => {
+    const { session, events, step, runUntil, track } = race('bahrain');
+    runUntil(() => session.phase === 'race' && session.world.racers.every((r) => r.timer.lapsCompleted >= 1));
+    session.world.racers[5].car.retired = true;
+    step();
+    runUntil(() => false, 15);
+    const profile = safetyCarProfile(track);
+    const running = () => session.world.racers.filter((r) => !r.car.retired && r.pit.phase === 'out').sort((a, b) => session.progress(b) - session.progress(a));
+    // Somewhere the queue is going at a fair speed.
+    runUntil(() => {
+      const i = running()[0].car.trackIndex;
+      return i !== null && profile[i] > 30 && session.safetyCar!.speed > 25;
+    }, 60);
+    const [slow, passer] = running();
+    // The car ahead jumps on the brakes: well above the crawling limit, far below the pace.
+    const c = slow.car;
+    const v = 12;
+    c.vx = Math.cos(c.heading) * v;
+    c.vy = Math.sin(c.heading) * v;
+    step();
+    // It speeds up again as it is passed: still its doing.
+    c.vx = Math.cos(c.heading) * 28;
+    c.vy = Math.sin(c.heading) * 28;
+    const s = (passer.timer.lapDistance! + session.progress(slow) - session.progress(passer) + 12) % track.length;
+    const t = track.samples[Math.floor(s / 2)];
+    passer.car.place(t.x, t.y, Math.atan2(t.ty, t.tx));
+    step();
+    step();
+    expect(events.filter((e) => e.kind === 'penalty' && /Overtaking/.test(e.penalty.reason) && e.racerId === passer.id)).toEqual([]);
+    expect(passer.penalties).toEqual([]);
   }, 60_000);
 
   it('stays in when the host turns it off, and is never sent out on the last lap', () => {

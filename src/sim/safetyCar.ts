@@ -18,6 +18,15 @@ export const SC_LEAD = 150;
  * stopped, spun or is limping back to the pits.
  */
 export const SC_SLOW_CAR = 6;
+/** A car below this share of the safety car's pace is holding everyone up: passing it is no offence. */
+const HELD_UP_SHARE = 0.6;
+/** ...for this long afterwards (s), as it can pick up speed again during the pass. */
+export const HELD_UP_GRACE = 3;
+
+/** Is a car stopped, crawling or brake-testing the queue, at this speed for a safety car pace here? */
+export function holdingUp(speed: number, pace: number): boolean {
+  return speed < SC_SLOW_CAR || speed < pace * HELD_UP_SHARE;
+}
 
 /**
  * - deployed: lights on, no overtaking, the field queues up behind it.
