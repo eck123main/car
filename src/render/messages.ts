@@ -24,6 +24,18 @@ export function wheelNote(e: SessionEvent): { text: string; color: string } | nu
   }
 }
 
+/** What the engineer says over the radio as a lap ends, shown on the wheel. */
+export function radioLine(s: { position: number; gapAhead: number | null; gapBehind: number | null; lapsLeft: number; wear: number }): string {
+  if (s.lapsLeft === 1) return 'LAST LAP';
+  if (s.lapsLeft === 2) return '2 TO GO';
+  if (s.gapBehind !== null && s.gapBehind < 1) return 'DEFEND';
+  if (s.gapAhead !== null && s.gapAhead < 1) return 'ATTACK';
+  if (s.wear > 0.6) return `TYRES ${Math.round(s.wear * 100)}%`;
+  if (s.gapAhead !== null && s.gapAhead < 4) return `GAP ${s.gapAhead.toFixed(1)}`;
+  if (s.position === 1) return 'GOOD PACE';
+  return `P${s.position} PUSH`;
+}
+
 /** Turn a race event for the local driver into a short on-screen message. */
 export function eventToast(e: SessionEvent, now: number): Toast | null {
   const until = now + 3;

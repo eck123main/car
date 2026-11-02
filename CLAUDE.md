@@ -299,6 +299,17 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
 - **Replay** (`app/replay.ts`, "Watch last lap" on the results): every car at 20 Hz for the last
   150 s, on each machine for itself. Opens in 3D from your last lap: ← → change car, C camera,
   ENTER back.
+- **Race day extras** (all looks only, budget: a few draw calls, nothing per car, made on first use,
+  no work while idle; particles and sparks skip their loop and upload when empty):
+  **team radio** on the wheel as a lap ends (`radioLine`); **sparks and carbon dust** on hits (from jumps
+  in `Car.upset`, so clients see them); **backfires** when lifting at speed; **worn tyres** go dusty and
+  **marbles** (`trackLife3d.ts`, one Points mesh, more shown as the race goes on) gather off the line;
+  **grid crew** (`raceDay3d.ts`, umbrellas in the wet, walk off when the lights start); **fly-over** at
+  lights out; **the sun sinks** through a day race (light, sky and fog warm, shadows slide out;
+  `setRace` only touches them in 40 steps) with **clouds** (one textured disc); **TV cameras** in replays
+  (`tvCamera.ts`: trackside, helicopter, tracking; C goes on through the onboard cameras); a **fly-around**
+  behind the tyre picker until you're ready (`tourShot`); **"Best moment"** on the results (`noteMoments`:
+  real overtakes and big hits, slow motion on the TV cameras).
 - **Brake discs** glow orange after big stops (`brakeHeat`, from each car's synced brake and
   speed). **Sparks** (`sparks3d.ts`) from the floor at top speed and in compressions (the road's
   vertical curve, as `Car.step` weighs the car). Drivers' helmets (with a visor) turn into
@@ -478,7 +489,8 @@ The timing tower is always shown (no Tab needed).
   (e.g. everyone pitting). It is not a racer: no physics, no collisions.
   - While out: **no overtaking**, **no passing the SC**, **DRS off**. Breaking either rule is
     **+5 s, at most once per driver per safety car**. Passing a car under 22 km/h
-    (`SC_SLOW_CAR`), anything in the pits, or a car that left the pits under 5 s ago is fine. Pit lane open, and the race engineer
+    (`SC_SLOW_CAR`) or one that has been under 60% of the SC's pace in the last 3 s (`holdingUp`, so
+    a brake test never gets the car behind fined, bot or player), anything in the pits, or a car that left the pits under 5 s ago is fine. Pit lane open, and the race engineer
     says box for a **cheap stop** if a stop is still owed or tyres are 40%+ worn.
   - **"SC in this lap"** after at least 25 s once no car is still wrecked and the whole
     field has queued up behind it (after 60 s, just the leader; after 90 s, regardless).

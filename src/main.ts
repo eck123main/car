@@ -54,6 +54,15 @@ function replayOffer(back: () => void): (() => void) | undefined {
   };
 }
 
+/** A results screen's "Best moment", if the race had one. */
+function momentOffer(back: () => void): (() => void) | undefined {
+  if (!game?.hasMoment()) return undefined;
+  return () => {
+    clearUi();
+    game?.startMoment(back);
+  };
+}
+
 function stopGame(): void {
   game?.stop();
   game = null;
@@ -256,6 +265,7 @@ async function host(name: string, offline: boolean, mode: GameMode = 'classic'):
       meId: HostGame.HOST_ID,
       isHost: true,
       onReplay: replayOffer(showResultsForHost),
+      onMoment: momentOffer(showResultsForHost),
       onContinue: () => {
         stopGame();
         hostGame.backToLobby();
@@ -350,6 +360,7 @@ async function join(name: string): Promise<void> {
             meId: client.id ?? '',
             isHost: false,
             onReplay: replayOffer(results),
+            onMoment: momentOffer(results),
             onLeave: home,
           });
         },

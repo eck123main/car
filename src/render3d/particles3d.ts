@@ -67,6 +67,7 @@ export class Particles3d {
   private readonly age: Float32Array;
   private next = 0;
   private alive = 0;
+  private fresh = false;
 
   /** soft: how much of the disc is solid (0 = a soft puff, 0.8 = a hard dot). */
   constructor(private readonly max: number, opts: { soft?: number; additive?: boolean } = {}) {
@@ -96,10 +97,17 @@ export class Particles3d {
     this.specs[this.next] = p;
     this.age[this.next] = 0;
     this.next = (this.next + 1) % this.max;
+    this.fresh = true;
   }
 
   /** scale: pixels per metre at 1 m from the camera. */
   update(dt: number, scale: number): void {
+    // Nothing alive: no loop, no upload.
+    if (this.alive === 0 && !this.fresh) {
+      this.mesh.visible = false;
+      return;
+    }
+    this.fresh = false;
     dt = Math.min(dt, 0.05);
     const pos = this.pos.array as Float32Array;
     const col = this.col.array as Float32Array;

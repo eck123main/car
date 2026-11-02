@@ -19,14 +19,27 @@ export interface ReplayCar {
   lost: number;
   /** Which stretch of track it's on (for the road height where two cross). */
   trackIndex?: number | null;
+  upset?: number;
 }
 
-const FIELDS = 14;
+/** A moment worth seeing again. */
+export interface Moment {
+  time: number;
+  id: string;
+  score: number;
+}
+
+const FIELDS = 15;
 const RATE = 20;
 const SECONDS = 150;
+/** A moment's clip starts this long before it (s). */
+export const MOMENT_BEFORE = 3;
+export const MOMENT_AFTER = 2.5;
+/** Slow motion. */
+export const MOMENT_SPEED = 0.4;
 
 function pack(c: ReplayCar): number[] {
-  return [c.x, c.y, c.heading, c.steer, c.speed, c.brake, c.throttle, c.slip, c.yawRate, c.drs ? 1 : 0, c.ers, c.ersOn ? 1 : 0, c.lost, c.trackIndex ?? -1];
+  return [c.x, c.y, c.heading, c.steer, c.speed, c.brake, c.throttle, c.slip, c.yawRate, c.drs ? 1 : 0, c.ers, c.ersOn ? 1 : 0, c.lost, c.trackIndex ?? -1, c.upset ?? 0];
 }
 
 export class ReplayRecorder {
@@ -37,6 +50,7 @@ export class ReplayRecorder {
   private ticks = 0;
   private readonly lapStarts = new Map<string, number[]>();
   private readonly laps = new Map<string, number>();
+  private moments: Moment[] = [];
 
   constructor(private readonly rate = RATE, seconds = SECONDS) {
     this.cap = Math.round(rate * seconds);
@@ -73,6 +87,26 @@ export class ReplayRecorder {
       this.lapStarts.set(id, list);
     }
     this.laps.set(id, laps);
+  }
+
+  /** Something happened worth a replay (an overtake, a big hit). Keeps the few best. */
+  noteMoment(time: number, id: string, score: number): void {
+    this.moments.push({ time, id, score });
+    if (this.moments.length > 24) {
+      this.moments.sort((a, b) => b.score - a.score);
+      this.moments.length = 12;
+    }
+  }
+
+  /** The best moment that can still be replayed; later ones win ties. */
+  bestMoment(): Moment | null {
+    const [from, to] = this.range;
+    let best: Moment | null = null;
+    for (const m of this.moments) {
+      if (m.time - MOMENT_BEFORE < from || m.time > to) continue;
+      if (!best || m.score >= best.score) best = m;
+    }
+    return best;
   }
 
   get hasData(): boolean {
@@ -129,6 +163,7 @@ export class ReplayRecorder {
       ersOn: ring[ia + 11] > 0.5,
       lost: ring[ia + 12],
       trackIndex: ring[ia + 13] < 0 ? null : ring[ia + 13],
+      upset: ring[ia + 14],
     };
   }
 }

@@ -106,11 +106,11 @@ export class CarLights3d {
     this.group.visible = this.nearGroup.visible = false;
   }
 
-  update(cars: readonly LitCar[], own: LitCar, sky: 'day' | 'dusk' | 'night', wetness: number, time: number): void {
+  update(cars: readonly LitCar[], own: LitCar | null, sky: 'day' | 'dusk' | 'night', wetness: number, time: number): void {
     const s = lightStrength(sky, wetness);
     const on = s.beam > 0 || s.tail > 0;
     this.group.visible = this.nearGroup.visible = on;
-    if (!on) return;
+    if (!on || !own) return;
     const lit = tailOn(time, wetness);
     this.beamMat.opacity = 0.34 * s.beam;
     this.streakMat.opacity = (lit ? 0.5 : 0.18) * s.streak;

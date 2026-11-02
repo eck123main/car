@@ -21,6 +21,9 @@ import { TyreFx3d, type TyreCar } from './tyreFx3d';
 import { Marshals3d, type TrackFlag } from './marshals3d';
 import { Celebration3d, podiumCamera, podiumSpots, type PodiumSpot } from './celebration3d';
 import { CarLights3d, type LitCar } from './carLights3d';
+import { Clouds3d, Marbles3d, sunsetShare } from './trackLife3d';
+import { Flyover3d, GridCrew3d } from './raceDay3d';
+import type { Shot } from './tvCamera';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -106,6 +109,11 @@ export interface CarView {
   slip?: number;
   /** Stands this far above the road (m): the podium steps. */
   lift?: number;
+  /** Tyre wear (0-1) and how unsettled the car is after a hit (Car.upset), for looks. */
+  wear?: number;
+  upset?: number;
+  /** Lobby colour, for the grid crew's shirts. */
+  color?: string;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -137,9 +145,23 @@ export interface RaceLook {
   flag?: TrackFlag;
   /** The chequered flag is out at the line. */
   chequered?: boolean;
+  /** The session's phase: the grid crew and the fly-over go by it. */
+  phase?: string;
+  /** How far through the race the leader is (0-1): the light, the rubber. */
+  progress?: number;
 }
 
 const RAIN_GREY = new THREE.Color('#7f868f');
+/** The end of a long race on a clear day: a low, warm sun. */
+const SUNSET_SUN = new THREE.Color('#ffb070');
+const SUNSET_FOG = new THREE.Color('#f2cdaa');
+const SUNSET_SKY = new THREE.Color('#ffd5b0');
+/** World direction the low sun throws shadows (rad), and how far (m) at the end of a race. */
+const SHADOW_ANGLE = 0.6;
+const SHADOW_REACH = 1.6;
+
+/** A jump in Car.upset this big is a hit worth showing. */
+const HIT_LOOK = 0.05;
 
 const STILL_HEAD: HeadPose = { x: 0, y: 0, z: 0, roll: 0, pitch: 0, shake: 0 };
 
@@ -153,7 +175,7 @@ export class View3D {
   private readonly camera = new THREE.PerspectiveCamera(60, 1, 0.5, 2600);
   private readonly nearCamera = new THREE.PerspectiveCamera(60, 1, 0.02, 40);
   private readonly sky: THREE.Mesh;
-  private readonly cars = new Map<string, { model: CarModel; key: string; heat: number }>();
+  private readonly cars = new Map<string, { model: CarModel; key: string; heat: number; upset: number }>();
   private readonly disposables: { dispose(): void }[] = [];
   private chaseHeading: number | null = null;
   private readonly headMotion = new HeadMotion();
@@ -189,12 +211,23 @@ export class View3D {
   private readonly scenery: Scenery3d;
   private readonly sparks = new Sparks3d();
   private readonly tyreFx = new TyreFx3d();
-  /** A camera that isn't on the car (the podium): our car is then drawn like any other. */
-  private cinema: { eye: [number, number, number]; look: [number, number, number]; fov: number } | null = null;
+  /** A camera that isn't on the car (podium, TV): our car is then drawn like any other. */
+  private cinema: Shot | null = null;
   private celebration: Celebration3d | null = null;
   private readonly marshals: Marshals3d;
   private readonly lights = new CarLights3d();
   private readonly sky3d: 'day' | 'dusk' | 'night';
+  private readonly clouds: Clouds3d;
+  private readonly marbles: Marbles3d;
+  private gridCrew: GridCrew3d | null = null;
+  private flyover: Flyover3d | null = null;
+  private phase = '';
+  private crewPlaced = false;
+  /** How far the sun has sunk (0-1), and what is showing. */
+  private sunset = 0;
+  private shownSunset = -1;
+  private readonly suns: THREE.DirectionalLight[] = [];
+  private readonly sunColor: THREE.Color;
   private trackFlag: TrackFlag = null;
   private chequered = false;
   private readonly rain = new Rain3d();
@@ -218,11 +251,13 @@ export class View3D {
     this.renderer.setClearColor(look.skyHorizon);
     this.scene.fog = new THREE.Fog(look.skyHorizon, look.fogNear, look.fogFar);
     const lights: [THREE.Light, number][] = [];
+    this.sunColor = new THREE.Color(look.sunColor);
 
     for (const scene of [this.scene, this.near]) {
       const hemi = new THREE.HemisphereLight(look.night ? '#9fb4ff' : '#e8f1ff', '#4a5a3a', look.ambient);
       const sun = new THREE.DirectionalLight(look.sunColor, look.sun);
       sun.position.set(0.5, 1, 0.3);
+      this.suns.push(sun);
       scene.add(hemi, sun);
       lights.push([hemi, look.ambient], [sun, look.sun]);
     }
@@ -267,8 +302,10 @@ export class View3D {
       groundAt: (x, y) => terrain.heightAt(x, y),
     });
     this.sky3d = track.scenery?.sky === 'night' ? 'night' : track.scenery?.sky === 'dusk' ? 'dusk' : 'day';
-    this.disposables.push(scenery, this.sparks, this.tyreFx, this.marshals, this.lights, this.rain, this.visor);
-    this.scene.add(this.sparks.mesh, this.tyreFx.group, this.marshals.group, this.lights.group, this.rain.group);
+    this.clouds = new Clouds3d(this.sky3d);
+    this.marbles = new Marbles3d(track, (x, y) => this.heightAt(x, y));
+    this.disposables.push(scenery, this.sparks, this.tyreFx, this.marshals, this.lights, this.rain, this.visor, this.clouds, this.marbles);
+    this.scene.add(this.sparks.mesh, this.tyreFx.group, this.marshals.group, this.lights.group, this.rain.group, this.clouds.mesh, this.marbles.mesh);
     this.near.add(this.lights.nearGroup);
     // Rain on the visor: a see-through picture over the whole screen (cockpit cameras).
     const visorQuad = new THREE.PlaneGeometry(2, 2);
@@ -377,7 +414,7 @@ export class View3D {
           model.addMirrorGlass(this.mirrorTarget.texture);
           this.near.add(model.group);
         } else this.scene.add(model.group);
-        entry = { model, key, heat: 0 };
+        entry = { model, key, heat: 0, upset: car.upset ?? 0 };
         this.cars.set(car.id, entry);
       }
       // In the pits: new tyres show once fitted, and other cars rise on their jacks (not our
@@ -387,9 +424,22 @@ export class View3D {
       if (car.parts) entry.model.setDamage(car.parts);
       entry.heat = brakeHeat(entry.heat, car.brake ?? 0, car.speed ?? 0, dt);
       entry.model.setBrakeHeat(entry.heat);
+      if (car.wear !== undefined) entry.model.setWear(car.wear);
+      // A hit: sparks and carbon dust (from the jump in upset, so clients see them too).
+      const upset = car.upset ?? 0;
+      if (upset - entry.upset > HIT_LOOK && !car.ghost) {
+        const ground = this.heightAt(car.x, car.y, car.trackIndex);
+        const v = car.speed ?? 0;
+        const vx = Math.cos(car.heading) * v;
+        const vy = Math.sin(car.heading) * v;
+        this.sparks.burst(car.x, car.y, ground, vx, vy, Math.min(70, 16 + Math.round((upset - entry.upset) * 80)));
+        this.tyreFx.hit(car.x, car.y, ground, vx, vy, 6);
+      }
+      entry.upset = upset;
       entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex) + (car === own ? 0 : (pit?.lift.get(car.id) ?? 0) * 0.09) + (car.lift ?? 0);
       // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
       entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
+      if (this.sunset > 0.02) entry.model.setShadow(this.sunset * SHADOW_REACH, SHADOW_ANGLE);
     }
     this.updateSparks([own, ...others], dt);
     for (const [id, entry] of this.cars) {
@@ -416,6 +466,7 @@ export class View3D {
     this.marshals.update(this.trackFlag, this.chequered, this.time);
     this.updateLights(own, others);
     this.celebration?.update(dt, this.pixelScale());
+    this.updateLife(own, others, dt);
     if (items) {
       if (!this.items) {
         this.items = new Items3d(this.track, (x, y, i) => this.heightAt(x, y, i ?? null));
@@ -448,7 +499,12 @@ export class View3D {
       this.renderer.clear();
       // Particles are sized for the main camera, and your own smoke would fill the glass.
       this.tyreFx.showParticles(false);
+      // Nobody would see these in a mirror this small: two draw calls saved.
+      const marbles = this.marbles.mesh.visible;
+      this.clouds.mesh.visible = this.marbles.mesh.visible = false;
       this.renderer.render(this.scene, this.mirrorCamera);
+      this.clouds.mesh.visible = true;
+      this.marbles.mesh.visible = marbles;
       this.tyreFx.showParticles(true);
       this.renderer.setRenderTarget(null);
     }
@@ -558,8 +614,37 @@ export class View3D {
     this.visor.update(visor ? rain : 0, own.speed, dt);
   }
 
+  /** Clouds, grid crew and the fly-over: a few numbers a frame unless something is showing. */
+  private updateLife(own: CarView, others: CarView[], dt: number): void {
+    const scale = this.pixelScale();
+    this.clouds.update(this.camera.position, this.wetness, dt);
+    this.flyover?.update(dt, scale);
+    if (this.phase === 'grid' && !this.crewPlaced) {
+      this.crewPlaced = true;
+      if (!this.gridCrew) {
+        this.gridCrew = new GridCrew3d();
+        this.scene.add(this.gridCrew.group);
+        this.disposables.push(this.gridCrew);
+      }
+      this.gridCrew.place([own, ...others].filter((c) => !c.ghost).map((c) => ({ x: c.x, y: c.y, heading: c.heading, ground: this.heightAt(c.x, c.y, c.trackIndex), color: c.color ?? c.livery.body })));
+    }
+    if (this.phase !== 'grid' && this.phase !== 'lights' && this.phase !== 'race') this.gridCrew?.hide();
+    this.gridCrew?.update(this.phase !== 'grid', this.wetness > 0.15, dt);
+  }
+
+  /** A TV camera (replays, the fly-around) instead of the ones on the car; null goes back to those. */
+  setShot(shot: Shot | null): void {
+    if (!shot && this.cinema) this.snap();
+    this.cinema = shot;
+  }
+
   /** Beams, tail lights and their reflections, for the real cars. */
   private updateLights(own: CarView, others: CarView[]): void {
+    // Bright dry day: nothing to do (no list, no matrices).
+    if (this.sky3d === 'day' && this.wetness === 0) {
+      this.lights.update([], null, 'day', 0, this.time);
+      return;
+    }
     const lit = (c: CarView): LitCar => ({ x: c.x, y: c.y, heading: c.heading, ground: this.heightAt(c.x, c.y, c.trackIndex) });
     const mine = lit(own);
     this.lights.update([mine, ...others.filter((c) => !c.ghost).map(lit)], mine, this.sky3d, this.wetness, this.time);
@@ -628,22 +713,47 @@ export class View3D {
     this.scenery.setStartLights(race.lights);
     this.trackFlag = race.flag ?? null;
     this.chequered = !!race.chequered;
+    const phase = race.phase ?? '';
+    if (phase !== this.phase) {
+      if (phase === 'grid') this.crewPlaced = false;
+      // Lights out: the fly-over.
+      if (phase === 'race' && this.phase === 'lights') {
+        if (!this.flyover) {
+          this.flyover = new Flyover3d();
+          this.scene.add(this.flyover.group);
+          this.disposables.push(this.flyover);
+        }
+        const s = this.track.samples[0];
+        this.flyover.fly(s.x, s.y, s.tx, s.ty, this.heightAt(s.x, s.y));
+      }
+      this.phase = phase;
+    }
+    const progress = race.progress ?? 0;
+    this.marbles.setAmount(progress);
+    this.sunset = sunsetShare(this.sky3d, progress);
     const wet = race.wetness ?? 0;
     // A track drying out means the rain has stopped (it rains while it is wet or getting wetter).
     if (wet < this.wetness - 1e-6) this.drying = true;
     else if (wet > this.wetness + 1e-6 || wet === 0) this.drying = false;
     this.wetness = wet;
     const w = Math.round(this.wetness * 50) / 50;
-    if (w === this.shownWet) return;
+    const dusk = Math.round(this.sunset * 40) / 40;
+    if (w === this.shownWet && dusk === this.shownSunset) return;
     this.shownWet = w;
+    this.shownSunset = dusk;
     // Wet: a grey sky, mist closing in, duller light, a darker road.
     const fog = this.scene.fog as THREE.Fog;
-    fog.color.copy(this.dry.fog).lerp(RAIN_GREY, w * 0.9);
+    // (And the low sun of a long race, warming everything, under any rain.)
+    fog.color.copy(this.dry.fog).lerp(SUNSET_FOG, dusk * 0.45).lerp(RAIN_GREY, w * 0.9);
     fog.near = this.dry.near * (1 - 0.55 * w);
     fog.far = this.dry.far * (1 - 0.5 * w);
     this.renderer.setClearColor(fog.color);
-    this.skyMat.color.setScalar(1).lerp(RAIN_GREY, w * 0.85);
-    for (const [light, base] of this.dry.lights) light.intensity = base * (1 - 0.35 * w);
+    this.skyMat.color.setScalar(1).lerp(SUNSET_SKY, dusk * 0.6).lerp(RAIN_GREY, w * 0.85);
+    for (const [light, base] of this.dry.lights) light.intensity = base * (1 - 0.35 * w) * (1 - 0.18 * dusk);
+    for (const sun of this.suns) {
+      sun.color.copy(this.sunColor).lerp(SUNSET_SUN, dusk * 0.85);
+      sun.position.set(0.5 + dusk * 0.5, 1 - dusk * 0.62, 0.3 + dusk * 0.3);
+    }
     this.groundMat.color.setScalar(1 - 0.22 * w);
   }
 

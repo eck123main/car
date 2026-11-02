@@ -58,6 +58,17 @@ describe('Replay recorder', () => {
     expect(Math.abs(Math.abs(h) - Math.PI)).toBeLessThan(0.1);
   });
 
+  it('picks the best moment it still has', () => {
+    const r = new ReplayRecorder(20, 10);
+    expect(r.bestMoment()).toBeNull();
+    for (let i = 0; i <= 400; i++) r.record(i / 20, [['a', car(i)]]);
+    // Too old: the buffer only holds the last 10 s.
+    r.noteMoment(2, 'a', 100);
+    r.noteMoment(15, 'a', 5);
+    r.noteMoment(17, 'a', 8);
+    expect(r.bestMoment()!.time).toBe(17);
+  });
+
   it('finds the start of the last lap, not the finish line itself', () => {
     const r = new ReplayRecorder(20, 100);
     for (let i = 0; i <= 1200; i++) r.record(i / 20, [['a', car(i)]]);

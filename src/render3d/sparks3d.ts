@@ -62,6 +62,8 @@ export class Sparks3d {
   private readonly colors: THREE.BufferAttribute;
   private readonly owed = new Map<string, number>();
   private next = 0;
+  private active = 0;
+  private fresh = false;
 
   constructor() {
     const geo = new THREE.BufferGeometry();
@@ -90,6 +92,14 @@ export class Sparks3d {
       while (n-- > 0) this.spawn(car);
     }
     for (const id of this.owed.keys()) if (!cars.has(id)) this.owed.delete(id);
+    // Nothing flying: no loop, no upload.
+    if (this.active === 0 && !this.fresh) {
+      this.mesh.visible = false;
+      return;
+    }
+    this.mesh.visible = true;
+    this.fresh = false;
+    let active = 0;
 
     const p = this.positions.array as Float32Array;
     const c = this.colors.array as Float32Array;
@@ -100,6 +110,7 @@ export class Sparks3d {
         c.fill(0, i * 6, i * 6 + 6);
         continue;
       }
+      active++;
       this.age[i] += dt;
       this.vel[j + 1] -= G * dt;
       for (let k = 0; k < 3; k++) this.pos[j + k] += this.vel[j + k] * dt;
@@ -122,8 +133,30 @@ export class Sparks3d {
       const b = t * t * 0.5;
       c.set([r, g, b, r * 0.6, g * 0.4, b * 0.2], i * 6);
     }
+    this.active = active;
     this.positions.needsUpdate = true;
     this.colors.needsUpdate = true;
+  }
+
+  /** A shower from a hit: flying every way from where the cars touched. */
+  burst(x: number, y: number, ground: number, vx: number, vy: number, count: number): void {
+    for (let n = 0; n < count; n++) {
+      const i = this.next;
+      this.next = (this.next + 1) % MAX;
+      const j = i * 3;
+      const a = Math.random() * Math.PI * 2;
+      const out = 3 + Math.random() * 12;
+      this.pos[j] = x;
+      this.pos[j + 1] = ground + 0.3;
+      this.pos[j + 2] = y;
+      this.vel[j] = vx * 0.6 + Math.cos(a) * out;
+      this.vel[j + 1] = 1 + Math.random() * 5;
+      this.vel[j + 2] = vy * 0.6 + Math.sin(a) * out;
+      this.ground[i] = ground;
+      this.age[i] = 0;
+      this.life[i] = 0.3 + Math.random() * 0.4;
+    }
+    this.fresh = true;
   }
 
   private spawn(car: SparkCar): void {
@@ -147,6 +180,7 @@ export class Sparks3d {
     this.ground[i] = car.ground;
     this.age[i] = 0;
     this.life[i] = 0.25 + Math.random() * 0.35;
+    this.fresh = true;
   }
 
   dispose(): void {

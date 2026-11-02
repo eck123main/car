@@ -84,17 +84,25 @@ const FX_RANGE = 350;
 const SMOKE = new THREE.Color('#d6d8dc');
 const HAZE = new THREE.Color('#d9dde0');
 const STONE = new THREE.Color('#5f5648');
+const CARBON = new THREE.Color('#2a2a2e');
+const FLAME = new THREE.Color('#ff7a1e');
+const FLAME_CORE = new THREE.Color('#ffe9a8');
+/** A lift from this fast (m/s) can pop, this often, seen from this close (m). */
+const BACKFIRE_SPEED = 45;
+const BACKFIRE_CHANCE = 0.7;
+const BACKFIRE_RANGE = 140;
 
 export class TyreFx3d {
   readonly group = new THREE.Group();
-  private readonly puffs = new Particles3d(1100);
+  private readonly puffs = new Particles3d(700);
+  private readonly flames = new Particles3d(90, { soft: 0.1, additive: true });
   private readonly stones = new Particles3d(240, { soft: 0.7 });
   private readonly marks = new SkidMarks();
-  private readonly state = new Map<string, { braking: boolean; locking: boolean; owed: number[] }>();
+  private readonly state = new Map<string, { braking: boolean; locking: boolean; onThrottle: boolean; marking: boolean; keys: string[]; owed: number[] }>();
   private readonly dust = new Map<string, THREE.Color>();
 
   constructor() {
-    this.group.add(this.marks.mesh, this.puffs.mesh, this.stones.mesh);
+    this.group.add(this.marks.mesh, this.puffs.mesh, this.stones.mesh, this.flames.mesh);
   }
 
   update(cars: ReadonlyMap<string, TyreCar>, wet: number, camera: THREE.Vector3, dt: number, scale: number): void {
@@ -106,13 +114,14 @@ export class TyreFx3d {
     }
     this.puffs.update(dt, scale);
     this.stones.update(dt, scale);
+    this.flames.update(dt, scale);
     this.marks.flush();
   }
 
   private stepCar(id: string, car: TyreCar, wet: number, camera: THREE.Vector3, dt: number): void {
     let s = this.state.get(id);
     if (!s) {
-      s = { braking: false, locking: false, owed: [0, 0, 0, 0, 0, 0] };
+      s = { braking: false, locking: false, onThrottle: false, marking: false, keys: [`${id}:f-1`, `${id}:f1`, `${id}:r-1`, `${id}:r1`], owed: [0, 0, 0, 0, 0, 0] };
       this.state.set(id, s);
     }
     // Each hard stop might be one where the fronts lock.
@@ -127,14 +136,26 @@ export class TyreFx3d {
     const wheel = (along: number, across: number) => ({ x: car.x + cos * along - sin * across, y: car.y + sin * along + cos * across });
 
     // Rubber is laid at any distance: it stays there for when the camera comes round.
-    for (const side of [-1, 1]) {
-      const fw = wheel(AXLE_FRONT, side * TRACK_HALF);
-      const rw = wheel(AXLE_REAR, side * TRACK_HALF);
-      this.marks.lay(`${id}:f${side}`, fw.x, fw.y, car.ground, work.markFront);
-      this.marks.lay(`${id}:r${side}`, rw.x, rw.y, car.ground, work.markRear);
+    const marking = work.markFront > 0 || work.markRear > 0;
+    if (marking || s.marking) {
+      for (let k = 0; k < 2; k++) {
+        const side = k === 0 ? -1 : 1;
+        const fw = wheel(AXLE_FRONT, side * TRACK_HALF);
+        const rw = wheel(AXLE_REAR, side * TRACK_HALF);
+        this.marks.lay(s.keys[k], fw.x, fw.y, car.ground, work.markFront);
+        this.marks.lay(s.keys[k + 2], rw.x, rw.y, car.ground, work.markRear);
+      }
     }
+    s.marking = marking;
 
-    if (Math.hypot(car.x - camera.x, car.y - camera.z) > FX_RANGE) return;
+    // Lifting off at speed: the exhaust pops.
+    const lifted = s.onThrottle && car.throttle < 0.35;
+    if (car.throttle > 0.75) s.onThrottle = car.speed > BACKFIRE_SPEED;
+    else if (lifted) s.onThrottle = false;
+
+    const away = Math.hypot(car.x - camera.x, car.y - camera.z);
+    if (away > FX_RANGE) return;
+    if (lifted && away < BACKFIRE_RANGE && wet < 0.5 && Math.random() < BACKFIRE_CHANCE) this.backfire(car, cos, sin);
     const due = (i: number, rate: number): number => {
       s.owed[i] += rate * dt;
       const n = Math.floor(s.owed[i]);
@@ -198,6 +219,30 @@ export class TyreFx3d {
     }
   }
 
+  /** A few flames out of the exhaust, gone in a blink. */
+  private backfire(car: TyreCar, cos: number, sin: number): void {
+    for (let i = 0; i < 7; i++) {
+      this.flames.spawn({
+        x: car.x + cos * EXHAUST, y: car.ground + 0.62, z: car.y + sin * EXHAUST,
+        vx: cos * (car.speed * 0.85 - 6 - Math.random() * 7) + (Math.random() - 0.5) * 1.5,
+        vy: (Math.random() - 0.3) * 1.5,
+        vz: sin * (car.speed * 0.85 - 6 - Math.random() * 7) + (Math.random() - 0.5) * 1.5,
+        life: 0.09 + Math.random() * 0.1, size: 0.5, endSize: 0.16, color: i < 2 ? FLAME_CORE : FLAME, alpha: 1.5,
+      });
+    }
+  }
+
+  /** Carbon dust where a car was hit (the sparks are in Sparks3d). */
+  hit(x: number, y: number, ground: number, vx: number, vy: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      this.puffs.spawn({
+        x: x + (Math.random() - 0.5), y: ground + 0.4, z: y + (Math.random() - 0.5),
+        vx: vx * 0.5 + (Math.random() - 0.5) * 5, vy: 0.6 + Math.random() * 2, vz: vy * 0.5 + (Math.random() - 0.5) * 5,
+        life: 0.5 + Math.random() * 0.5, size: 0.5, endSize: 2.4, color: CARBON, alpha: 0.5, drag: 2.5,
+      });
+    }
+  }
+
   private dustColor(hex: string): THREE.Color {
     let c = this.dust.get(hex);
     if (!c) this.dust.set(hex, (c = new THREE.Color(hex)));
@@ -208,6 +253,7 @@ export class TyreFx3d {
   showParticles(on: boolean): void {
     this.puffs.mesh.visible = on && this.puffs.count > 0;
     this.stones.mesh.visible = on && this.stones.count > 0;
+    this.flames.mesh.visible = on && this.flames.count > 0;
   }
 
   clearMarks(): void {
@@ -222,6 +268,7 @@ export class TyreFx3d {
   dispose(): void {
     this.puffs.dispose();
     this.stones.dispose();
+    this.flames.dispose();
     this.marks.dispose();
   }
 }
@@ -265,6 +312,7 @@ class SkidMarks {
     this.geo.setIndex(new THREE.BufferAttribute(index, 1));
     this.geo.setAttribute('position', this.pos);
     this.geo.setAttribute('color', this.col);
+    this.geo.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(this.geo, this.mat);
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
@@ -274,6 +322,7 @@ class SkidMarks {
   clear(): void {
     this.last.clear();
     this.next = this.laid = 0;
+    this.geo.setDrawRange(0, 0);
     const col = this.col.array as Float32Array;
     for (let i = 3; i < col.length; i += 4) col[i] = 0;
     this.col.clearUpdateRanges();
@@ -323,6 +372,7 @@ class SkidMarks {
     this.col.addUpdateRange(i * 16, 16);
     this.next = (i + 1) % MAX_MARKS;
     this.laid = Math.min(MAX_MARKS, this.laid + 1);
+    this.geo.setDrawRange(0, this.laid * 6);
     this.dirty = true;
     this.last.set(key, { x, y, h, lx, ly, a });
   }

@@ -15,6 +15,7 @@ type V3 = [number, number, number];
 
 const CARBON = '#1c1d20';
 const TYRE = '#161616';
+const WORN_TYRE = new THREE.Color('#4d463f');
 const DRS_GREEN = '#2ecc40';
 /**
  * Steering wheel angle (rad) per 1/m of curvature driven: like a real car, the wheel follows the
@@ -286,6 +287,8 @@ export class CarModel {
   private painted: string | null = null;
   private readonly ghost: boolean;
   private readonly livery: Livery;
+  private shadow: THREE.Object3D | null = null;
+  private wornStep = 0;
   wheel: SteeringWheel | null = null;
 
   /** ghost: see-through in this colour (opacity: how see-through; party mode's ghost item is nearly invisible). */
@@ -394,6 +397,7 @@ export class CarModel {
       const shadow = shared.shadow.clone();
       shadow.position.y = 0.01;
       this.group.add(shadow);
+      this.shadow = shadow;
     }
   }
 
@@ -414,6 +418,24 @@ export class CarModel {
       this.compound = compound;
       this.mats.ring.color.set(COMPOUNDS[compound].color);
     }
+  }
+
+  /** Tyres go from black to a dusty, grained grey as they wear (only when it changes by 10%). */
+  setWear(wear: number): void {
+    const step = Math.min(10, Math.round(wear * 10));
+    if (step === this.wornStep || this.ghost) return;
+    this.wornStep = step;
+    (this.mats.tyre as THREE.MeshLambertMaterial).color.set(TYRE).lerp(WORN_TYRE, step / 10);
+  }
+
+  /** The low sun of a long race: the shadow slides out to this side of the car (world direction) and grows. */
+  setShadow(reach: number, angle: number): void {
+    if (!this.shadow) return;
+    // The car's frame is turned by -heading (group.rotation.y).
+    const a = angle + this.group.rotation.y;
+    this.shadow.position.x = Math.cos(a) * reach;
+    this.shadow.position.z = Math.sin(a) * reach;
+    this.shadow.scale.setScalar(1 + reach * 0.2);
   }
 
   /** Hide parts that were knocked off (Car.lost bits). */
@@ -923,8 +945,9 @@ export class SteeringWheel {
       c.fillRect(0, 0, 128, 36);
       c.textAlign = 'center';
       c.fillStyle = '#050608';
-      c.font = 'bold 26px system-ui, sans-serif';
-      c.fillText(info.message.text, 64, 19);
+      // Radio lines are longer than a flag: shrink to fit.
+      c.font = `bold ${info.message.text.length > 6 ? 18 : 26}px system-ui, sans-serif`;
+      c.fillText(info.message.text, 64, 19, 122);
     }
     this.tex.needsUpdate = true;
   }
