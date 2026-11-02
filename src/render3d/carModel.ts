@@ -603,6 +603,12 @@ export function armJoints(angle: number, side: number): { shoulder: THREE.Vector
   return { shoulder, elbow: elbowFor(shoulder, wrist, UPPER_ARM, FOREARM, pole), wrist };
 }
 
+/** Where the raised right hand is at the finish (car frame), in view from the cockpit. */
+export function raisedHand(time: number, win: boolean): V3 {
+  const beat = Math.sin(time * (win ? 9 : 7));
+  return win ? [-0.06, 1 + beat * 0.035, 0.2] : [-0.06, 1, 0.2 + beat * 0.065];
+}
+
 /** What the steering wheel's display shows. */
 export interface WheelInfo {
   speedKmh: number;
@@ -622,6 +628,8 @@ export interface WheelInfo {
   message?: { text: string; color: string } | null;
   /** Flag shown on the shift lights. */
   flag?: LedFlag;
+  /** Took the flag: the right hand comes off the wheel (win: a fist pump; else a wave). */
+  celebrate?: 'win' | 'wave' | null;
 }
 
 export type LedFlag = 'yellow' | 'green' | null;
@@ -655,6 +663,9 @@ export function ledColors(lit: number, flag: LedFlag, drsReady: boolean, blink: 
 
 /** One gloved hand on a grip, and the arm to it. */
 interface Hand {
+  /** The glove on the wheel, and the one that replaces it off the wheel. */
+  grip: THREE.Group;
+  free: THREE.Group;
   fingers: THREE.Mesh;
   thumb: THREE.Mesh;
   thumbRest: THREE.Vector3;
@@ -686,6 +697,10 @@ export class SteeringWheel {
   private last = '';
   private angle = 0;
   private kick = 0;
+  /** How far the right hand is off the wheel (0-1), and what it's doing up there. */
+  private lift = 0;
+  private win = false;
+  private clock = 0;
   private gear = 1;
   private drs = false;
   private readonly ledCanvas = document.createElement('canvas');
@@ -779,12 +794,23 @@ export class SteeringWheel {
       // Shift paddle behind the wheel (right: up, left: down), under the fingertips.
       const paddle = new THREE.Mesh(paddleGeo, paddleMat);
       paddle.position.set(0.058, 0.035, side * 0.1);
-      this.inner.add(palm, knuckles, fingers, thumb, paddle);
+      const grip = new THREE.Group();
+      grip.add(palm, knuckles, fingers, thumb);
+      this.inner.add(grip, paddle);
+      // Off the wheel: a closed glove at the end of the arm.
+      const free = new THREE.Group();
+      const fist = new THREE.Mesh(palmGeo, glove);
+      const back = new THREE.Mesh(knuckleGeo, accent);
+      back.position.set(-0.04, 0, 0);
+      free.add(fist, back);
+      free.scale.setScalar(0.8);
+      free.visible = false;
+      this.arms.add(free);
       const upper = new THREE.Mesh(upperGeo, suit);
       const fore = new THREE.Mesh(foreGeo, suit);
       const cuff = new THREE.Mesh(cuffGeo, accent);
       this.arms.add(upper, fore, cuff);
-      this.hands.push({ fingers, thumb, thumbRest, paddle, upper, fore, cuff, flick: 0, press: 0 });
+      this.hands.push({ grip, free, fingers, thumb, thumbRest, paddle, upper, fore, cuff, flick: 0, press: 0 });
     }
   }
 
@@ -796,6 +822,9 @@ export class SteeringWheel {
     this.angle += (target - this.angle) * Math.min(1, dt * 14);
     this.kick = shake * WHEEL_KICK * (Math.random() * 2 - 1);
     this.group.rotation.x = this.angle + this.kick;
+    this.clock += dt;
+    if (info.celebrate) this.win = info.celebrate === 'win';
+    this.lift += ((info.celebrate ? 1 : 0) - this.lift) * Math.min(1, dt * 6);
 
     const [left, right] = this.hands;
     const gear = gearFor(info.speedKmh);
@@ -831,7 +860,18 @@ export class SteeringWheel {
       mesh.quaternion.setFromUnitVectors(up, d.normalize());
     };
     for (const [i, hand] of this.hands.entries()) {
-      const { shoulder, elbow, wrist } = armJoints(this.angle + this.kick, i === 0 ? -1 : 1);
+      const joints = armJoints(this.angle + this.kick, i === 0 ? -1 : 1);
+      const { shoulder } = joints;
+      let { elbow, wrist } = joints;
+      // The right hand leaves the wheel at the finish.
+      const off = i === 1 ? this.lift : 0;
+      if (off > 0.01) {
+        wrist = wrist.clone().lerp(new THREE.Vector3(...raisedHand(this.clock, this.win)), off);
+        elbow = elbowFor(shoulder, wrist, UPPER_ARM, FOREARM, new THREE.Vector3(ELBOW_POLE.x, ELBOW_POLE.y, ELBOW_POLE.z));
+      }
+      hand.grip.visible = off < 0.05;
+      hand.free.visible = off >= 0.05;
+      hand.free.position.copy(wrist);
       segment(hand.upper, shoulder, elbow);
       segment(hand.fore, elbow, wrist);
       hand.cuff.position.copy(wrist);

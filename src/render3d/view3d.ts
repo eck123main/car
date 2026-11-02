@@ -19,6 +19,7 @@ import { Sparks3d, type SparkCar } from './sparks3d';
 import { Rain3d, Visor, type SprayCar } from './rain3d';
 import { TyreFx3d, type TyreCar } from './tyreFx3d';
 import { Marshals3d, type TrackFlag } from './marshals3d';
+import { Celebration3d, podiumCamera, podiumSpots, type PodiumSpot } from './celebration3d';
 import { CarLights3d, type LitCar } from './carLights3d';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
@@ -103,6 +104,8 @@ export interface CarView {
   /** Throttle (0-1) and direction of travel against the nose (rad), for tyre smoke. */
   throttle?: number;
   slip?: number;
+  /** Stands this far above the road (m): the podium steps. */
+  lift?: number;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -186,6 +189,9 @@ export class View3D {
   private readonly scenery: Scenery3d;
   private readonly sparks = new Sparks3d();
   private readonly tyreFx = new TyreFx3d();
+  /** A camera that isn't on the car (the podium): our car is then drawn like any other. */
+  private cinema: { eye: [number, number, number]; look: [number, number, number]; fov: number } | null = null;
+  private celebration: Celebration3d | null = null;
   private readonly marshals: Marshals3d;
   private readonly lights = new CarLights3d();
   private readonly sky3d: 'day' | 'dusk' | 'night';
@@ -356,7 +362,8 @@ export class View3D {
     const seen = new Set<string>();
     for (const car of [own, ...others]) {
       seen.add(car.id);
-      const key = `${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${car === own}`;
+      const onboard = car === own && !this.cinema;
+      const key = `${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}`;
       let entry = this.cars.get(car.id);
       if (entry && entry.key !== key) {
         entry.model.group.removeFromParent();
@@ -365,7 +372,7 @@ export class View3D {
       }
       if (!entry) {
         const model = new CarModel(car.livery, { ghost: car.ghost, opacity: car.ghostOpacity });
-        if (car === own) {
+        if (onboard) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);
           this.near.add(model.group);
@@ -380,7 +387,7 @@ export class View3D {
       if (car.parts) entry.model.setDamage(car.parts);
       entry.heat = brakeHeat(entry.heat, car.brake ?? 0, car.speed ?? 0, dt);
       entry.model.setBrakeHeat(entry.heat);
-      entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex) + (car === own ? 0 : (pit?.lift.get(car.id) ?? 0) * 0.09);
+      entry.model.group.position.y = this.heightAt(car.x, car.y, car.trackIndex) + (car === own ? 0 : (pit?.lift.get(car.id) ?? 0) * 0.09) + (car.lift ?? 0);
       // Our own car pitches exactly as the camera does, so the cockpit never shakes in view.
       entry.model.group.rotation.z = car === own ? this.pitch : Math.atan(this.uphill(car));
     }
@@ -392,7 +399,7 @@ export class View3D {
       this.cars.delete(id);
     }
     const mine = this.cars.get(own.id)!.model;
-    const def = CAMS[this.mode];
+    const def = this.cinema ? CAMS.chase : CAMS[this.mode];
     mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
     const head = own.feel ? this.headMotion.step(own.feel, dt) : STILL_HEAD;
@@ -400,12 +407,14 @@ export class View3D {
     mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt, head.shake, own.slip ?? 0, own.feel?.upset ?? 0);
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
+    const mirror = this.mirror && !this.cinema;
 
     this.placeCamera(own, dt);
     this.updateRain(own, [own, ...others], def.inside === true && !this.lookBack, dt);
     this.updateTyreFx([own, ...others], dt);
     this.marshals.update(this.trackFlag, this.chequered, this.time);
     this.updateLights(own, others);
+    this.celebration?.update(dt, this.pixelScale());
     if (items) {
       if (!this.items) {
         this.items = new Items3d(this.track, (x, y, i) => this.heightAt(x, y, i ?? null));
@@ -427,7 +436,7 @@ export class View3D {
     if (this.pit) this.pit.group.visible = !!pit;
 
     // The mirror (every other frame), while the sky sits round the mirror camera.
-    if (this.mirror && this.mirrorFrame++ % 2 === 0) {
+    if (mirror && this.mirrorFrame++ % 2 === 0) {
       const cos = Math.cos(own.heading);
       const sin = Math.sin(own.heading);
       const lift = this.heightAt(own.x, own.y, own.trackIndex);
@@ -459,7 +468,7 @@ export class View3D {
       this.renderer.render(this.visorScene, this.screenCamera);
     }
     // Outside the cockpit the car's own mirrors can't be seen: show one at the top of the screen.
-    if (this.mirror && !def.inside && !this.lookBack) this.drawScreenMirror();
+    if (mirror && !def.inside && !this.lookBack) this.drawScreenMirror();
   }
 
   private drawScreenMirror(): void {
@@ -483,6 +492,14 @@ export class View3D {
   }
 
   private placeCamera(own: OwnCarView, dt: number): void {
+    if (this.cinema) {
+      const { eye, look, fov } = this.cinema;
+      this.camera.position.set(...eye);
+      this.camera.lookAt(...look);
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
     const lift = this.heightAt(own.x, own.y, own.trackIndex);
     const cam = this.lookBack ? LOOK_BACK : CAMS[this.mode];
     let heading = own.heading;
@@ -627,6 +644,40 @@ export class View3D {
     this.skyMat.color.setScalar(1).lerp(RAIN_GREY, w * 0.85);
     for (const [light, base] of this.dry.lights) light.intensity = base * (1 - 0.35 * w);
     this.groundMat.color.setScalar(1 - 0.22 * w);
+  }
+
+  /** A new race: clean road. */
+  clearRubber(): void {
+    this.tyreFx.clearMarks();
+  }
+
+  /** Where the top three stand at the end of a race. */
+  podiumPlaces(): PodiumSpot[] {
+    return podiumSpots(this.track);
+  }
+
+  /** Steps, confetti and fireworks; colours: the drivers on the podium. */
+  showPodium(colors: readonly string[]): void {
+    if (!this.celebration) {
+      this.celebration = new Celebration3d(this.sky3d !== 'day');
+      this.scene.add(this.celebration.group);
+      this.disposables.push(this.celebration);
+    }
+    const spots = this.podiumPlaces();
+    this.celebration.show(spots, spots.map((s) => this.heightAt(s.x, s.y)), colors);
+  }
+
+  /** The camera t seconds into the podium. */
+  aimPodium(t: number): void {
+    const c = this.podiumPlaces()[0];
+    this.cinema = podiumCamera(c, this.heightAt(c.x, c.y), t);
+  }
+
+  /** Back to the normal cameras. */
+  endPodium(): void {
+    this.cinema = null;
+    this.celebration?.hide();
+    this.snap();
   }
 
   /** Show the ideal line on the road (null hides it). */

@@ -210,6 +210,10 @@ export class TyreFx3d {
     this.stones.mesh.visible = on && this.stones.count > 0;
   }
 
+  clearMarks(): void {
+    this.marks.clear();
+  }
+
   /** Rubber lines on the road right now (for checking). */
   get markCount(): number {
     return this.marks.count;
@@ -263,6 +267,18 @@ class SkidMarks {
     this.geo.setAttribute('color', this.col);
     this.mesh = new THREE.Mesh(this.geo, this.mat);
     this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+  }
+
+  /** Clean road again. */
+  clear(): void {
+    this.last.clear();
+    this.next = this.laid = 0;
+    const col = this.col.array as Float32Array;
+    for (let i = 3; i < col.length; i += 4) col[i] = 0;
+    this.col.clearUpdateRanges();
+    this.pos.clearUpdateRanges();
+    this.col.needsUpdate = true;
     this.mesh.visible = false;
   }
 

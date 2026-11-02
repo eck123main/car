@@ -45,6 +45,15 @@ function trackList(): { id: string; name: string }[] {
   return list;
 }
 
+/** A results screen's "Watch last lap": the screen goes, and comes back when the replay ends. */
+function replayOffer(back: () => void): (() => void) | undefined {
+  if (!game?.canReplay()) return undefined;
+  return () => {
+    clearUi();
+    game?.startReplay(back);
+  };
+}
+
 function stopGame(): void {
   game?.stop();
   game = null;
@@ -246,6 +255,7 @@ async function host(name: string, offline: boolean, mode: GameMode = 'classic'):
       world: s.world,
       meId: HostGame.HOST_ID,
       isHost: true,
+      onReplay: replayOffer(showResultsForHost),
       onContinue: () => {
         stopGame();
         hostGame.backToLobby();
@@ -332,13 +342,14 @@ async function join(name: string): Promise<void> {
       shown = 'racing';
       runGame(new ClientDriver(client), {
         menuNote: 'The race keeps going while this menu is open.',
-        onFinished: () => {
+        onFinished: function results() {
           if (!client.world || !client.session) return;
           showResults({
             standings: client.session.standings,
             world: client.world,
             meId: client.id ?? '',
             isHost: false,
+            onReplay: replayOffer(results),
             onLeave: home,
           });
         },

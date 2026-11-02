@@ -31,6 +31,7 @@ import { liveryFor } from '../render/livery';
 import type { Cam3d, CarView, View3D } from '../render3d/view3d';
 import type { LedFlag, WheelInfo } from '../render3d/carModel';
 import { slipAngle } from '../render3d/feel';
+import { ReplayRecorder, type ReplayCar } from './replay';
 import { COMPOUNDS } from '../sim/tyres';
 import { cycle, isSpectating, watchable } from './spectate';
 import type { ItemView } from '../sim/items';
@@ -95,6 +96,10 @@ export interface GhostCar extends Pose {
 
 /** The wheel doesn't call a pit stop for this long after a reset (s): the car was just repaired. */
 const WHEEL_NO_BOX_AFTER_RESET = 30;
+/** Stays on your own car this long after taking the flag (ms), hand in the air. */
+const FINISH_WAVE = 4500;
+/** How long the podium shows before the results (s). */
+const PODIUM_TIME = 10;
 
 function lerpPose(r: Racer, alpha: number): Pose {
   const c = r.car;
@@ -306,6 +311,12 @@ export class GameScreen {
   private wheelNote: { text: string; color: string; until: number } | null = null;
   private greenUntil = 0;
   private noBoxUntil = 0;
+  private waveUntil = 0;
+  private finishPos = 0;
+  /** The end of a 3D race: waiting for the wave to end, then the podium, results over it. */
+  private podium: { startAt: number; t: number; shown: boolean; announced: boolean } | null = null;
+  private recorder = new ReplayRecorder();
+  private replay: { t: number; end: number; id: string; back: () => void; was3d: boolean } | null = null;
   /** Spectating: the driver being watched (null: our own car). */
   private watching: string | null = null;
   private ticker: Worker | null = null;
@@ -522,6 +533,11 @@ export class GameScreen {
     for (const k of keys.next) if (this.keyboard.wasPressed(k)) dir = 1;
     const world = this.driver.world();
     const session = this.driver.session();
+    // Just took the flag: stay in our own car for a moment.
+    if (performance.now() < this.waveUntil) {
+      this.watching = null;
+      return;
+    }
     if (!world || !session || !isSpectating(session, world, this.driver.meId)) {
       // (Steering presses while driving are not "switch driver" presses later.)
       this.watching = null;
@@ -588,8 +604,22 @@ export class GameScreen {
     this.last = now;
     this.acc += elapsed;
 
-    if (this.keyboard.wasPressed('Escape')) this.onMenu();
-    if (this.keyboard.wasPressed('KeyV') && this.driver.firstPerson) this.toggleView();
+    if (this.replay) {
+      if (this.keyboard.wasPressed('Escape') || this.keyboard.wasPressed('Enter')) this.endReplay();
+      else {
+        const dir = this.keyboard.wasPressed('ArrowLeft') ? -1 : this.keyboard.wasPressed('ArrowRight') ? 1 : 0;
+        const ids = this.driver.world()?.racers.map((r) => r.id) ?? [];
+        if (dir !== 0) {
+          this.replay.id = cycle(ids, this.replay.id, dir) ?? this.replay.id;
+          this.view3d?.snap();
+        }
+      }
+    } else if (this.podiumShowing) {
+      if (this.keyboard.wasPressed('Escape') || this.keyboard.wasPressed('Enter')) this.announcePodium();
+    } else {
+      if (this.keyboard.wasPressed('Escape')) this.onMenu();
+      if (this.keyboard.wasPressed('KeyV') && this.driver.firstPerson) this.toggleView();
+    }
     if (this.keyboard.wasPressed('KeyM') && this.view3d) {
       this.view3d.mirror = !this.view3d.mirror;
       this.toasts.push({ text: this.view3d.mirror ? 'MIRROR ON' : 'MIRROR OFF', color: '#ffffff', until: this.driver.now() + 2 });
@@ -625,6 +655,10 @@ export class GameScreen {
       if (note) this.wheelNote = { ...note, until: now2 + 2.5 };
       if (e.kind === 'safetyCar' && e.state === 'green') this.greenUntil = now2 + 4;
       if (e.kind === 'reset') this.noBoxUntil = now2 + WHEEL_NO_BOX_AFTER_RESET;
+      if (e.kind === 'finished') {
+        this.waveUntil = performance.now() + FINISH_WAVE;
+        this.finishPos = e.position;
+      }
       const toast = eventToast(e, now2);
       if (toast) this.toasts.push(toast);
       while (this.toasts.length > 3) this.toasts.shift();
@@ -632,9 +666,239 @@ export class GameScreen {
     const phase = this.driver.session()?.phase ?? null;
     if (phase !== this.lastPhase) {
       this.lastPhase = phase;
-      if (phase) this.onPhase(phase);
+      if (phase) this.phaseChanged(phase);
     }
+    this.updatePodium(elapsed);
     return elapsed;
+  }
+
+  /** Session moved on. In 3D the results wait for the wave and the podium. */
+  private phaseChanged(phase: string): void {
+    if (phase === 'finished' && this.view3d) {
+      this.podium = { startAt: Math.max(performance.now(), this.waveUntil), t: 0, shown: false, announced: false };
+      return;
+    }
+    if (phase !== 'finished') {
+      // A new weekend: whatever was showing from the last one goes.
+      if (this.replay) this.endReplay(false);
+      if (this.podium) this.endPodium();
+      // Play again restarts the race clock: nothing from the last race carries over.
+      if (phase === 'qualifying' || phase === 'grid') {
+        this.recorder = new ReplayRecorder();
+        this.view3d?.clearRubber();
+      }
+    }
+    this.onPhase(phase);
+  }
+
+  private endPodium(): void {
+    this.podium = null;
+    this.view3d?.endPodium();
+  }
+
+  private updatePodium(elapsed: number): void {
+    const p = this.podium;
+    if (!p || this.replay) return;
+    if (performance.now() < p.startAt) return;
+    if (!this.view3d) {
+      // The 3D view was closed: straight to the results.
+      this.podium = null;
+      if (!p.announced) this.onPhase('finished');
+      return;
+    }
+    p.t += elapsed;
+    if (!p.announced && p.t > PODIUM_TIME) this.announcePodium();
+  }
+
+  private announcePodium(): void {
+    if (!this.podium || this.podium.announced) return;
+    this.podium.announced = true;
+    this.onPhase('finished');
+  }
+
+  /** The podium is up and nobody has seen the results yet. */
+  private get podiumShowing(): boolean {
+    return !!this.podium && !this.podium.announced && performance.now() >= this.podium.startAt;
+  }
+
+  /** The top three, from the final standings. */
+  private podiumRacers(world: RaceWorld, session: SessionSnap | null): Racer[] {
+    const ids = (session?.standings ?? []).filter((s) => s.status !== 'dnf').map((s) => s.id);
+    return ids.map((id) => world.racer(id)).filter((r): r is Racer => !!r).slice(0, 3);
+  }
+
+  private renderPodium(view: View3D, world: RaceWorld, session: SessionSnap | null, dt: number): void {
+    const p = this.podium!;
+    const top = this.podiumRacers(world, session);
+    if (top.length === 0) {
+      this.announcePodium();
+      return;
+    }
+    if (!p.shown) {
+      p.shown = true;
+      view.showPodium(top.map((r) => r.color));
+    }
+    view.aimPodium(p.t);
+    view.setRace({ lights: 0, wetness: world.options.wetness });
+    const spots = view.podiumPlaces();
+    const cars = top.map((r, i): CarView => ({
+      id: r.id,
+      x: spots[i].x,
+      y: spots[i].y,
+      heading: spots[i].heading,
+      steer: 0,
+      drsOpen: false,
+      compound: r.tyres.compound,
+      livery: skinLivery(r.skin) ?? liveryFor(r.color),
+      trackIndex: null,
+      lost: r.car.lost,
+      parts: r.car.parts,
+      lift: spots[i].lift,
+    }));
+    const still = { speedKmh: 0, drsOpen: false, drsAvailable: false, ers: 0, ersActive: false, limiter: false };
+    view.render({ ...cars[0], speed: 0, yawRate: 0, wheel: still }, cars.slice(1), dt);
+
+    const { ctx, canvas, dpr } = this;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    top.forEach((r, i) => {
+      const at = view.project(spots[i].x, spots[i].y, spots[i].lift + 1.9);
+      if (at) drawScreenTag(ctx, `P${i + 1}  ${r.name}`, at.x, at.y, r.color, 0);
+    });
+    if (!p.announced) {
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('ENTER: results', canvas.width / dpr / 2, canvas.height / dpr - 24);
+    }
+  }
+
+  /** Is there a race to watch again? */
+  canReplay(): boolean {
+    return this.recorder.hasData;
+  }
+
+  /** Watch the last lap again in 3D; `back` is called when it ends. */
+  startReplay(back: () => void): void {
+    const world = this.driver.world();
+    const standings = this.driver.session()?.standings ?? [];
+    const id = world?.racer(this.driver.meId) ? this.driver.meId : standings[0]?.id;
+    if (!id || !this.recorder.hasData) {
+      back();
+      return;
+    }
+    const finished = standings.find((s) => s.id === id)?.status === 'finished';
+    this.replay = { t: this.recorder.lastLapStart(id, finished), end: this.recorder.range[1], id, back, was3d: this.want3d };
+    this.want3d = true;
+    this.view3d?.endPodium();
+    this.view3d?.snap();
+  }
+
+  /** Stop the replay (back: return to the screen it came from). */
+  private endReplay(back = true): void {
+    const r = this.replay;
+    if (!r) return;
+    this.replay = null;
+    this.want3d = r.was3d;
+    if (!r.was3d) {
+      this.close3d();
+      // No 3D, so no podium to go back to.
+      this.podium = null;
+    } else if (this.podium) this.podium.shown = false;
+    if (back) r.back();
+  }
+
+  private recordReplay(world: RaceWorld, poses: ReadonlyMap<string, Pose>): void {
+    const time = world.time;
+    const cars: [string, ReplayCar][] = world.racers.map((r) => {
+      const p = poses.get(r.id)!;
+      this.recorder.noteLaps(time, r.id, r.timer.lapsCompleted);
+      return [
+        r.id,
+        {
+          x: p.x,
+          y: p.y,
+          heading: p.heading,
+          steer: r.car.steer,
+          speed: r.car.speed,
+          brake: r.car.brake,
+          throttle: r.car.throttle,
+          slip: slipAngle(r.car.vx, r.car.vy, r.car.heading),
+          yawRate: r.car.yawRate,
+          drs: r.drsOpen,
+          ers: r.ers,
+          ersOn: r.ersActive,
+          lost: r.car.lost,
+          trackIndex: r.car.trackIndex,
+        },
+      ];
+    });
+    this.recorder.record(time, cars);
+  }
+
+  private renderReplay(world: RaceWorld, dt: number): void {
+    const r = this.replay!;
+    const view = this.view3d;
+    const { ctx, canvas, dpr } = this;
+    const w = canvas.width / dpr;
+    if (view) {
+      r.t += dt;
+      if (r.t >= r.end) {
+        this.endReplay();
+        return;
+      }
+      const toView = (racer: Racer, c: ReplayCar): CarView => ({
+        id: racer.id,
+        x: c.x,
+        y: c.y,
+        heading: c.heading,
+        steer: c.steer,
+        drsOpen: c.drs,
+        compound: racer.tyres.compound,
+        livery: skinLivery(racer.skin) ?? liveryFor(racer.color),
+        trackIndex: c.trackIndex,
+        lost: c.lost,
+        speed: c.speed,
+        brake: c.brake,
+        throttle: c.throttle,
+        slip: c.slip,
+      });
+      const main = world.racer(r.id);
+      const c = this.recorder.sample(r.id, r.t);
+      if (main && c) {
+        const others: CarView[] = [];
+        for (const o of world.racers) {
+          const s = o === main ? null : this.recorder.sample(o.id, r.t);
+          if (s) others.push(toView(o, s));
+        }
+        view.setRace({ lights: 0, wetness: world.options.wetness });
+        view.render(
+          {
+            ...toView(main, c),
+            speed: c.speed,
+            yawRate: c.yawRate,
+            wheel: { speedKmh: c.speed * 3.6, drsOpen: c.drs, drsAvailable: false, ers: c.ers, ersActive: c.ersOn, limiter: false, throttle: c.throttle, tyre: COMPOUNDS[main.tyres.compound].name[0], wear: main.tyres.wear },
+          },
+          others,
+          dt,
+        );
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        for (const o of world.racers) {
+          const s = o === main ? null : this.recorder.sample(o.id, r.t);
+          const at = s && view.project(s.x, s.y, 1.8, s.trackIndex);
+          if (at && at.distance < 300) drawScreenTag(ctx, o.name, at.x, at.y, o.color, at.distance);
+        }
+      }
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const name = world.racer(r.id)?.name ?? '';
+    const text = view ? `REPLAY · ${name} · ← → change car · C camera · ENTER back` : 'Loading the replay…';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const tw = ctx.measureText(text).width + 24;
+    ctx.fillStyle = 'rgba(10,12,16,0.75)';
+    ctx.fillRect(w / 2 - tw / 2, 12, tw, 28);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, w / 2, 31);
   }
 
   private render(alpha: number, dt: number): void {
@@ -662,11 +926,20 @@ export class GameScreen {
       this.gfx = { track: world.track, graphics, tiles: new TileCache((c, view) => graphics.draw(c, view)), minimap: new Minimap(world.track) };
       this.snapped = false;
     }
+    if (this.replay) {
+      this.renderReplay(world, dt);
+      return;
+    }
+    if (this.podium && this.view3d && performance.now() >= this.podium.startAt) {
+      this.renderPodium(this.view3d, world, this.driver.session(), dt);
+      return;
+    }
     const own = world.racer(this.driver.meId);
     // The car the camera and HUD follow: our own, or the one we're spectating.
     const me = (this.watching !== null ? world.racer(this.watching) : undefined) ?? own;
     if (!me) return;
     const poses = new Map(world.racers.map((r) => [r.id, this.driver.pose(r, alpha, dt)]));
+    if (this.driver.session()?.phase === 'race') this.recordReplay(world, poses);
     const myPose = poses.get(me.id)!;
     // Jump to the car (rather than sweep across the map) on a new car, or after the tab was
     // in the background and the camera fell far behind.
@@ -693,6 +966,7 @@ export class GameScreen {
   /** What the wheel display flashes: the latest note, or BOX while the engineer wants a stop. */
   private wheelMessage(world: RaceWorld, me: Racer, session: SessionSnap | null): WheelInfo['message'] {
     const now = this.driver.now();
+    if (performance.now() < this.waveUntil) return { text: `P${this.finishPos}`, color: this.finishPos === 1 ? '#ffd400' : '#ffffff' };
     if (this.wheelNote && now < this.wheelNote.until) return this.wheelNote;
     // Same call as the HUD's banner (only near the pit entry), and never straight after a reset.
     if (session?.phase === 'race' && now >= this.noBoxUntil && boxCalled(world, me, adviceFor(world, me, session)) && Math.floor(now * 2) % 2 === 0) return { text: 'BOX', color: '#ffd400' };
@@ -786,6 +1060,7 @@ export class GameScreen {
           delta: me === own ? this.driver.delta() : null,
           message: this.wheelMessage(world, me, session),
           flag,
+          celebrate: me === own && performance.now() < this.waveUntil ? (this.finishPos === 1 ? 'win' : 'wave') : null,
         },
       },
       others,

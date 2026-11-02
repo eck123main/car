@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armJoints, brakeHeat, dentAt, discGlow, ledColors, shiftLights, SHIFT_LEDS, wheelAngle } from './carModel';
+import { armJoints, brakeHeat, dentAt, discGlow, EYE, ledColors, raisedHand, shiftLights, SHIFT_LEDS, wheelAngle } from './carModel';
 import { slipAngle } from './feel';
 
 const NONE = { frontWing: 0, rearWing: 0, left: 0, right: 0 };
@@ -81,6 +81,26 @@ describe('Brake discs', () => {
   it('stay dark with light braking or at low speed', () => {
     expect(discGlow(run(0, 0.3, 30, 10))).toBeLessThan(0.15);
     expect(discGlow(run(0, 1, 5, 10))).toBe(0);
+  });
+});
+
+describe('Hand off the wheel at the finish', () => {
+  it('stays within arm\'s reach and in view from the cockpit', () => {
+    for (const win of [true, false]) {
+      for (let t = 0; t < 3; t += 0.05) {
+        const [x, y, z] = raisedHand(t, win);
+        expect(Math.hypot(x + 0.46, y - 0.66, z - 0.17)).toBeLessThan(0.29 + 0.28);
+        // In front of the driver's eye, and not further to the side than ahead (hfov ~95 degrees).
+        expect(x).toBeGreaterThan(EYE[0] + 0.2);
+        expect(Math.abs(z)).toBeLessThan(x - EYE[0]);
+      }
+    }
+  });
+
+  it('a win pumps up and down, a wave goes side to side', () => {
+    expect(raisedHand(0.1, true)[1]).not.toBe(raisedHand(0.3, true)[1]);
+    expect(raisedHand(0.1, true)[2]).toBe(raisedHand(0.3, true)[2]);
+    expect(raisedHand(0.1, false)[2]).not.toBe(raisedHand(0.3, false)[2]);
   });
 });
 

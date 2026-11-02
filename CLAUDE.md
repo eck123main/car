@@ -266,7 +266,13 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   things are instanced; effects are camera-facing quads in a few shared meshes (~10 draw calls).
 - **Pit stops**: painted boxes, name boards, box lights and the crew at work (see Pit stops).
 - **Wheel display**: 15 shift lights (green, red, blue; all flash at the shift point, `shiftLights`
-  from `engineRpm`), gear big in the middle, speed to the right.
+  from `engineRpm`), gear big in the middle, speed to the right, tyre + wear and live delta in a small
+  row. Messages take over the top (`wheelNote` in `render/messages.ts`: SC, SC IN, GREEN, +5s, PB, PIT;
+  BOX blinks only when the HUD's banner would show, `boxCalled`: near the pit entry, and never for 30 s
+  after a reset). Flags on the lights (`ledColors`): all flash yellow under the SC, green at the
+  restart; the two end lights flash blue when DRS is ready. Gloves and trim follow the skin.
+- **Wheel feel** (always on, unlike head movement): kerbs and hits kick the wheel and hands; sliding
+  after a hit, the driver catches it with opposite lock (`wheelAngle` slip + upset).
 - **Head movement** (`feel.ts`, `HeadMotion`; Settings "3D view: head moves...", `headMotion`,
   **off by default**: a steady view is easier to drive, and handling is never affected): g-forces
   push the head on a spring (forward under braking, out of corners), kerbs drum, gravel shakes,
@@ -276,6 +282,22 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   towards you at speed) while it is wet or getting wetter (not while drying); spray behind cars
   (`rain3d.ts`); drops on the visor in the cockpit cameras, blown outwards at speed (`Visor`).
   The 2D rain overlay is top-down only.
+- **Tyres** (`tyreFx3d.ts`, `particles3d.ts`): the physics has no lockups or wheelspin, so these are
+  read from the inputs: smoke on some hard stops (fronts, rolled per stop), launches (rears) and
+  slides; dark rubber on the road that builds up over a race (ring of 3000 quads, cleared on a new
+  race); dust off the road and stones from gravel; a faint veil of hot air from the exhaust (a veil,
+  not true refraction: no post-processing). Wet roads hardly smoke and take no rubber.
+- **Marshals** (`marshals3d.ts`): posts round the lap wave yellow under the SC and green at the
+  restart; one past the line waves the chequered flag from the leader's last lap.
+- **Car lights** (`carLights3d.ts`): night and dusk: pools of light ahead, tail lights and their red
+  reflections on the road; wet: the blinking rain light and its reflection.
+- **The finish** (3D only): taking the flag holds the camera on your car for 4.5 s with a hand off
+  the wheel (`raisedHand`: fist pump for a win, else a wave) and P1 on the display. When the race
+  ends, a 10 s podium (`celebration3d.ts`: steps, confetti, fireworks; ENTER skips) comes before the
+  results. In the top-down view results show straight away.
+- **Replay** (`app/replay.ts`, "Watch last lap" on the results): every car at 20 Hz for the last
+  150 s, on each machine for itself. Opens in 3D from your last lap: ← → change car, C camera,
+  ENTER back.
 - **Brake discs** glow orange after big stops (`brakeHeat`, from each car's synced brake and
   speed). **Sparks** (`sparks3d.ts`) from the floor at top speed and in compressions (the road's
   vertical curve, as `Car.step` weighs the car). Drivers' helmets (with a visor) turn into

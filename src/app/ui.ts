@@ -735,6 +735,8 @@ export interface ResultsView {
   onContinue?: () => void;
   /** Host: race again with everyone, same settings. */
   onPlayAgain?: () => void;
+  /** Watch the last lap again, in 3D. */
+  onReplay?: () => void;
   onLeave: () => void;
 }
 
@@ -781,6 +783,7 @@ export function showResults(v: ResultsView): void {
           { class: 'buttons' },
           v.isHost && v.onPlayAgain ? el('button', { class: 'primary', onclick: v.onPlayAgain }, 'Play again') : null,
           v.isHost && v.onContinue ? el('button', { onclick: v.onContinue }, 'Back to lobby') : null,
+          v.onReplay ? el('button', { onclick: v.onReplay }, 'Watch last lap') : null,
           !v.isHost ? el('span', { class: 'muted' }, 'Waiting for the host…') : null,
           el('button', { onclick: v.onLeave }, 'Leave'),
         ),
