@@ -20,6 +20,13 @@ export interface Feel {
   upset: number;
 }
 
+/** How far a car is sliding: direction of travel against its nose (rad, + = moving to its right). */
+export function slipAngle(vx: number, vy: number, heading: number): number {
+  const fwd = vx * Math.cos(heading) + vy * Math.sin(heading);
+  const side = -vx * Math.sin(heading) + vy * Math.cos(heading);
+  return Math.atan2(side, Math.abs(fwd));
+}
+
 /** Head offset (m, car frame: x forward, y up, z right) and turn (rad). */
 export interface HeadPose {
   x: number;

@@ -28,6 +28,11 @@ const WHEEL_MAX = 2.3;
 const WHEEL_INPUT = 0.35;
 /** Turn at full input with the car (nearly) stopped (rad), where the corner radius means nothing. */
 const WHEEL_PARKED = 1.2;
+/** Catching a slide: only above this speed (m/s), up to this much opposite lock (rad). */
+const WHEEL_CATCH_SPEED = 8;
+const WHEEL_CATCH = 1.3;
+/** Wheel kick per metre of shake (rad): kerbs ~2 degrees, a big hit ~15. */
+const WHEEL_KICK = 5;
 /** Front wheel turn at full lock (rad), as drawn in 2D. */
 const STEER_VISUAL = 0.35;
 
@@ -540,11 +545,17 @@ export class CarModel {
  * mostly the radius of the turn it is really making (yaw rate / speed), plus a little of the
  * steering input. Stopped, it is just the input.
  */
-export function wheelAngle(steer: number, speed: number, yawRate: number): number {
+export function wheelAngle(steer: number, speed: number, yawRate: number, slip = 0, upset = 0): number {
   const moving = Math.min(1, Math.max(0, (speed - 1) / 4));
   const curvature = yawRate / Math.max(speed, 1);
   const driven = curvature * WHEEL_PER_CURVATURE + steer * WHEEL_INPUT;
-  const angle = moving * driven + (1 - moving) * steer * WHEEL_PARKED;
+  let angle = moving * driven + (1 - moving) * steer * WHEEL_PARKED;
+  // Sliding after a hit: the driver catches it, steering the way the car is really going.
+  if (speed > WHEEL_CATCH_SPEED) {
+    const catching = Math.max(Math.min(1, upset * 3), Math.min(1, Math.max(0, (Math.abs(slip) - 0.12) / 0.2)));
+    const opposite = Math.max(-WHEEL_CATCH, Math.min(WHEEL_CATCH, slip * 2.5));
+    angle += (opposite - angle) * catching;
+  }
   return Math.max(-WHEEL_MAX, Math.min(WHEEL_MAX, angle));
 }
 
@@ -602,7 +613,18 @@ export interface WheelInfo {
   limiter: boolean;
   /** For the revs on the shift lights (0-1). */
   throttle?: number;
+  /** Tyres: compound letter and wear (0-1). */
+  tyre?: string;
+  wear?: number;
+  /** Live gap to the best lap or ghost (s, - = ahead). */
+  delta?: number | null;
+  /** A short message over the display (BOX, SC, +5s). */
+  message?: { text: string; color: string } | null;
+  /** Flag shown on the shift lights. */
+  flag?: LedFlag;
 }
+
+export type LedFlag = 'yellow' | 'green' | null;
 
 /** Shift lights: how many of the 15 LEDs are lit at these revs, or 16 = all flashing (shift now). */
 export const SHIFT_LEDS = 15;
@@ -611,6 +633,25 @@ export function shiftLights(rpm: number): number {
   return Math.max(0, Math.min(SHIFT_LEDS, Math.ceil(((rpm - 9300) / (11650 - 9300)) * SHIFT_LEDS)));
 }
 const LED_COLORS = ['#20e040', '#ff2a2a', '#7a5cff'];
+const LED_FLAG = { yellow: '#ffd400', green: '#20e040' };
+const LED_DRS = '#2f8fff';
+
+/**
+ * What each shift light shows (null = off). A flag takes over all of them, flashing, so it can't
+ * be missed; DRS ready flashes the two lights at each end blue, over the revs.
+ */
+export function ledColors(lit: number, flag: LedFlag, drsReady: boolean, blink: boolean): (string | null)[] {
+  const out: (string | null)[] = [];
+  const shift = lit > SHIFT_LEDS;
+  for (let i = 0; i < SHIFT_LEDS; i++) {
+    if (flag) out.push(blink ? LED_FLAG[flag] : null);
+    else if (drsReady && blink && (i < 2 || i >= SHIFT_LEDS - 2)) out.push(LED_DRS);
+    else if (shift) out.push(blink ? LED_COLORS[2] : null);
+    else out.push(i < lit ? LED_COLORS[Math.floor(i / 5)] : null);
+  }
+  return out;
+}
+
 
 /** One gloved hand on a grip, and the arm to it. */
 interface Hand {
@@ -644,12 +685,13 @@ export class SteeringWheel {
   private readonly hands: Hand[] = [];
   private last = '';
   private angle = 0;
+  private kick = 0;
   private gear = 1;
   private drs = false;
   private readonly ledCanvas = document.createElement('canvas');
   private readonly ledCtx: CanvasRenderingContext2D;
   private readonly ledTex: THREE.CanvasTexture;
-  private lit = -1;
+  private lit = '';
 
   constructor(livery?: Livery) {
     this.group.position.set(...WHEEL_POS);
@@ -663,14 +705,22 @@ export class SteeringWheel {
     const handle = new THREE.BoxGeometry(0.05, 0.17, 0.05);
     this.disposables.push(mat, grip, body, handle);
     inner.add(new THREE.Mesh(body, mat));
+    // Trim along the top of the wheel, in the car's colours.
+    const trimGeo = new THREE.BoxGeometry(0.043, 0.012, 0.24);
+    const trimMat = new THREE.MeshLambertMaterial({ color: livery?.wings ?? '#50525a' });
+    this.disposables.push(trimGeo, trimMat);
+    const trim = new THREE.Mesh(trimGeo, trimMat);
+    trim.position.y = 0.068;
+    inner.add(trim);
     for (const z of [-0.14, 0.14]) {
       const h = new THREE.Mesh(handle, grip);
       h.position.set(0, -0.01, z);
       inner.add(h);
     }
-    this.canvas.width = 128;
-    this.canvas.height = 64;
+    this.canvas.width = 256;
+    this.canvas.height = 128;
     this.ctx = this.canvas.getContext('2d')!;
+    this.ctx.scale(2, 2);
     this.tex = new THREE.CanvasTexture(this.canvas);
     this.tex.colorSpace = THREE.SRGBColorSpace;
     const screenGeo = new THREE.PlaneGeometry(0.13, 0.065);
@@ -699,7 +749,8 @@ export class SteeringWheel {
 
   private buildHands(livery?: Livery): void {
     const suit = new THREE.MeshLambertMaterial({ color: livery?.body ?? '#c0c0c0' });
-    const glove = new THREE.MeshLambertMaterial({ color: '#e9e9ec' });
+    // Gloves: white, tinted with the helmet colour, so they go with the skin.
+    const glove = new THREE.MeshLambertMaterial({ color: new THREE.Color('#e9e9ec').lerp(new THREE.Color(livery?.helmet ?? '#e9e9ec'), 0.4) });
     const accent = new THREE.MeshLambertMaterial({ color: livery?.helmet ?? '#333333' });
     const paddleMat = new THREE.MeshLambertMaterial({ color: '#3a3b40' });
     const palmGeo = new THREE.BoxGeometry(0.075, 0.1, 0.07);
@@ -738,11 +789,13 @@ export class SteeringWheel {
   }
 
   /** Turn the wheel for the car's movement and move the hands (every frame). */
-  drive(steer: number, speed: number, yawRate: number, info: WheelInfo, dt: number, shake = 0): void {
-    // The hands ease the wheel round: quick, but never a snap. Kerbs and hits kick it about.
-    const target = wheelAngle(steer, speed, yawRate);
-    this.angle += (target - this.angle) * Math.min(1, dt * 14) + shake * 2 * (Math.random() * 2 - 1);
-    this.group.rotation.x = this.angle;
+  drive(steer: number, speed: number, yawRate: number, info: WheelInfo, dt: number, shake = 0, slip = 0, upset = 0): void {
+    // The hands ease the wheel round: quick, but never a snap. Kerbs and hits kick it about,
+    // on top of where the hands are taking it.
+    const target = wheelAngle(steer, speed, yawRate, slip, upset);
+    this.angle += (target - this.angle) * Math.min(1, dt * 14);
+    this.kick = shake * WHEEL_KICK * (Math.random() * 2 - 1);
+    this.group.rotation.x = this.angle + this.kick;
 
     const [left, right] = this.hands;
     const gear = gearFor(info.speedKmh);
@@ -778,7 +831,7 @@ export class SteeringWheel {
       mesh.quaternion.setFromUnitVectors(up, d.normalize());
     };
     for (const [i, hand] of this.hands.entries()) {
-      const { shoulder, elbow, wrist } = armJoints(this.angle, i === 0 ? -1 : 1);
+      const { shoulder, elbow, wrist } = armJoints(this.angle + this.kick, i === 0 ? -1 : 1);
       segment(hand.upper, shoulder, elbow);
       segment(hand.fore, elbow, wrist);
       hand.cuff.position.copy(wrist);
@@ -787,8 +840,10 @@ export class SteeringWheel {
   }
 
   show(info: WheelInfo): void {
-    this.showLeds(shiftLights(engineRpm(info.speedKmh, info.throttle ?? 0)));
-    const key = `${gearFor(info.speedKmh)}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}`;
+    this.showLeds(shiftLights(engineRpm(info.speedKmh, info.throttle ?? 0)), info.flag ?? null, info.drsAvailable);
+    const delta = info.delta == null ? null : Math.round(info.delta * 10) / 10;
+    const wear = Math.round((info.wear ?? 0) * 100);
+    const key = `${gearFor(info.speedKmh)}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}|${info.tyre}|${wear}|${delta}|${info.message?.text}`;
     if (key === this.last) return;
     this.last = key;
     const c = this.ctx;
@@ -799,10 +854,10 @@ export class SteeringWheel {
     c.textBaseline = 'middle';
     c.fillStyle = '#ffffff';
     c.font = 'bold 34px system-ui, sans-serif';
-    c.fillText(String(gearFor(info.speedKmh)), 64, 26);
+    c.fillText(String(gearFor(info.speedKmh)), 64, 22);
     c.fillStyle = info.limiter ? '#4dd2ff' : '#d8dade';
     c.font = 'bold 16px system-ui, sans-serif';
-    c.fillText(String(Math.round(info.speedKmh)), 104, 26);
+    c.fillText(String(Math.round(info.speedKmh)), 104, 18);
     // DRS light (left), ERS bar (bottom).
     c.fillStyle = info.drsOpen ? DRS_GREEN : info.drsAvailable ? '#ffd400' : '#2a2b30';
     c.fillRect(6, 8, 18, 18);
@@ -810,25 +865,46 @@ export class SteeringWheel {
     c.fillRect(8, 50, 112, 8);
     c.fillStyle = info.ersActive ? '#ffd400' : '#4dd2ff';
     c.fillRect(8, 50, 112 * info.ers, 8);
+    // Tyre and wear (left), gap to the best lap (right).
+    c.font = 'bold 11px system-ui, sans-serif';
+    if (info.tyre) {
+      c.textAlign = 'left';
+      c.fillStyle = wear >= 70 ? '#ff5a4d' : '#d8dade';
+      c.fillText(`${info.tyre} ${wear}%`, 6, 42);
+    }
+    if (delta !== null) {
+      c.textAlign = 'right';
+      c.fillStyle = delta <= 0 ? '#3ce06a' : '#ff5a4d';
+      c.fillText(`${delta <= 0 ? '-' : '+'}${Math.abs(delta).toFixed(1)}`, 122, 42);
+    }
+    // A message takes over the top of the display.
+    if (info.message) {
+      c.fillStyle = info.message.color;
+      c.fillRect(0, 0, 128, 36);
+      c.textAlign = 'center';
+      c.fillStyle = '#050608';
+      c.font = 'bold 26px system-ui, sans-serif';
+      c.fillText(info.message.text, 64, 19);
+    }
     this.tex.needsUpdate = true;
   }
 
-  private showLeds(lit: number): void {
-    // Shift now: all of them flash.
-    const flash = lit > SHIFT_LEDS;
-    const state = flash ? (Math.floor(performance.now() / 70) % 2 === 0 ? 99 : 98) : lit;
+  private showLeds(lit: number, flag: LedFlag, drsReady: boolean): void {
+    // Flags flash slowly, the shift point fast.
+    const blink = Math.floor(performance.now() / (flag || drsReady ? 180 : 70)) % 2 === 0;
+    const leds = ledColors(lit, flag, drsReady, blink);
+    const state = leds.join();
     if (state === this.lit) return;
     this.lit = state;
     const c = this.ledCtx;
     c.fillStyle = '#050608';
     c.fillRect(0, 0, 128, 8);
-    for (let i = 0; i < SHIFT_LEDS; i++) {
-      const on = flash ? state === 99 : i < lit;
-      c.fillStyle = on ? (flash ? LED_COLORS[2] : LED_COLORS[Math.floor(i / 5)]) : '#1c1d22';
+    leds.forEach((color, i) => {
+      c.fillStyle = color ?? '#1c1d22';
       c.beginPath();
       c.arc(5 + i * 8.4, 4, 3, 0, Math.PI * 2);
       c.fill();
-    }
+    });
     this.ledTex.needsUpdate = true;
   }
 

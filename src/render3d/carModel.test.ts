@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { armJoints, brakeHeat, dentAt, discGlow, shiftLights, SHIFT_LEDS, wheelAngle } from './carModel';
+import { armJoints, brakeHeat, dentAt, discGlow, ledColors, shiftLights, SHIFT_LEDS, wheelAngle } from './carModel';
+import { slipAngle } from './feel';
 
 const NONE = { frontWing: 0, rearWing: 0, left: 0, right: 0 };
 
@@ -80,6 +81,41 @@ describe('Brake discs', () => {
   it('stay dark with light braking or at low speed', () => {
     expect(discGlow(run(0, 0.3, 30, 10))).toBeLessThan(0.15);
     expect(discGlow(run(0, 1, 5, 10))).toBe(0);
+  });
+});
+
+describe('Catching a slide', () => {
+  it('steers the way the car is really going, against the spin', () => {
+    // Nose turning left, car still travelling to its right: right lock.
+    expect(wheelAngle(0, 40, -2, 0.5, 1)).toBeGreaterThan(0.8);
+    expect(wheelAngle(0, 40, 2, -0.5, 1)).toBeLessThan(-0.8);
+  });
+
+  it('leaves normal driving and crawling alone', () => {
+    expect(wheelAngle(0.5, 40, 0.5, 0.02, 0)).toBe(wheelAngle(0.5, 40, 0.5));
+    expect(wheelAngle(0.5, 4, 0.5, 0.5, 1)).toBe(wheelAngle(0.5, 4, 0.5));
+  });
+
+  it('reads the slide from the velocity and the nose', () => {
+    expect(slipAngle(10, 0, 0)).toBeCloseTo(0);
+    // Heading along +x, moving towards +y: to the car's right.
+    expect(slipAngle(10, 2, 0)).toBeGreaterThan(0);
+    // Reversing straight back is not a slide.
+    expect(slipAngle(-10, 0, 0)).toBeCloseTo(0);
+  });
+});
+
+describe('Flags on the shift lights', () => {
+  it('a flag takes over every light and flashes', () => {
+    expect(ledColors(3, 'yellow', false, true).every((c) => c === '#ffd400')).toBe(true);
+    expect(ledColors(3, 'yellow', false, false).every((c) => c === null)).toBe(true);
+  });
+
+  it('DRS ready flashes the ends blue and leaves the revs in the middle', () => {
+    const on = ledColors(8, null, true, true);
+    expect(on[0]).toBe('#2f8fff');
+    expect(on[SHIFT_LEDS - 1]).toBe('#2f8fff');
+    expect(on[5]).toBe(ledColors(8, null, false, true)[5]);
   });
 });
 

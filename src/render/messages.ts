@@ -5,6 +5,25 @@ import type { DebrisKind } from '../sim/debris';
 
 const DEBRIS_NAMES: Record<DebrisKind, string> = { frontWing: 'FRONT WING', rearWing: 'REAR WING', wheel: 'WHEEL', shard: 'CARBON' };
 
+/** A few characters for the 3D steering wheel's display, for the events worth flashing there. */
+export function wheelNote(e: SessionEvent): { text: string; color: string } | null {
+  switch (e.kind) {
+    case 'penalty':
+      return { text: `+${e.penalty.seconds}s`, color: '#ff5a4d' };
+    case 'safetyCar':
+      if (e.state === 'deployed') return { text: 'SC', color: '#ffd400' };
+      if (e.state === 'inThisLap') return { text: 'SC IN', color: '#ffd400' };
+      if (e.state === 'green') return { text: 'GREEN', color: '#3ce06a' };
+      return null;
+    case 'lap':
+      return e.personalBest ? { text: 'PB', color: '#b84dff' } : null;
+    case 'pitEntry':
+      return { text: 'PIT', color: '#4dd2ff' };
+    default:
+      return null;
+  }
+}
+
 /** Turn a race event for the local driver into a short on-screen message. */
 export function eventToast(e: SessionEvent, now: number): Toast | null {
   const until = now + 3;

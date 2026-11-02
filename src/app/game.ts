@@ -12,7 +12,7 @@ import { drawDebris } from '../render/debris';
 import { drawCarEffects, drawDrops, drawItemBoxes, drawItemSlot, drawRockets, drawSmoke, drawTether, rainbowColor } from '../render/items';
 import { ITEM_INFO, SMOKE_RADIUS } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
-import { eventToast } from '../render/messages';
+import { eventToast, wheelNote } from '../render/messages';
 import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawPitOver, drawPitUnder } from '../render/pitCrew';
 import { PitStops, type PitScene } from '../render/pitStops';
@@ -29,6 +29,9 @@ import { drawIdealLine } from '../render/idealLine';
 import { saveCam3d, savedCam3d, savedView, saveView } from './view';
 import { liveryFor } from '../render/livery';
 import type { Cam3d, CarView, View3D } from '../render3d/view3d';
+import type { LedFlag, WheelInfo } from '../render3d/carModel';
+import { slipAngle } from '../render3d/feel';
+import { COMPOUNDS } from '../sim/tyres';
 import { cycle, isSpectating, watchable } from './spectate';
 import type { ItemView } from '../sim/items';
 import { RaceWorld, type PlayerInput, type Racer } from '../sim/world';
@@ -296,6 +299,9 @@ export class GameScreen {
   private dpr = 1;
   private snapped = false;
   private lastPhase: string | null = null;
+  /** Latest short message for the 3D steering wheel's display. */
+  private wheelNote: { text: string; color: string; until: number } | null = null;
+  private greenUntil = 0;
   /** Spectating: the driver being watched (null: our own car). */
   private watching: string | null = null;
   private ticker: Worker | null = null;
@@ -611,6 +617,9 @@ export class GameScreen {
     const now2 = this.driver.now();
     for (const e of this.driver.takeEvents()) {
       if ('racerId' in e && e.racerId !== this.driver.meId) continue;
+      const note = wheelNote(e);
+      if (note) this.wheelNote = { ...note, until: now2 + 2.5 };
+      if (e.kind === 'safetyCar' && e.state === 'green') this.greenUntil = now2 + 4;
       const toast = eventToast(e, now2);
       if (toast) this.toasts.push(toast);
       while (this.toasts.length > 3) this.toasts.shift();
@@ -664,7 +673,7 @@ export class GameScreen {
     this.camera.follow(myPose.x, myPose.y, me.car.vx, me.car.vy, myPose.heading, dt);
     const session = this.driver.session();
     const sc = this.driver.safetyCar(alpha);
-    if (this.view3d) this.render3d(this.view3d, world, me, poses, session, sc, dt);
+    if (this.view3d) this.render3d(this.view3d, world, me, own, poses, session, sc, dt);
     else this.renderWorld(world, me, poses, session, sc);
 
     this.drawHudLayer(world, me, own, poses, session, sc, dt);
@@ -676,8 +685,22 @@ export class GameScreen {
     return this.pitStops.scene(world, poses);
   }
 
+  /** What the wheel display flashes: the latest note, or BOX while the engineer wants a stop. */
+  private wheelMessage(world: RaceWorld, me: Racer, session: SessionSnap | null): WheelInfo['message'] {
+    const now = this.driver.now();
+    if (this.wheelNote && now < this.wheelNote.until) return this.wheelNote;
+    if (session?.phase === 'race' && adviceFor(world, me, session)?.boxNow && Math.floor(now * 2) % 2 === 0) return { text: 'BOX', color: '#ffd400' };
+    return null;
+  }
+
+  /** Flags on the shift lights: yellow under the safety car, green for a moment at the restart. */
+  private wheelFlag(session: SessionSnap | null): LedFlag {
+    if (session?.safetyCar === 'deployed' || session?.safetyCar === 'inThisLap') return 'yellow';
+    return this.driver.now() < this.greenUntil ? 'green' : null;
+  }
+
   /** First person: our car (or the one we're watching) and everything else in 3D. */
-  private render3d(view: View3D, world: RaceWorld, me: Racer, poses: ReadonlyMap<string, Pose>, session: SessionSnap | null, sc: Pose | null, dt: number): void {
+  private render3d(view: View3D, world: RaceWorld, me: Racer, own: Racer | undefined, poses: ReadonlyMap<string, Pose>, session: SessionSnap | null, sc: Pose | null, dt: number): void {
     const carView = (r: Racer): CarView => {
       const p = poses.get(r.id)!;
       return {
@@ -694,6 +717,8 @@ export class GameScreen {
         parts: r.car.parts,
         speed: r.car.speed,
         brake: r.car.brake,
+        throttle: r.car.throttle,
+        slip: slipAngle(r.car.vx, r.car.vy, r.car.heading),
       };
     };
     // See-through, as in 2D: everyone in qualifying, and cars parked after finishing.
@@ -725,14 +750,15 @@ export class GameScreen {
         ...look(me),
         speed: me.car.speed,
         yawRate: me.car.yawRate,
-        // Head movement and shaking only when the player turns it on (steady view by default).
-        feel: settings().headMotion ? {
+        // The wheel always feels the road; the camera only moves when the player turns it on.
+        headMoves: settings().headMotion,
+        feel: {
           longG: me.car.longG,
           latG: me.car.latG,
           speed: me.car.speed,
           surface: loudestSurface(me.car.surfaceFront, me.car.surfaceRear),
           upset: me.car.upset,
-        } : undefined,
+        },
         wheel: {
           speedKmh: me.car.speed * 3.6,
           drsOpen: me.drsOpen,
@@ -741,6 +767,11 @@ export class GameScreen {
           ersActive: me.ersActive,
           limiter: me.input.limiter,
           throttle: me.car.throttle,
+          tyre: COMPOUNDS[me.tyres.compound].name[0],
+          wear: me.tyres.wear,
+          delta: me === own ? this.driver.delta() : null,
+          message: this.wheelMessage(world, me, session),
+          flag: this.wheelFlag(session),
         },
       },
       others,

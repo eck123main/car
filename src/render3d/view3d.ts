@@ -17,6 +17,7 @@ import { Terrain } from './terrain';
 import { HeadMotion, type Feel, type HeadPose } from './feel';
 import { Sparks3d, type SparkCar } from './sparks3d';
 import { Rain3d, Visor, type SprayCar } from './rain3d';
+import { TyreFx3d, type TyreCar } from './tyreFx3d';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -97,6 +98,9 @@ export interface CarView {
   /** m/s and brake (0-1), for glowing brake discs and sparks. */
   speed?: number;
   brake?: number;
+  /** Throttle (0-1) and direction of travel against the nose (rad), for tyre smoke. */
+  throttle?: number;
+  slip?: number;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -112,8 +116,10 @@ export interface OwnCarView extends CarView {
   speed: number;
   yawRate: number;
   wheel: WheelInfo;
-  /** What moves the driver's head (g-forces, kerbs, hits); none: the camera stays still. */
+  /** What the driver feels (g-forces, kerbs, hits): it kicks the steering wheel. */
   feel?: Feel;
+  /** The camera moves with the driver's head too (off: a steady view). */
+  headMoves?: boolean;
 }
 
 /** What the race looks like around the cars (see View3D.setRace). */
@@ -173,6 +179,7 @@ export class View3D {
   private readonly track: Track;
   private readonly scenery: Scenery3d;
   private readonly sparks = new Sparks3d();
+  private readonly tyreFx = new TyreFx3d();
   private readonly rain = new Rain3d();
   private readonly visor = new Visor();
   private readonly visorScene = new THREE.Scene();
@@ -237,8 +244,8 @@ export class View3D {
       groundAt: (x, y) => terrain.heightAt(x, y),
       base: terrain.base,
     }));
-    this.disposables.push(scenery, this.sparks, this.rain, this.visor);
-    this.scene.add(this.sparks.mesh, this.rain.group);
+    this.disposables.push(scenery, this.sparks, this.tyreFx, this.rain, this.visor);
+    this.scene.add(this.sparks.mesh, this.tyreFx.group, this.rain.group);
     // Rain on the visor: a see-through picture over the whole screen (cockpit cameras).
     const visorQuad = new THREE.PlaneGeometry(2, 2);
     const visorMat = new THREE.MeshBasicMaterial({ map: this.visor.texture, transparent: true, depthTest: false, depthWrite: false });
@@ -370,13 +377,15 @@ export class View3D {
     const def = CAMS[this.mode];
     mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
-    this.headPose = own.feel ? this.headMotion.step(own.feel, dt) : STILL_HEAD;
-    mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt, this.headPose.shake);
+    const head = own.feel ? this.headMotion.step(own.feel, dt) : STILL_HEAD;
+    this.headPose = own.headMoves ? head : STILL_HEAD;
+    mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt, head.shake, own.slip ?? 0, own.feel?.upset ?? 0);
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
 
     this.placeCamera(own, dt);
     this.updateRain(own, [own, ...others], def.inside === true && !this.lookBack, dt);
+    this.updateTyreFx([own, ...others], dt);
     if (items) {
       if (!this.items) {
         this.items = new Items3d(this.track, (x, y, i) => this.heightAt(x, y, i ?? null));
@@ -506,6 +515,38 @@ export class View3D {
     const rain = this.drying ? 0 : this.wetness;
     this.rain.update(rain, this.wetness, this.camera.position, vel, spray, dt);
     this.visor.update(visor ? rain : 0, own.speed, dt);
+  }
+
+  /** Smoke, rubber, dust and stones from every real car. */
+  private updateTyreFx(cars: CarView[], dt: number): void {
+    const list = new Map<string, TyreCar>();
+    const cos = (c: CarView) => Math.cos(c.heading);
+    const sin = (c: CarView) => Math.sin(c.heading);
+    for (const car of cars) {
+      if (car.ghost || car.speed === undefined) continue;
+      // Only look the surface up when a car is moving: parked cars never kick up dust.
+      const front = car.speed > 5 ? this.track.surfaceAt(car.x + cos(car) * 1.75, car.y + sin(car) * 1.75, car.trackIndex ?? null).type : 'asphalt';
+      const rear = car.speed > 5 ? this.track.surfaceAt(car.x - cos(car) * 1.45, car.y - sin(car) * 1.45, car.trackIndex ?? null).type : 'asphalt';
+      list.set(car.id, {
+        x: car.x,
+        y: car.y,
+        heading: car.heading,
+        speed: car.speed,
+        brake: car.brake ?? 0,
+        throttle: car.throttle ?? 0,
+        slip: car.slip ?? 0,
+        ground: this.heightAt(car.x, car.y, car.trackIndex),
+        front,
+        rear,
+      });
+    }
+    this.tyreFx.update(list, this.wetness, this.camera.position, dt, this.pixelScale());
+  }
+
+  /** Pixels per metre, one metre from the camera (for sized particles). */
+  private pixelScale(): number {
+    const h = this.renderer.getDrawingBufferSize(new THREE.Vector2()).y;
+    return h / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2));
   }
 
   /** Sparks from the floors of cars pressed down hard (not ghosts). */
