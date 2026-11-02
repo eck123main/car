@@ -68,8 +68,8 @@ export type LandmarkType =
   | 'stadium'
   /** Words painted on the wall at `at` (the Wall of Champions). */
   | 'sign'
-  /** A trackside board with `text` past the wall at `at`, the same words painted in the run-off in 2D. */
-  | 'board';
+  /** Small words painted straight on the wall at `at`, following its curve (in 2D, in the run-off beside it). */
+  | 'wallText';
 
 export interface Landmark {
   type: LandmarkType;

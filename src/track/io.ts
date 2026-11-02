@@ -48,7 +48,7 @@ export function parseTrackDef(data: unknown): TrackDef {
 }
 
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
-const LANDMARKS: LandmarkType[] = ['tunnel', 'water', 'crossover', 'hotel', 'wheel', 'sphere', 'flames', 'sands', 'walls', 'strip', 'stadium', 'sign', 'board'];
+const LANDMARKS: LandmarkType[] = ['tunnel', 'water', 'crossover', 'hotel', 'wheel', 'sphere', 'flames', 'sands', 'walls', 'strip', 'stadium', 'sign', 'wallText'];
 
 /** The 3D look of a track. Anything not understood is left out (it's only scenery). */
 function parseScenery(data: unknown): SceneryDef | null {

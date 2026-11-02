@@ -265,8 +265,8 @@ export class Landmarks {
         return this.addStrip(l.from ?? 0, l.to ?? 0, l.gap ?? 25);
       case 'sign':
         return this.addSign(l.at ?? 0, side, l.text ?? '');
-      case 'board':
-        return this.addBoard(l.at ?? 0, side, l.text ?? '');
+      case 'wallText':
+        return this.addWallText(l.at ?? 0, side, l.text ?? '');
       // 'water' is drawn from waterOf; 'crossover' is in the track's heights; 'stadium' is built with the other stands (Scenery3d).
     }
   }
@@ -633,39 +633,56 @@ export class Landmarks {
     this.disposables.push(tex, geo, mat);
   }
 
-  /** A trackside advertising board just past the wall, its panel above the barrier. */
-  private addBoard(f: number, side: number, text: string): void {
-    const s = this.sample(f);
-    const width = 30;
-    const height = 3.75;
+  /** Small words painted on the wall itself: a see-through strip that follows the wall's curve. */
+  private addWallText(f: number, side: number, text: string): void {
+    const LOW = 0.2;
+    const HIGH = 0.95;
+    const REACH = 3; // Samples either side of `at`.
+    const PX_PER_M = 64 / (HIGH - LOW);
+    const i0 = this.index(f);
+    const rows: [number, number, number][] = [];
+    for (let k = -REACH; k <= REACH; k++) {
+      const s = this.ss[(i0 + k + this.n) % this.n];
+      rows.push(at(s, side * (this.wall(s, side) - 0.05)));
+    }
+    const dist = [0];
+    for (let k = 1; k < rows.length; k++) {
+      dist.push(dist[k - 1] + Math.hypot(rows[k][0] - rows[k - 1][0], rows[k][2] - rows[k - 1][2]));
+    }
+    const length = dist[dist.length - 1];
     const c = document.createElement('canvas');
-    c.width = 1024;
-    c.height = 128;
+    c.width = Math.ceil(length * PX_PER_M);
+    c.height = 64;
     const ctx = c.getContext('2d')!;
-    // The bottom third is hidden behind the barrier: only legs would show there.
-    ctx.fillStyle = '#2b2d33';
-    ctx.fillRect(0, 0, 1024, 128);
-    ctx.fillStyle = '#f2f2f2';
-    ctx.fillRect(0, 0, 1024, 88);
-    ctx.fillStyle = '#c8102e';
-    ctx.font = 'bold 62px system-ui, sans-serif';
+    ctx.fillStyle = '#20242c';
+    ctx.font = 'bold 46px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, 512, 46);
+    ctx.fillText(text, c.width / 2, 34);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const geo = new THREE.PlaneGeometry(width, height);
-    const mat = new THREE.MeshLambertMaterial({ map: tex });
-    const m = new THREE.Mesh(geo, mat);
-    const off = side * (this.wall(s, side) + 0.5);
-    const p = at(s, off, height / 2);
-    m.position.set(p[0], p[1], p[2]);
-    m.rotation.y = Math.atan2(-side * s.nx, -side * s.ny);
-    this.group.add(m);
+    tex.anisotropy = 4;
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const index: number[] = [];
+    rows.forEach((p, k) => {
+      // Seen from the track, a wall on the right reads against the driving direction.
+      const u = side > 0 ? 1 - dist[k] / length : dist[k] / length;
+      pos.push(p[0], p[1] + LOW, p[2], p[0], p[1] + HIGH, p[2]);
+      uv.push(u, 0, u, 1);
+      if (k > 0) {
+        const o = k * 2;
+        index.push(o - 2, o, o - 1, o, o + 1, o - 1);
+      }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    this.group.add(new THREE.Mesh(geo, mat));
     this.disposables.push(tex, geo, mat);
-    // A plain back, for anyone seeing it from the other side.
-    const back = off + side * 0.1;
-    this.solid.quad(at(s, back, 0, -width / 2), at(s, back, 0, width / 2), at(s, back, height, width / 2), at(s, back, height, -width / 2), '#3a3b40');
   }
 
   /** A big snowy mountain on the horizon (Mount Fuji), beyond the fog. */
