@@ -13,7 +13,7 @@ import { drawCarEffects, drawDrops, drawItemBoxes, drawItemSlot, drawRockets, dr
 import { ITEM_INFO, SMOKE_RADIUS } from '../sim/items';
 import { drawBigDelta, drawHud, drawRacerStatus, drawTiming, drawToasts, Minimap, type Toast } from '../render/hud';
 import { eventToast, wheelNote } from '../render/messages';
-import { adviceFor, drawPitBoxes, drawPitStatus } from '../render/pit';
+import { adviceFor, boxCalled, drawPitBoxes, drawPitStatus } from '../render/pit';
 import { drawPitOver, drawPitUnder } from '../render/pitCrew';
 import { PitStops, type PitScene } from '../render/pitStops';
 import { drawOwnPing } from '../render/ping';
@@ -92,6 +92,9 @@ export interface GhostCar extends Pose {
   color: string;
   label: string;
 }
+
+/** The wheel doesn't call a pit stop for this long after a reset (s): the car was just repaired. */
+const WHEEL_NO_BOX_AFTER_RESET = 30;
 
 function lerpPose(r: Racer, alpha: number): Pose {
   const c = r.car;
@@ -302,6 +305,7 @@ export class GameScreen {
   /** Latest short message for the 3D steering wheel's display. */
   private wheelNote: { text: string; color: string; until: number } | null = null;
   private greenUntil = 0;
+  private noBoxUntil = 0;
   /** Spectating: the driver being watched (null: our own car). */
   private watching: string | null = null;
   private ticker: Worker | null = null;
@@ -620,6 +624,7 @@ export class GameScreen {
       const note = wheelNote(e);
       if (note) this.wheelNote = { ...note, until: now2 + 2.5 };
       if (e.kind === 'safetyCar' && e.state === 'green') this.greenUntil = now2 + 4;
+      if (e.kind === 'reset') this.noBoxUntil = now2 + WHEEL_NO_BOX_AFTER_RESET;
       const toast = eventToast(e, now2);
       if (toast) this.toasts.push(toast);
       while (this.toasts.length > 3) this.toasts.shift();
@@ -689,7 +694,8 @@ export class GameScreen {
   private wheelMessage(world: RaceWorld, me: Racer, session: SessionSnap | null): WheelInfo['message'] {
     const now = this.driver.now();
     if (this.wheelNote && now < this.wheelNote.until) return this.wheelNote;
-    if (session?.phase === 'race' && adviceFor(world, me, session)?.boxNow && Math.floor(now * 2) % 2 === 0) return { text: 'BOX', color: '#ffd400' };
+    // Same call as the HUD's banner (only near the pit entry), and never straight after a reset.
+    if (session?.phase === 'race' && now >= this.noBoxUntil && boxCalled(world, me, adviceFor(world, me, session)) && Math.floor(now * 2) % 2 === 0) return { text: 'BOX', color: '#ffd400' };
     return null;
   }
 
@@ -730,7 +736,15 @@ export class GameScreen {
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
     view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
-    view.setRace({ lights: session?.phase === 'lights' ? session.lights : 0, wetness: world.options.wetness });
+    const flag = this.wheelFlag(session);
+    const leader = session?.standings[0];
+    view.setRace({
+      lights: session?.phase === 'lights' ? session.lights : 0,
+      wetness: world.options.wetness,
+      flag,
+      // Out from the leader's last lap, so the winner sees it coming.
+      chequered: session?.phase === 'finished' || (session?.phase === 'race' && !!leader && leader.laps >= session.laps - 1),
+    });
     view.showDebris(
       world.debris,
       (id) => {
@@ -771,7 +785,7 @@ export class GameScreen {
           wear: me.tyres.wear,
           delta: me === own ? this.driver.delta() : null,
           message: this.wheelMessage(world, me, session),
-          flag: this.wheelFlag(session),
+          flag,
         },
       },
       others,

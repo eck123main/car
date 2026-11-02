@@ -18,6 +18,8 @@ import { HeadMotion, type Feel, type HeadPose } from './feel';
 import { Sparks3d, type SparkCar } from './sparks3d';
 import { Rain3d, Visor, type SprayCar } from './rain3d';
 import { TyreFx3d, type TyreCar } from './tyreFx3d';
+import { Marshals3d, type TrackFlag } from './marshals3d';
+import { CarLights3d, type LitCar } from './carLights3d';
 import { buildTrackMeshes, noiseTexture } from './trackMesh';
 import type { SceneryDef } from '../track/types';
 
@@ -128,6 +130,10 @@ export interface RaceLook {
   lights: number;
   /** Track wetness (0-1): rain, spray, grey skies. */
   wetness?: number;
+  /** Flags the marshals wave round the lap. */
+  flag?: TrackFlag;
+  /** The chequered flag is out at the line. */
+  chequered?: boolean;
 }
 
 const RAIN_GREY = new THREE.Color('#7f868f');
@@ -180,6 +186,11 @@ export class View3D {
   private readonly scenery: Scenery3d;
   private readonly sparks = new Sparks3d();
   private readonly tyreFx = new TyreFx3d();
+  private readonly marshals: Marshals3d;
+  private readonly lights = new CarLights3d();
+  private readonly sky3d: 'day' | 'dusk' | 'night';
+  private trackFlag: TrackFlag = null;
+  private chequered = false;
   private readonly rain = new Rain3d();
   private readonly visor = new Visor();
   private readonly visorScene = new THREE.Scene();
@@ -244,8 +255,15 @@ export class View3D {
       groundAt: (x, y) => terrain.heightAt(x, y),
       base: terrain.base,
     }));
-    this.disposables.push(scenery, this.sparks, this.tyreFx, this.rain, this.visor);
-    this.scene.add(this.sparks.mesh, this.tyreFx.group, this.rain.group);
+    this.marshals = new Marshals3d(track, {
+      blocked: (x, y, margin) => landmarks.blocked(x, y, margin),
+      heightAt: (x, y) => this.heightAt(x, y),
+      groundAt: (x, y) => terrain.heightAt(x, y),
+    });
+    this.sky3d = track.scenery?.sky === 'night' ? 'night' : track.scenery?.sky === 'dusk' ? 'dusk' : 'day';
+    this.disposables.push(scenery, this.sparks, this.tyreFx, this.marshals, this.lights, this.rain, this.visor);
+    this.scene.add(this.sparks.mesh, this.tyreFx.group, this.marshals.group, this.lights.group, this.rain.group);
+    this.near.add(this.lights.nearGroup);
     // Rain on the visor: a see-through picture over the whole screen (cockpit cameras).
     const visorQuad = new THREE.PlaneGeometry(2, 2);
     const visorMat = new THREE.MeshBasicMaterial({ map: this.visor.texture, transparent: true, depthTest: false, depthWrite: false });
@@ -386,6 +404,8 @@ export class View3D {
     this.placeCamera(own, dt);
     this.updateRain(own, [own, ...others], def.inside === true && !this.lookBack, dt);
     this.updateTyreFx([own, ...others], dt);
+    this.marshals.update(this.trackFlag, this.chequered, this.time);
+    this.updateLights(own, others);
     if (items) {
       if (!this.items) {
         this.items = new Items3d(this.track, (x, y, i) => this.heightAt(x, y, i ?? null));
@@ -416,7 +436,10 @@ export class View3D {
       this.sky.position.copy(this.mirrorCamera.position);
       this.renderer.setRenderTarget(this.mirrorTarget);
       this.renderer.clear();
+      // Particles are sized for the main camera, and your own smoke would fill the glass.
+      this.tyreFx.showParticles(false);
       this.renderer.render(this.scene, this.mirrorCamera);
+      this.tyreFx.showParticles(true);
       this.renderer.setRenderTarget(null);
     }
 
@@ -517,6 +540,13 @@ export class View3D {
     this.visor.update(visor ? rain : 0, own.speed, dt);
   }
 
+  /** Beams, tail lights and their reflections, for the real cars. */
+  private updateLights(own: CarView, others: CarView[]): void {
+    const lit = (c: CarView): LitCar => ({ x: c.x, y: c.y, heading: c.heading, ground: this.heightAt(c.x, c.y, c.trackIndex) });
+    const mine = lit(own);
+    this.lights.update([mine, ...others.filter((c) => !c.ghost).map(lit)], mine, this.sky3d, this.wetness, this.time);
+  }
+
   /** Smoke, rubber, dust and stones from every real car. */
   private updateTyreFx(cars: CarView[], dt: number): void {
     const list = new Map<string, TyreCar>();
@@ -578,6 +608,8 @@ export class View3D {
   /** Race state the scenery shows: start lights lit (0-5) on the gantry. */
   setRace(race: RaceLook): void {
     this.scenery.setStartLights(race.lights);
+    this.trackFlag = race.flag ?? null;
+    this.chequered = !!race.chequered;
     const wet = race.wetness ?? 0;
     // A track drying out means the rain has stopped (it rains while it is wet or getting wetter).
     if (wet < this.wetness - 1e-6) this.drying = true;

@@ -204,6 +204,12 @@ export class TyreFx3d {
     return c;
   }
 
+  /** Hide the particles for one render (Particles3d.update decides again next frame). */
+  showParticles(on: boolean): void {
+    this.puffs.mesh.visible = on && this.puffs.count > 0;
+    this.stones.mesh.visible = on && this.stones.count > 0;
+  }
+
   /** Rubber lines on the road right now (for checking). */
   get markCount(): number {
     return this.marks.count;

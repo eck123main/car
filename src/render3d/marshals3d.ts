@@ -15,6 +15,8 @@ const POST_SPACING = 280;
 /** Metres beyond the wall they stand, and past the line for the chequered flag. */
 const WALL_GAP = 1.4;
 const FLAG_HEIGHT = 2.1;
+/** On wide run-off they come forward to this far off the road edge (m), or nobody would see them. */
+const MAX_FROM_EDGE = 7;
 
 export interface MarshalOptions {
   blocked: (x: number, y: number, margin: number) => boolean;
@@ -66,7 +68,7 @@ export class Marshals3d {
     const dark = new THREE.MeshLambertMaterial({ color: '#2b2d33' });
     const white = new THREE.MeshLambertMaterial({ color: '#f1f1f1' });
     const poleMat = new THREE.MeshLambertMaterial({ color: '#d8d8d8' });
-    const clothGeo = new THREE.PlaneGeometry(1.3, 0.9).translate(0.65, 0.42, 0);
+    const clothGeo = new THREE.PlaneGeometry(2, 1.4).translate(1, 0.6, 0);
     const poleGeo = new THREE.BoxGeometry(0.04, 1.4, 0.04).translate(0, 0.3, 0);
     this.disposables.push(body, legs, head, orange, dark, white, poleMat, clothGeo, poleGeo);
 
@@ -101,11 +103,16 @@ export class Marshals3d {
       const s = track.samples[i];
       if (s.pit) continue;
       for (const side of s.curvature > 0 ? [-1, 1] : [1, -1]) {
-        const off = (side === 1 ? s.wallR : s.wallL) + WALL_GAP;
+        const wall = side === 1 ? s.wallR : s.wallL;
+        const off = Math.min(wall + WALL_GAP, s.halfWidth + MAX_FROM_EDGE);
         const x = s.x + s.nx * side * off;
         const y = s.y + s.ny * side * off;
         const hit = track.query(x, y);
-        if (!hit || Math.abs(hit.d) - (hit.d >= 0 ? hit.sample.wallR : hit.sample.wallL) < 0.5) continue;
+        if (!hit) continue;
+        // Inside this stretch's own wall is fine; anywhere near another stretch's is not.
+        const apart = Math.min(Math.abs(hit.index - i), n - Math.abs(hit.index - i));
+        const own = off < wall && apart < 15;
+        if (!own && Math.abs(hit.d) - (hit.d >= 0 ? hit.sample.wallR : hit.sample.wallL) < 0.5) continue;
         if (opts.blocked(x, y, 2)) continue;
         return this.post(s, side, x, y, opts);
       }
@@ -126,7 +133,7 @@ export class Marshals3d {
   ): void {
     // Just past the line, so a car stopped on it sees the flag ahead. Opposite the pit lane.
     const s = track.samples[6 % track.samples.length];
-    const side = track.pit?.side === 'right' ? -1 : 1;
+    const side = track.pit?.side === 1 ? -1 : 1;
     const off = s.halfWidth + 2;
     const x = s.x + s.nx * side * off;
     const y = s.y + s.ny * side * off;
@@ -173,7 +180,8 @@ export class Marshals3d {
       const one = new THREE.Vector3(1, 1, 1);
       this.posts.forEach((p, i) => {
         const swing = flagSwing(time, i);
-        e.set(0, p.face + swing * 0.5, swing * 0.35, 'YXZ');
+        // The cloth flies out over the road, broadside to the drivers coming.
+        e.set(0, p.face - Math.PI / 2 + swing * 0.5, swing * 0.35, 'YXZ');
         m.compose(pos.set(p.x, p.h + FLAG_HEIGHT, p.y), q.setFromEuler(e), one);
         this.flags.setMatrixAt(i, m);
         this.poles.setMatrixAt(i, m);
@@ -184,7 +192,7 @@ export class Marshals3d {
     this.finishCloth.visible = chequered;
     if (chequered) {
       const swing = flagSwing(time * 0.8, 0);
-      this.finishCloth.rotation.set(0, swing * 0.8, swing * 0.3 + 0.15);
+      this.finishCloth.rotation.set(0, -Math.PI / 2 + swing * 0.8, swing * 0.3 + 0.15);
     }
   }
 

@@ -61,6 +61,17 @@ export function adviceFor(world: RaceWorld, r: Racer, session: SessionSnap | nul
   });
 }
 
+/** How close to the pit entry (m) the engineer calls a stop. */
+const BOX_CALL_RANGE = 400;
+
+/** The engineer is calling this car in right now: a stop is worth it and the entry is coming up. */
+export function boxCalled(world: RaceWorld, r: Racer, advice: PitAdvice): boolean {
+  const lane = world.track.pit;
+  const s = r.timer.lapDistance;
+  if (!lane || s === null || !advice.boxNow || r.pit.phase !== 'out' || r.car.retired) return false;
+  return world.track.forwardDistance(s, lane.entry) < BOX_CALL_RANGE;
+}
+
 /** Pit messages for the local driver, top centre (CSS pixels). */
 export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r: Racer, width: number, advice: PitAdvice): void {
   const lane = world.track.pit;
@@ -83,7 +94,7 @@ export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r
       // Only when the engineer actually wants you in; otherwise the pit lane stays quiet.
       if (s !== null && advice.boxNow) {
         const toEntry = world.track.forwardDistance(s, lane.entry);
-        if (toEntry < 400) {
+        if (toEntry < BOX_CALL_RANGE) {
           text = `BOX THIS LAP · ${advice.reason} · pit entry ${Math.round(toEntry)} m, ${lane.side > 0 ? 'right' : 'left'}, slow to 80`;
           color = '#ffd400';
         }
