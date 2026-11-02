@@ -67,7 +67,9 @@ export type LandmarkType =
   /** Stadium stands on both sides from `from` to `to` (Mexico's Foro Sol). */
   | 'stadium'
   /** Words painted on the wall at `at` (the Wall of Champions). */
-  | 'sign';
+  | 'sign'
+  /** A trackside board with `text` past the wall at `at`, the same words painted in the run-off in 2D. */
+  | 'board';
 
 export interface Landmark {
   type: LandmarkType;

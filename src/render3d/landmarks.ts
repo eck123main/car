@@ -265,6 +265,8 @@ export class Landmarks {
         return this.addStrip(l.from ?? 0, l.to ?? 0, l.gap ?? 25);
       case 'sign':
         return this.addSign(l.at ?? 0, side, l.text ?? '');
+      case 'board':
+        return this.addBoard(l.at ?? 0, side, l.text ?? '');
       // 'water' is drawn from waterOf; 'crossover' is in the track's heights; 'stadium' is built with the other stands (Scenery3d).
     }
   }
@@ -629,6 +631,41 @@ export class Landmarks {
     m.rotation.y = Math.atan2(-side * s.nx, -side * s.ny);
     this.group.add(m);
     this.disposables.push(tex, geo, mat);
+  }
+
+  /** A trackside advertising board just past the wall, its panel above the barrier. */
+  private addBoard(f: number, side: number, text: string): void {
+    const s = this.sample(f);
+    const width = 30;
+    const height = 3.75;
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 128;
+    const ctx = c.getContext('2d')!;
+    // The bottom third is hidden behind the barrier: only legs would show there.
+    ctx.fillStyle = '#2b2d33';
+    ctx.fillRect(0, 0, 1024, 128);
+    ctx.fillStyle = '#f2f2f2';
+    ctx.fillRect(0, 0, 1024, 88);
+    ctx.fillStyle = '#c8102e';
+    ctx.font = 'bold 62px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 512, 46);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const geo = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshLambertMaterial({ map: tex });
+    const m = new THREE.Mesh(geo, mat);
+    const off = side * (this.wall(s, side) + 0.5);
+    const p = at(s, off, height / 2);
+    m.position.set(p[0], p[1], p[2]);
+    m.rotation.y = Math.atan2(-side * s.nx, -side * s.ny);
+    this.group.add(m);
+    this.disposables.push(tex, geo, mat);
+    // A plain back, for anyone seeing it from the other side.
+    const back = off + side * 0.1;
+    this.solid.quad(at(s, back, 0, -width / 2), at(s, back, 0, width / 2), at(s, back, height, width / 2), at(s, back, height, -width / 2), '#3a3b40');
   }
 
   /** A big snowy mountain on the horizon (Mount Fuji), beyond the fog. */

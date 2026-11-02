@@ -5,6 +5,8 @@ import { Scenery } from './scenery';
 /** Kerb band runs from just inside the track edge to KERB_WIDTH outside it. */
 const KERB_LINE_WIDTH = KERB_WIDTH + 0.2;
 const KERB_CENTRE = KERB_WIDTH / 2 - 0.1;
+/** How far past the track's edge a board's words are painted in the run-off (m), to their middle. */
+const PAINT_OFFSET = 5.25;
 
 const COLORS = {
   outside: '#1e3a1b',
@@ -70,6 +72,8 @@ export class TrackGraphics {
   private readonly drsLabels: { x: number; y: number; angle: number }[] = [];
   /** Grandstands, trees and the like around the track (the game only, not the editor). */
   private readonly scenery: Scenery | null;
+  /** Words painted in the run-off, from the track's 'board' landmarks (the game only). */
+  private readonly paintings: { x: number; y: number; angle: number; text: string }[] = [];
 
   constructor(
     readonly track: Track,
@@ -78,6 +82,12 @@ export class TrackGraphics {
     this.scenery = options.scenery ? new Scenery(track) : null;
     const ss = track.samples;
     const n = ss.length;
+    for (const l of options.scenery ? (track.scenery?.landmarks ?? []) : []) {
+      if (l.type !== 'board') continue;
+      const t = ss[Math.floor((l.at ?? 0) * n) % n];
+      const off = (l.side === 'left' ? -1 : 1) * (t.halfWidth + PAINT_OFFSET);
+      this.paintings.push({ x: t.x + t.nx * off, y: t.y + t.ny * off, angle: Math.atan2(t.ty, t.tx), text: l.text ?? '' });
+    }
     for (let i0 = 0; i0 < n; i0 += CHUNK) {
       // One sample of overlap with the next chunk so there are no seams.
       const part: TrackSample[] = [];
@@ -154,6 +164,7 @@ export class TrackGraphics {
     ctx.fill(merge(visible, 'runoff'));
     ctx.fillStyle = COLORS.gravel;
     ctx.fill(merge(visible, 'gravel'));
+    this.drawPaintings(ctx);
     ctx.fillStyle = COLORS.pitLane;
     ctx.fill(merge(visible, 'pitLane'));
     ctx.lineWidth = 0.25;
@@ -249,6 +260,21 @@ export class TrackGraphics {
       ctx.translate(l.x, l.y);
       ctx.rotate(l.angle);
       ctx.fillText('DRS', 0, 0);
+      ctx.restore();
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  private drawPaintings(ctx: CanvasRenderingContext2D): void {
+    ctx.font = 'bold 2.6px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(30,30,45,0.8)';
+    for (const p of this.paintings) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillText(p.text, 0, 0);
       ctx.restore();
     }
     ctx.textBaseline = 'alphabetic';

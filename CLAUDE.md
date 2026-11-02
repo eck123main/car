@@ -252,7 +252,7 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   and cameras follow the road height, `View3D.heightAt`), hotel over the track (Yas Marina), wheel
   (Suzuka, Singapore Flyer), sphere (Las Vegas), flames (Baku's towers), sands (Marina Bay Sands),
   walls (Baku's old city), strip (Las Vegas), stadium (Mexico's Foro Sol), sign (Wall of
-  Champions). Big landmarks move further out until clear of every part of the track, and warn in
+  Champions), board (a trackside board, the same words painted in the run-off in 2D: the joke at Suzuka's 130R). Big landmarks move further out until clear of every part of the track, and warn in
   the console if there's no room. 31 circuits have a block; the rest look as before.
   Note: Monaco's start line and pits in the track file are at Casino Square, not on the real
   start straight (corners match the real lap from there).
