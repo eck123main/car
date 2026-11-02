@@ -12,7 +12,7 @@ export interface Settings {
   delta: boolean;
   /** The ideal racing line on the track (green throttle, yellow hold, red brake). */
   idealLine: boolean;
-  /** 3D view: the driver's head moves with g-forces and the camera shakes on kerbs and hits. Off by default: a steady view is easier to drive. */
+  /** 3D view: the driver's head moves with g-forces; the camera and steering wheel shake on kerbs and hits. Off by default: a steady view is easier to drive. */
   headMotion: boolean;
 }
 

@@ -271,8 +271,9 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   BOX blinks only when the HUD's banner would show, `boxCalled`: near the pit entry, and never for 30 s
   after a reset). Flags on the lights (`ledColors`): all flash yellow under the SC, green at the
   restart; the two end lights flash blue when DRS is ready. Gloves and trim follow the skin.
-- **Wheel feel** (always on, unlike head movement): kerbs and hits kick the wheel and hands; sliding
-  after a hit, the driver catches it with opposite lock (`wheelAngle` slip + upset).
+- **Wheel feel**: sliding after a hit, the driver catches it with opposite lock (`wheelAngle` slip +
+  upset). Kerbs and hits only vibrate the wheel and hands with the head movement setting on (players
+  didn't like it while steering).
 - **Head movement** (`feel.ts`, `HeadMotion`; Settings "3D view: head moves...", `headMotion`,
   **off by default**: a steady view is easier to drive, and handling is never affected): g-forces
   push the head on a spring (forward under braking, out of corners), kerbs drum, gravel shakes,

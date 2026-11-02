@@ -1038,7 +1038,7 @@ export class GameScreen {
         ...look(me),
         speed: me.car.speed,
         yawRate: me.car.yawRate,
-        // The wheel always feels the road; the camera only moves when the player turns it on.
+        // Camera movement and wheel vibration only when the player turns them on.
         headMoves: settings().headMotion,
         feel: {
           longG: me.car.longG,

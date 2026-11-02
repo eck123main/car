@@ -121,9 +121,9 @@ export interface OwnCarView extends CarView {
   speed: number;
   yawRate: number;
   wheel: WheelInfo;
-  /** What the driver feels (g-forces, kerbs, hits): it kicks the steering wheel. */
+  /** What the driver feels (g-forces, kerbs, hits); a hit also makes them catch the slide. */
   feel?: Feel;
-  /** The camera moves with the driver's head too (off: a steady view). */
+  /** The camera moves with the driver's head and the wheel vibrates (off: everything steady). */
   headMoves?: boolean;
 }
 
@@ -402,8 +402,9 @@ export class View3D {
     const def = this.cinema ? CAMS.chase : CAMS[this.mode];
     mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
-    const head = own.feel ? this.headMotion.step(own.feel, dt) : STILL_HEAD;
-    this.headPose = own.headMoves ? head : STILL_HEAD;
+    // Head movement, camera shake and the wheel's vibration are one setting, off by default.
+    const head = own.feel && own.headMoves ? this.headMotion.step(own.feel, dt) : STILL_HEAD;
+    this.headPose = head;
     mine.wheel?.drive(own.steer, own.speed, own.yawRate, own.wheel, dt, head.shake, own.slip ?? 0, own.feel?.upset ?? 0);
     mine.wheel?.show(own.wheel);
     mine.mirrorsVisible = this.mirror;
