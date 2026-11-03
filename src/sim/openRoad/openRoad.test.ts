@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { IDLE_INPUT } from '../world';
 import { OPEN_ROAD_MAPS } from './biomes';
-import { OpenRoadDrive, RoadPilot } from './drive';
+import { CRASH_TIME, OpenRoadDrive, RoadPilot } from './drive';
 import { Land, FINE_CELL } from './land';
+import { PLANT_TILE, type SolidPlant } from './plants';
 import { MAX_HEADING, MAX_VERTICAL_CURVE, ROAD_HALF, ROAD_SPACING } from './road';
 
 const DT = 1 / 120;
@@ -138,7 +139,7 @@ describe('driving it', () => {
     expect(top(true)).toBeGreaterThan(plain + 15);
   });
 
-  it('off the road: slower, nothing to hit, and R puts you back', () => {
+  it('off the road: slower, and R puts you back', () => {
     const drive = new OpenRoadDrive('meadow', 11);
     for (let t = 0; t < 120 * 8; t++) drive.step(DT, { ...IDLE_INPUT, throttle: 1 });
     const fast = drive.car.speed;
@@ -149,6 +150,89 @@ describe('driving it', () => {
     drive.backOnRoad();
     expect(Math.abs(drive.roadOffset())).toBeLessThan(ROAD_SPACING);
     expect(drive.car.speed).toBe(0);
+  });
+
+  /** Aim the car straight at the nearest big solid plant to the road, from 40 m away. */
+  const aimAtPlant = (drive: OpenRoadDrive, kinds: string[], speed: number) => {
+    const r = drive.road;
+    const i = r.startIndex + 200;
+    const plants: SolidPlant[] = [];
+    for (let iy = -3; iy <= 3; iy++) {
+      for (let ix = -3; ix <= 3; ix++) {
+        plants.push(...drive.plants.tile(Math.floor(r.x[i] / PLANT_TILE) + ix, Math.floor(r.y[i] / PLANT_TILE) + iy));
+      }
+    }
+    const p = plants.filter((q) => kinds.includes(q.kind)).sort((a, b) => Math.hypot(a.x - r.x[i], a.y - r.y[i]) - Math.hypot(b.x - r.x[i], b.y - r.y[i]))[0];
+    expect(p).toBeDefined();
+    const angle = Math.atan2(r.y[i] - p.y, r.x[i] - p.x);
+    const x = p.x + Math.cos(angle) * 40;
+    const y = p.y + Math.sin(angle) * 40;
+    drive.car.place(x, y, angle + Math.PI, i);
+    drive.car.vx = -Math.cos(angle) * speed;
+    drive.car.vy = -Math.sin(angle) * speed;
+    return p;
+  };
+
+  it('hitting a tree fast is a crash: stopped, then back on the road near where you were', () => {
+    const drive = new OpenRoadDrive('forest', 5);
+    const p = aimAtPlant(drive, ['pine', 'broadleaf', 'birch'], 40);
+    for (let t = 0; t < 120 * 2 && drive.crashes === 0; t++) drive.step(DT, { ...IDLE_INPUT, throttle: 1 });
+    expect(drive.crashes).toBe(1);
+    expect(drive.car.speed).toBe(0);
+    expect(Math.hypot(drive.car.x - p.x, drive.car.y - p.y)).toBeLessThan(8);
+    expect(drive.car.damage).toBeGreaterThan(0);
+    let backAt = -1;
+    for (let t = 0; t < 120 * 3 && backAt < 0; t++) {
+      drive.step(DT, { ...IDLE_INPUT, throttle: 1, steer: 1 });
+      if (drive.rescued) backAt = t;
+    }
+    expect(backAt / 120).toBeCloseTo(CRASH_TIME, 1);
+    expect(drive.rescuedBy).toBe('crash');
+    expect(Math.abs(drive.roadOffset())).toBeLessThan(ROAD_SPACING);
+    expect(drive.car.speed).toBe(0);
+    expect(drive.car.damage).toBe(0);
+    expect(drive.car.retired).toBe(false);
+    // Near where you were: the road beside the tree, not back at the start.
+    expect(Math.hypot(drive.car.x - p.x, drive.car.y - p.y)).toBeLessThan(250);
+  });
+
+  it('a rock counts too, a slow tap only bumps, and the car bounces clear', () => {
+    const drive = new OpenRoadDrive('desert', 5);
+    aimAtPlant(drive, ['boulder'], 40);
+    for (let t = 0; t < 120 * 2 && drive.crashes === 0; t++) drive.step(DT, { ...IDLE_INPUT, throttle: 1 });
+    expect(drive.crashes).toBe(1);
+
+    const slow = new OpenRoadDrive('forest', 5);
+    const p = aimAtPlant(slow, ['pine', 'broadleaf', 'birch'], 6);
+    let closest = Infinity;
+    for (let t = 0; t < 120 * 10; t++) {
+      slow.step(DT, { ...IDLE_INPUT, brake: 0 });
+      closest = Math.min(closest, Math.hypot(slow.car.x - p.x, slow.car.y - p.y));
+    }
+    expect(slow.crashes).toBe(0);
+    expect(Math.abs(slow.roadOffset())).toBeGreaterThan(ROAD_HALF);
+    expect(closest).toBeGreaterThan(p.radius);
+  });
+
+  it('shrubs are soft, and the road is always clear of anything solid', () => {
+    for (const map of OPEN_ROAD_MAPS) {
+      const drive = new OpenRoadDrive(map.id, 3);
+      const r = drive.road;
+      for (let i = r.startIndex; i < r.startIndex + 500; i += 40) {
+        drive.plants.near(r.x[i], r.y[i], 60, (p) => {
+          expect(p.kind).not.toBe('shrub');
+          const near = r.nearest(p.x, p.y);
+          expect(Math.abs(r.lateral(near, p.x, p.y)) - p.radius).toBeGreaterThan(ROAD_HALF);
+        });
+      }
+    }
+  }, 30000);
+
+  it('what is solid does not depend on when it was worked out', () => {
+    const a = new OpenRoadDrive('alpine', 8);
+    const b = new OpenRoadDrive('alpine', 8);
+    b.road.ensure(30000);
+    expect(a.plants.tile(0, 0)).toEqual(b.plants.tile(0, 0));
   });
 
   it('a long drive never slows the road lookups down or breaks the numbers', () => {

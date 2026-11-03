@@ -5,6 +5,7 @@ import { SURFACES, type Surface } from '../../track/types';
 import type { PlayerInput } from '../world';
 import { openRoadMap, type OpenRoadMap } from './biomes';
 import { Land } from './land';
+import { MAX_PLANT_RADIUS, SolidPlants } from './plants';
 import { type EndlessRoad, ROAD_HALF, ROAD_SPACING, SHOULDER } from './road';
 
 /** As in the race world: ERS power, its battery (s) and DRS's cut in drag. */
@@ -19,6 +20,17 @@ const OFF_ROAD: Surface = { type: 'grass', grip: 0.72, drag: 1.2, dragPerSpeed: 
 const IN_WATER: Surface = { type: 'gravel', grip: 0.3, drag: 7, dragPerSpeed: 1.2 };
 /** Under water this long and you're put back on the road (s). */
 const WATER_RESET = 1.2;
+/** Hitting a tree or rock faster than this along the hit is a crash (m/s, ~32 km/h); slower just bumps. */
+const CRASH_FROM = 9;
+/** How long the crash plays before you're back on the road (s). */
+export const CRASH_TIME = 1.4;
+/** After a crash you restart this far back along the road from where you were (m). */
+const RESTART_BACK = 40;
+/** Circles along the car (m from its centre) and their radius (m). */
+const CAR_CIRCLES = [-2, 0, 2];
+const CAR_RADIUS = 0.9;
+/** A small hit sends the car back off this fraction of its speed into the plant. */
+const BUMP_BOUNCE = 0.3;
 /**
  * Steering at speed: how quickly a key press takes effect (full range per second; slower feeds a weave) and how much of
  * the car's possible turn it asks for. Tapping for a long bend shouldn't twitch; slow down and
@@ -52,15 +64,26 @@ export class OpenRoadDrive implements CarWorld {
   groundZ = 0;
   /** Set for one step when the water put the car back on the road. */
   rescued = false;
+  /** Why: the water or a crash. */
+  rescuedBy: 'water' | 'crash' = 'water';
+  /** Seconds left of a crash playing out; 0 when driving. */
+  crashing = 0;
+  /** Crashes this drive. */
+  crashes = 0;
+  readonly plants: SolidPlants;
   private readonly slopeNow: Slope = { grade: 0, vcurv: 0, tx: 1, ty: 0 };
   private steerIn = 0;
   private underWater = 0;
   private readonly grad = { gx: 0, gy: 0 };
+  /** Nothing solid stands closer to the road's edge than this on this map (m). */
+  private readonly clearFrom: number;
 
   constructor(mapId: string, seed: number) {
     this.map = openRoadMap(mapId);
     this.land = new Land(seed, this.map);
     this.road = this.land.road;
+    this.plants = new SolidPlants(this.land);
+    this.clearFrom = Math.min(...this.map.biomes.map((b) => b.flora.clear));
     this.backOnRoad(this.road.startIndex);
   }
 
@@ -71,6 +94,7 @@ export class OpenRoadDrive implements CarWorld {
     this.car.repair();
     this.steerIn = 0;
     this.underWater = 0;
+    this.crashing = 0;
     this.drsOpen = this.ersActive = false;
     this.groundZ = r.z[index];
   }
@@ -117,6 +141,65 @@ export class OpenRoadDrive implements CarWorld {
     s.ty = g > 1e-6 ? gy / g : 0;
   }
 
+  /**
+   * Trunks and rocks. Only looked for off the road, where they stand (working out a tile takes a
+   * moment, and a drive on the road never needs one).
+   */
+  private hitPlants(): void {
+    const { car } = this;
+    const reach = CAR_CIRCLES[CAR_CIRCLES.length - 1] + CAR_RADIUS + MAX_PLANT_RADIUS;
+    if (Math.abs(this.roadOffset()) < ROAD_HALF + SHOULDER + this.clearFrom - reach) return;
+    const c = Math.cos(car.heading);
+    const s = Math.sin(car.heading);
+    this.plants.near(car.x, car.y, reach, (p) => {
+      if (this.crashing > 0) return;
+      if (Math.abs(p.x - car.x) > reach || Math.abs(p.y - car.y) > reach) return;
+      for (const along of CAR_CIRCLES) {
+        const dx = car.x + c * along - p.x;
+        const dy = car.y + s * along - p.y;
+        const min = p.radius + CAR_RADIUS;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= min * min) continue;
+        const d = Math.max(1e-3, Math.sqrt(d2));
+        this.hit(dx / d, dy / d, min - d, along);
+        return;
+      }
+    });
+  }
+
+  /** The car met a plant: nx, ny points from the plant to the car, overlap in metres. */
+  private hit(nx: number, ny: number, overlap: number, along: number): void {
+    const { car } = this;
+    car.x += nx * overlap;
+    car.y += ny * overlap;
+    const into = -(car.vx * nx + car.vy * ny);
+    if (into <= 0) return;
+    const c = Math.cos(car.heading);
+    const s = Math.sin(car.heading);
+    // Where it landed, in the car's own frame (x forward, y right).
+    const forward = along + Math.max(-1, Math.min(1, -nx * c - ny * s));
+    const right = nx * s - ny * c;
+    car.impact(into, forward, right, 'wall');
+    if (into > CRASH_FROM) {
+      car.vx = car.vy = car.yawRate = 0;
+      this.crashing = CRASH_TIME;
+      this.crashes++;
+      this.drsOpen = this.ersActive = false;
+      return;
+    }
+    const k = into * (1 + BUMP_BOUNCE);
+    car.vx += nx * k;
+    car.vy += ny * k;
+  }
+
+  /** On the road near where the car is, a little way back so there's room to get going. */
+  private restartAfterCrash(): void {
+    const i = this.road.nearest(this.car.x, this.car.y, this.car.trackIndex);
+    this.backOnRoad(Math.max(0, i - Math.round(RESTART_BACK / ROAD_SPACING)));
+    this.rescued = true;
+    this.rescuedBy = 'crash';
+  }
+
   private calmSteer(steer: number, dt: number): number {
     const k = calmShare(this.car.speed);
     const d = (12 + (CALM_STEER_RATE - 12) * k) * dt;
@@ -129,11 +212,24 @@ export class OpenRoadDrive implements CarWorld {
     this.time += dt;
     this.rescued = false;
     this.readGround();
+    if (this.crashing > 0) {
+      this.crashing -= dt;
+      if (this.crashing <= 0) {
+        this.restartAfterCrash();
+        return;
+      }
+      car.gripFactor = 1;
+      car.dragFactor = 1;
+      car.extraPower = 0;
+      car.step({ throttle: 0, brake: 1, steer: 0 }, dt, this);
+      return;
+    }
     if (this.groundZ < -0.2) {
       this.underWater += dt;
       if (this.underWater > WATER_RESET) {
         this.backOnRoad();
         this.rescued = true;
+        this.rescuedBy = 'water';
         return;
       }
     } else this.underWater = 0;
@@ -152,6 +248,7 @@ export class OpenRoadDrive implements CarWorld {
     const driver: DriverInput = { throttle: input.throttle, brake: input.brake, steer: this.calmSteer(input.steer, dt) };
     car.step(driver, dt, this);
     this.distance += Math.hypot(car.x - x0, car.y - y0);
+    this.hitPlants();
   }
 
   /** Where the car is on the road (m to the right of the centre). */

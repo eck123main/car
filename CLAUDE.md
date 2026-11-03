@@ -144,7 +144,7 @@ alone: DRS free in every zone, ERS, no other cars.
 
 "Open road" on the welcome screen (`src/app/openRoad.ts`, world and driving in `src/sim/openRoad/`,
 drawing in `src/render3d/openRoad/`, wind and music in `src/audio/ambient.ts`): a calm drive with the
-same F1 car through endless natural scenery. No track, timer, rivals or walls. 3D only, solo, offline.
+same F1 car through endless natural scenery. No track, timer, rivals or walls, but trees and rocks are solid. 3D only, solo, offline.
 Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` through `CarWorld`.
 - **Maps** (`biomes.ts`, all data): Green Straights, Alpine Pass, Frozen North, Red Canyon, Autumn
   Woods, Sunset Coast, and The Long Way (each landscape fades into the next, `LEG_LENGTH` 9 km).
@@ -156,8 +156,11 @@ Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` thr
   the ground banks to the road's edge (cuttings, embankments). `height` takes the grid size, as coarse
   tiles must sit lower beside the road. The coast's sea is on the right, sloping away from beside the road.
 - **Driving** (`drive.ts`): race car power, grip, ERS and DRS numbers. DRS is free anywhere and closes
-  on braking. Off-road is slow but drivable; nothing to hit (trees and rocks have no collision); under
-  water for 1.2 s puts you back on the road. **Steering at speed is softened on the input only**
+  on braking. Off-road is slow but drivable; under water for 1.2 s puts you back on the road.
+  **Trees and rocks are solid** (`plants.ts`: `plantsIn` is the one list of what stands where, for
+  drawing and physics alike; only trunks and whole rocks, branches are overhead; shrubs and grass are
+  soft). Over 9 m/s along the hit is a crash: stopped, damage shows, 1.4 s with a fade, then back on
+  the road stopped, 40 m behind the nearest point, repaired. Slower just bumps off. Road posts aren't solid. **Steering at speed is softened on the input only**
   (`CALM_STEER_SHARE` 0.2 by 85 m/s, `CALM_STEER_RATE` 10): the rate must stay quick, as a slow one
   feeds a weave. Full lock at 288 km/h is a ~400 m radius, so Alpine's tight bends need a lift. The test
   drives on/off keys looked at 8 times a second, flat out.

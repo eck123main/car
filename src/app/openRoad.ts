@@ -12,6 +12,9 @@ import { settings } from './settings';
 
 const DT = 1 / 120;
 const CAMERA_KEY = 'f1td.cam3d';
+/** A crash fades out over its last part (s), and back in after the restart (s). */
+const FADE_OUT = 0.5;
+const FADE_IN = 0.5;
 const MUSIC_KEY = 'f1td.openroad.music';
 const KM_KEY = 'f1td.openroad.km';
 const HELP_TIME = 14;
@@ -58,6 +61,8 @@ export class OpenRoadScreen {
   private clock = 0;
   private savedKm = 0;
   private failed = false;
+  /** Seconds left of the view coming back after a crash. */
+  private fadeIn = 0;
   private cameraButton: HTMLElement | null = null;
   private prevX = 0;
   private prevY = 0;
@@ -295,8 +300,14 @@ export class OpenRoadScreen {
       this.drive.step(DT, this.applyPilot(this.paused ? { ...IDLE_INPUT } : input));
       input = { ...input, reset: false };
       if (this.drive.rescued) {
+        // A jump, not a move: nothing to blend from.
+        this.prevX = car.x;
+        this.prevY = car.y;
+        this.prevHeading = car.heading;
         view?.snap();
-        this.say('BACK ON THE ROAD');
+        const crashed = this.drive.rescuedBy === 'crash';
+        this.say(crashed ? 'CRASHED · BACK ON THE ROAD' : 'BACK ON THE ROAD');
+        if (crashed) this.fadeIn = FADE_IN;
       }
       this.acc -= DT;
     }
@@ -328,6 +339,8 @@ export class OpenRoadScreen {
         throttle: car.throttle,
         slip: slipAngle(car.vx, car.vy, car.heading),
         drsOpen: drive.drsOpen,
+        parts: car.parts,
+        lost: car.lost,
         roadIndex,
         front: car.surfaceFront,
         rear: car.surfaceRear,
@@ -341,6 +354,7 @@ export class OpenRoadScreen {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const w = canvas.width / dpr;
     const h = canvas.height / dpr;
+    this.drawFade(w, h, dt);
     if (this.showHud) this.drawHud(h, speedKmh);
     this.drawToast(w);
     const s = settings();
@@ -423,6 +437,16 @@ export class OpenRoadScreen {
     }
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
+  }
+
+  /** A crash goes dark over its last part, and the view comes back after the restart. */
+  private drawFade(w: number, h: number, dt: number): void {
+    this.fadeIn = Math.max(0, this.fadeIn - dt);
+    const crashing = this.drive.crashing;
+    const alpha = crashing > 0 ? 1 - Math.min(1, crashing / FADE_OUT) : this.fadeIn / FADE_IN;
+    if (alpha <= 0) return;
+    this.ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    this.ctx.fillRect(0, 0, w, h);
   }
 
   private drawToast(w: number): void {

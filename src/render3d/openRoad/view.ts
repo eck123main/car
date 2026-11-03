@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { CarParts } from '../../physics/car';
 import type { Livery } from '../../render/livery';
 import type { SurfaceType } from '../../track/types';
 import { type Biome, type TimeOfDay } from '../../sim/openRoad/biomes';
@@ -34,6 +35,8 @@ export interface RoadCarView {
   rear: SurfaceType;
   livery: Livery;
   wheel: WheelInfo;
+  parts: CarParts;
+  lost: number;
 }
 
 const MAX_PIXEL_RATIO = 1.25;
@@ -288,6 +291,8 @@ export class OpenRoadView {
     m.update(car.x, car.y, car.heading, car.steer, car.drsOpen, 'medium');
     this.heat = brakeHeat(this.heat, car.brake, car.speed, dt);
     m.setBrakeHeat(this.heat);
+    m.setLost(car.lost);
+    m.setDamage(car.parts);
     const pitchTarget = Math.atan(car.uphill);
     this.pitch += (pitchTarget - this.pitch) * Math.min(1, dt * 8);
     m.group.position.y = car.z;

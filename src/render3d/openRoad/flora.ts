@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import { type Biome, type PlantDef, type PlantKind, type Rgb, rgb } from '../../sim/openRoad/biomes';
+import { type PlantKind, type Rgb, rgb } from '../../sim/openRoad/biomes';
 import type { Land } from '../../sim/openRoad/land';
 import { hash2 } from '../../sim/openRoad/noise';
+import { biomeAtPoint, pickFrom, pickPlant, PLANT_TILE, plantsIn } from '../../sim/openRoad/plants';
 import { ROAD_HALF, SHOULDER } from '../../sim/openRoad/road';
 
 /** Sides of a low-poly cone or trunk. */
 const SIDES = 6;
 /** Trees come in big cheap tiles (m) out to this far... */
-const FAR_TILE = 640;
+const FAR_TILE = PLANT_TILE * 2;
 const TREE_RANGE = 3000;
 /** ...and each is swapped for four detailed ones when the camera is this close to it. */
 const NEAR_RANGE = 400;
@@ -16,8 +17,6 @@ const FAR_MIN_SIZE = 5;
 /** Small things by the road. */
 const DETAIL_TILE = 160;
 const DETAIL_RANGE = 280;
-/** A tree on a slope steeper than this falls over. */
-const MAX_SLOPE = 1.05;
 
 /** One plant shape: a unit tall, standing at the origin, ready to copy many times. */
 interface Template {
@@ -330,20 +329,6 @@ class Merge {
   }
 }
 
-function pick(list: PlantDef[], r: number): PlantDef {
-  let total = 0;
-  for (const p of list) total += p.weight;
-  let at = r * total;
-  for (const p of list) {
-    at -= p.weight;
-    if (at <= 0) return p;
-  }
-  return list[list.length - 1];
-}
-
-/** Hash a few different numbers out of one cell. */
-const pickFrom = (ix: number, iy: number, seed: number, n: number) => hash2(ix + n * 991, iy - n * 613, seed);
-
 /** One tile of trees. mesh is null while empty. */
 interface TreeTile {
   mesh: THREE.Mesh | null;
@@ -355,7 +340,6 @@ export class Flora {
   private readonly far = new Map<string, TreeTile>();
   private readonly nearby = new Map<string, TreeTile>();
   private readonly details = new Map<string, THREE.Mesh | null>();
-  private readonly grad = { gx: 0, gy: 0 };
   /** Tiles still to make right now. */
   pending = 0;
 
@@ -381,7 +365,7 @@ export class Flora {
     const cx = Math.floor(x / FAR_TILE);
     const cy = Math.floor(y / FAR_TILE);
     const r = Math.ceil(TREE_RANGE / FAR_TILE) + 1;
-    const near = FAR_TILE / 2;
+    const near = PLANT_TILE;
     const todo: { d: number; ix: number; iy: number; far: boolean }[] = [];
     for (let iy = cy - r; iy <= cy + r; iy++) {
       for (let ix = cx - r; ix <= cx + r; ix++) {
@@ -469,49 +453,17 @@ export class Flora {
     }
   }
 
-  private biomeAtPoint(x: number, r: number): Biome {
-    const m = this.land.mix(x);
-    return r < m.t ? m.b : m.a;
-  }
-
-  /** A square of trees. Every point of the land has one list of candidates, whichever tile draws it. */
+  /** A square of trees: whatever plantsIn says stands there. */
   private buildTrees(x0: number, y0: number, size: number, far: boolean): THREE.Mesh | null {
-    const { land, grad } = this;
+    const { land } = this;
     const seed = land.seed;
     const merge = new Merge();
-    const m0 = land.mix(x0);
-    const spacing = Math.min(m0.a.flora.spacing, m0.b.flora.spacing);
-    const edge = ROAD_HALF + SHOULDER;
     const baseH = land.height(x0 + size / 2, y0 + size / 2, 25);
-    const i0 = Math.ceil(x0 / spacing);
-    const i1 = Math.ceil((x0 + size) / spacing);
-    const j0 = Math.ceil(y0 / spacing);
-    const j1 = Math.ceil((y0 + size) / spacing);
-    for (let gy = j0; gy < j1; gy++) {
-      for (let gx = i0; gx < i1; gx++) {
-        const x = (gx + hash2(gx, gy, seed)) * spacing;
-        const y = (gy + pickFrom(gx, gy, seed, 1)) * spacing;
-        const biome = this.biomeAtPoint(x, pickFrom(gx, gy, seed, 2));
-        const f = biome.flora;
-        // Thin out where this biome is sparser than the tile's spacing.
-        const keep = (spacing * spacing) / (f.spacing * f.spacing);
-        if (pickFrom(gx, gy, seed, 3) > keep) continue;
-        const woods = land.woods(biome, x, y);
-        // A few loners in the clearings.
-        if (pickFrom(gx, gy, seed, 4) > woods * 0.92 + 0.05) continue;
-        const plant = pick(f.plants, pickFrom(gx, gy, seed, 5));
-        const plantSize = plant.size[0] + (plant.size[1] - plant.size[0]) * pickFrom(gx, gy, seed, 6);
-        if (far && plantSize < FAR_MIN_SIZE) continue;
-        const h = land.height(x, y);
-        const d = land.roadDistance - edge;
-        if (d < f.clear || h < 2 || h > f.treeLine) continue;
-        land.gradient(x, y, grad, 3);
-        if (Math.hypot(grad.gx, grad.gy) > MAX_SLOPE) continue;
-        const tint = tintOf(plant.tints[Math.floor(pickFrom(gx, gy, seed, 7) * plant.tints.length)]);
-        const t = far ? farTemplateOf(plant.kind) : templateOf(plant.kind);
-        merge.add(t, x - x0, h - baseH - 0.15, y - y0, plantSize, pickFrom(gx, gy, seed, 8) * 6.28, tint, 0.85 + pickFrom(gx, gy, seed, 9) * 0.3);
-      }
-    }
+    plantsIn(land, x0, y0, size, far ? FAR_MIN_SIZE : 0, (plant, x, y, h, plantSize, gx, gy) => {
+      const tint = tintOf(plant.tints[Math.floor(pickFrom(gx, gy, seed, 7) * plant.tints.length)]);
+      const t = far ? farTemplateOf(plant.kind) : templateOf(plant.kind);
+      merge.add(t, x - x0, h - baseH - 0.15, y - y0, plantSize, pickFrom(gx, gy, seed, 8) * 6.28, tint, 0.85 + pickFrom(gx, gy, seed, 9) * 0.3);
+    });
     return merge.pos.length > 0 ? merge.mesh(this.material, x0, baseH, y0) : null;
   }
 
@@ -533,12 +485,12 @@ export class Flora {
         const gy = ty * n + j;
         const x = x0 + (i + hash2(gx, gy, seed)) * spacing;
         const y = y0 + (j + pickFrom(gx, gy, seed, 1)) * spacing;
-        const biome = this.biomeAtPoint(x, pickFrom(gx, gy, seed, 2));
+        const biome = biomeAtPoint(land, x, pickFrom(gx, gy, seed, 2));
         const h = land.height(x, y);
         const d = land.roadDistance - edge;
         // Thick close to the road, where they go past fast; thinner further out.
         if (d < 0.8 || h < 2 || pickFrom(gx, gy, seed, 3) > 1.15 - d / 70) continue;
-        const plant = pick(biome.flora.detail, pickFrom(gx, gy, seed, 5));
+        const plant = pickPlant(biome.flora.detail, pickFrom(gx, gy, seed, 5));
         const size = plant.size[0] + (plant.size[1] - plant.size[0]) * pickFrom(gx, gy, seed, 6);
         const tint = tintOf(plant.tints[Math.floor(pickFrom(gx, gy, seed, 7) * plant.tints.length)]);
         merge.add(templateOf(plant.kind), x - x0, h, y - y0, size, pickFrom(gx, gy, seed, 8) * 6.28, tint, 0.9 + pickFrom(gx, gy, seed, 9) * 0.2);
