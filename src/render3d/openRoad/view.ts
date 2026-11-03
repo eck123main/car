@@ -100,7 +100,7 @@ function lookFor(b: Biome, sky: SkyLook, out: Look): void {
  */
 export class OpenRoadView {
   readonly canvas: HTMLCanvasElement;
-  mode: Cam3d = 'chase';
+  mode: Cam3d = 'cockpit';
   mirror = true;
   lookBack = false;
   private readonly renderer: THREE.WebGLRenderer;

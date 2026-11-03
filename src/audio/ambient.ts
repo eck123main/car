@@ -32,7 +32,7 @@ export class Ambient {
   private nextChord = 0;
   private nextBell = 0;
   private volume = 0.6;
-  musicOn = true;
+  musicOn = false;
 
   start(volume: number): void {
     this.volume = volume;

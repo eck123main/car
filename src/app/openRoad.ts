@@ -11,7 +11,7 @@ import { IDLE_INPUT, type PlayerInput } from '../sim/world';
 import { settings } from './settings';
 
 const DT = 1 / 120;
-const CAMERA_KEY = 'f1td.openroad.cam';
+const CAMERA_KEY = 'f1td.cam3d';
 const MUSIC_KEY = 'f1td.openroad.music';
 const KM_KEY = 'f1td.openroad.km';
 const HELP_TIME = 14;
@@ -58,6 +58,7 @@ export class OpenRoadScreen {
   private clock = 0;
   private savedKm = 0;
   private failed = false;
+  private cameraButton: HTMLElement | null = null;
   private prevX = 0;
   private prevY = 0;
   private prevHeading = 0;
@@ -77,7 +78,7 @@ export class OpenRoadScreen {
     this.drive = new OpenRoadDrive(mapId, seed);
     this.pilot = new RoadPilot(this.drive.road);
     this.savedKm = Number(read(KM_KEY)) || 0;
-    this.ambient.musicOn = read(MUSIC_KEY) !== 'off';
+    this.ambient.musicOn = read(MUSIC_KEY) === 'on';
   }
 
   start(): void {
@@ -86,6 +87,7 @@ export class OpenRoadScreen {
     window.addEventListener('resize', this.resize);
     document.addEventListener('visibilitychange', this.updateMute);
     this.resize();
+    this.addCameraButton();
     gameAudio().unlock();
     this.updateMute();
     if (settings().sound) this.ambient.start(settings().volume);
@@ -118,6 +120,8 @@ export class OpenRoadScreen {
     document.removeEventListener('visibilitychange', this.updateMute);
     this.updateMute();
     this.ambient.stop();
+    this.cameraButton?.remove();
+    this.cameraButton = null;
     this.view?.dispose();
     this.view = null;
     this.canvas.style.position = '';
@@ -154,13 +158,57 @@ export class OpenRoadScreen {
 
   private async nextCamera(): Promise<void> {
     if (!this.view) return;
-    const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/openRoad/view');
+    const { CAM3D_ORDER } = await import('../render3d/openRoad/view');
     if (!this.view) return;
-    const next: Cam3d = CAM3D_ORDER[(CAM3D_ORDER.indexOf(this.view.mode) + 1) % CAM3D_ORDER.length];
-    this.view.mode = next;
+    await this.setCamera(CAM3D_ORDER[(CAM3D_ORDER.indexOf(this.view.mode) + 1) % CAM3D_ORDER.length]);
+  }
+
+  private async setCamera(cam: Cam3d): Promise<void> {
+    const { CAM3D_NAMES } = await import('../render3d/openRoad/view');
+    if (!this.view) return;
+    this.view.mode = cam;
     this.view.snap();
-    write(CAMERA_KEY, next);
-    this.say(`CAMERA: ${CAM3D_NAMES[next]}`);
+    write(CAMERA_KEY, cam);
+    this.say(`CAMERA: ${CAM3D_NAMES[cam]}`);
+  }
+
+  /** Bottom right, as in the race view: the Camera button opens the list (C still cycles through it). */
+  private addCameraButton(): void {
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;right:16px;bottom:16px;display:flex;gap:6px;';
+    const button = (onClick: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.tabIndex = -1;
+      b.style.cssText = 'padding:6px 12px;font-size:12px;opacity:0.85;';
+      // Never take focus: Space (DRS) would press it again.
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', onClick);
+      return b;
+    };
+    const list = document.createElement('div');
+    list.style.cssText = 'position:absolute;right:0;bottom:calc(100% + 6px);display:none;flex-direction:column;gap:4px;';
+    const showList = async (): Promise<void> => {
+      const open = list.style.display === 'none';
+      list.replaceChildren();
+      list.style.display = open ? 'flex' : 'none';
+      if (!open) return;
+      const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/openRoad/view');
+      for (const c of CAM3D_ORDER) {
+        const b = button(() => {
+          void this.setCamera(c);
+          list.style.display = 'none';
+        });
+        b.textContent = CAM3D_NAMES[c];
+        b.style.textAlign = 'left';
+        if (this.view?.mode === c) b.style.borderColor = '#ffd400';
+        list.append(b);
+      }
+    };
+    const cam = button(() => void showList());
+    cam.textContent = 'Camera (C)';
+    box.append(list, cam);
+    this.canvas.after(box);
+    this.cameraButton = box;
   }
 
   private handleKeys(): void {

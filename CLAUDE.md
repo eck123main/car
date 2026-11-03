@@ -162,8 +162,11 @@ Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` thr
   feeds a weave. Full lock at 288 km/h is a ~400 m radius, so Alpine's tight bends need a lift. The test
   drives on/off keys looked at 8 times a second, flat out.
 - **Autopilot** (`RoadPilot`, **F**): W/S set the pace, steering takes over. The tests drive with it too.
+- **Cameras**: the same 8 as the race's 3D view (`CAMS`, cockpit by default, remembered in `f1td.cam3d`
+  with it): C cycles, or the Camera button bottom right opens the list.
+- **Music** is off by default (N, remembered); the wind is always on with the sound.
 - **Keys**: C camera, M mirror, T time of day, H hide HUD, N music, F autopilot, R back on the road,
-  hold Q look back, Esc menu ("New road", "Change scenery"). Saved: `f1td.openroad.cam` / `.music` / `.km`.
+  hold Q look back, Esc menu ("New road", "Change scenery"). Saved: `f1td.openroad.music` / `.km`.
 - **Rendering** (`view.ts`): quadtree terrain tiles (`terrainTiles.ts`), road chunks (`roadMesh.ts`),
   merged plant tiles with far/near detail (`flora.ts`), sky, water and motes shaders (`atmosphere.ts`).
   Meshes use local coordinates so long drives stay precise. 113-172 draw calls in chase view (72 in the
