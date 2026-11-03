@@ -1,3 +1,4 @@
+import { JOURNEY_ID, type OpenRoadMap } from '../sim/openRoad/biomes';
 import type { LobbyState, NetInfo } from '../net/protocol';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/botDriver';
 import { ALL_COMPOUNDS, COMPOUNDS, tyreLife, type Compound } from '../sim/tyres';
@@ -67,6 +68,7 @@ const CONTROLS: [string, string][] = [
   ['G', 'Time trial: switch ghost (top players, your best, off)'],
   ['L', 'Ideal racing line on / off: green full throttle, yellow hold the corner, red brake'],
   ['V', 'Test the first-person 3D view; C then changes camera, M mirror on/off, hold Q to look behind'],
+  ['F, T, N, H', 'Open road: autopilot, time of day, music, hide the display'],
   ['Esc', 'Menu'],
 ];
 
@@ -127,6 +129,8 @@ export interface WelcomeActions {
   /** Party mode (item boxes) against bots. */
   onParty: (name: string) => void;
   onPractice: (name: string) => void;
+  /** Open road: endless calm driving through nature. */
+  onOpenRoad: (name: string) => void;
   /** Time trial, on this track if given. */
   onTimeTrial: (name: string, track?: string) => void;
   /** For the lap record shown under the circuit on the welcome screen. */
@@ -167,6 +171,7 @@ export function showWelcome(a: WelcomeActions): void {
         tile('party', 'Party race', 'Item boxes, rockets and chaos', go(a.onParty)),
         tile('clock', 'Time trial', 'Chase the global leaderboard and medals', go(a.onTimeTrial)),
         tile('practice', 'Practice', 'Alone on track, no pressure', go(a.onPractice)),
+        tile('road', 'Open road', 'No track, no timer: an endless calm drive', go(a.onOpenRoad)),
         tile('garage', 'Garage', 'Daily rewards, skins and medals', a.onGarage, 'wide'),
       ];
   name.addEventListener('keydown', (e) => e.key === 'Enter' && buttons[0].click());
@@ -936,6 +941,36 @@ export function markTrackDriven(track: string): void {
   } catch {
     // Only a hint in the menu.
   }
+}
+
+/** Open road: pick a landscape. A little painted card for each, from its colours. */
+export function showOpenRoadMenu(maps: readonly OpenRoadMap[], onDrive: (id: string) => void, onBack: () => void): void {
+  const card = (m: OpenRoadMap) => {
+    const [sky, far, near, road] = m.card;
+    const art = `<svg viewBox="0 0 160 80" preserveAspectRatio="none" style="display:block;width:100%;height:72px;border-radius:8px 8px 0 0"><rect width="160" height="80" fill="${sky}"/><path d="M0 46 28 26 52 42 82 18 112 40 136 28 160 44V80H0Z" fill="${far}"/><path d="M0 52C40 44 110 60 160 50V80H0Z" fill="${near}"/><path d="M74 50h12L126 80H34Z" fill="${road}"/><path d="M80 53v5M80 62v7M80 73v7" stroke="#eee" stroke-width="1.2"/></svg>`;
+    const pic = el('div', {});
+    pic.innerHTML = art;
+    return el(
+      'button',
+      { style: `padding:0;text-align:left;overflow:hidden;border-radius:9px;display:block;width:100%;${m.id === JOURNEY_ID ? 'grid-column:1/-1' : ''}`, onclick: () => onDrive(m.id) },
+      pic,
+      el('div', { style: 'padding:8px 10px 10px' }, el('b', { style: 'display:block;margin-bottom:2px' }, m.name), el('small', { class: 'muted', style: 'white-space:normal;display:block;line-height:1.3' }, m.blurb)),
+    );
+  };
+  show(
+    el(
+      'div',
+      { class: 'screen' },
+      el(
+        'div',
+        { class: 'card wide' },
+        el('h1', {}, 'Open road'),
+        el('p', { class: 'sub' }, 'No track, no timer, no walls. The same car on a road that never ends. Pick where to go.'),
+        el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:12px 0' }, ...maps.map(card)),
+        el('div', { class: 'buttons' }, el('button', { onclick: onBack }, 'Back')),
+      ),
+    ),
+  );
 }
 
 /** Time trial: pick a track, see its leaderboard, drive. */

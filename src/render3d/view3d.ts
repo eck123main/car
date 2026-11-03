@@ -34,6 +34,8 @@ import type { SceneryDef } from '../track/types';
  * limit the draw distance, and the resolution capped.
  */
 
+export { EYE as EYE_POINT };
+
 export type Cam3d = 'cockpit' | 'clear' | 'tcam' | 'nose' | 'wing' | 'tail' | 'chase' | 'far';
 export const CAM3D_ORDER: Cam3d[] = ['cockpit', 'clear', 'tcam', 'nose', 'wing', 'tail', 'chase', 'far'];
 export const CAM3D_NAMES: Record<Cam3d, string> = {
@@ -47,7 +49,7 @@ export const CAM3D_NAMES: Record<Cam3d, string> = {
   far: 'CHASE CAM (far)',
 };
 
-interface CamDef {
+export interface CamDef {
   /** Camera place and where it looks, in the car frame (x forward, y up, z right). */
   eye: [number, number, number];
   look: [number, number, number];
@@ -61,9 +63,9 @@ interface CamDef {
 }
 
 /** Looking behind: from above the driver's head, over the airbox and rear wing. */
-const LOOK_BACK: CamDef = { eye: [0.3, 1.45, 0], look: [-30, 0.4, 0], fov: 62 };
+export const LOOK_BACK: CamDef = { eye: [0.3, 1.45, 0], look: [-30, 0.4, 0], fov: 62 };
 
-const CAMS: Record<Cam3d, CamDef> = {
+export const CAMS: Record<Cam3d, CamDef> = {
   cockpit: { eye: EYE, look: [30, 0.2, 0], fov: 62, inside: true },
   clear: { eye: [EYE[0], EYE[1] + 0.04, 0], look: [30, 0.2, 0], fov: 64, inside: true, noHalo: true },
   tcam: { eye: [-0.95, 1.32, 0], look: [30, 0.1, 0], fov: 60 },

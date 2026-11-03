@@ -1,0 +1,216 @@
+import { Car, type CarWorld, type DriverInput } from '../../physics/car';
+import { F1_CAR } from '../../physics/carParams';
+import type { Slope, WallContact } from '../../track/track';
+import { SURFACES, type Surface } from '../../track/types';
+import type { PlayerInput } from '../world';
+import { openRoadMap, type OpenRoadMap } from './biomes';
+import { Land } from './land';
+import { type EndlessRoad, ROAD_HALF, ROAD_SPACING, SHOULDER } from './road';
+
+/** As in the race world: ERS power, its battery (s) and DRS's cut in drag. */
+const ERS_POWER = 120_000;
+const ERS_DEPLOY_TIME = 7;
+const DRS_DRAG = 0.65;
+/** The battery fills a little quicker than in a race: nobody is counting. */
+const ERS_TRICKLE = 0.04;
+/** Off the road: drivable, slow, and no walls to catch you. */
+const SHOULDER_SURFACE: Surface = { type: 'kerb', grip: 0.92, drag: 0.25, dragPerSpeed: 0 };
+const OFF_ROAD: Surface = { type: 'grass', grip: 0.72, drag: 1.2, dragPerSpeed: 0.24 };
+const IN_WATER: Surface = { type: 'gravel', grip: 0.3, drag: 7, dragPerSpeed: 1.2 };
+/** Under water this long and you're put back on the road (s). */
+const WATER_RESET = 1.2;
+/**
+ * Steering at speed: how quickly a key press takes effect (full range per second; slower feeds a weave) and how much of
+ * the car's possible turn it asks for. Tapping for a long bend shouldn't twitch; slow down and
+ * it's all there. Only the input changes: the car is the race car.
+ */
+const CALM_STEER_RATE = 10;
+const CALM_STEER_SHARE = 0.2;
+const CALM_FROM = 25;
+const CALM_TO = 85;
+
+function calmShare(v: number): number {
+  return Math.max(0, Math.min(1, (v - CALM_FROM) / (CALM_TO - CALM_FROM)));
+}
+
+/**
+ * Driving on the open road: the real car (same physics, power, grip and DRS/ERS numbers as a race),
+ * alone on an endless road with no walls, no timing and nothing to hit.
+ */
+export class OpenRoadDrive implements CarWorld {
+  readonly car = new Car(F1_CAR, '#e10600');
+  readonly land: Land;
+  readonly road: EndlessRoad;
+  readonly map: OpenRoadMap;
+  time = 0;
+  /** Metres driven (the odometer). */
+  distance = 0;
+  ers = 1;
+  ersActive = false;
+  drsOpen = false;
+  /** Height of the ground under the car (m). */
+  groundZ = 0;
+  /** Set for one step when the water put the car back on the road. */
+  rescued = false;
+  private readonly slopeNow: Slope = { grade: 0, vcurv: 0, tx: 1, ty: 0 };
+  private steerIn = 0;
+  private underWater = 0;
+  private readonly grad = { gx: 0, gy: 0 };
+
+  constructor(mapId: string, seed: number) {
+    this.map = openRoadMap(mapId);
+    this.land = new Land(seed, this.map);
+    this.road = this.land.road;
+    this.backOnRoad(this.road.startIndex);
+  }
+
+  /** On the road, stopped, repaired, nose along it. */
+  backOnRoad(index = this.road.nearest(this.car.x, this.car.y)): void {
+    const r = this.road;
+    this.car.place(r.x[index], r.y[index], Math.atan2(r.ty[index], r.tx[index]), index);
+    this.car.repair();
+    this.steerIn = 0;
+    this.underWater = 0;
+    this.drsOpen = this.ersActive = false;
+    this.groundZ = r.z[index];
+  }
+
+  surfaceAt(x: number, y: number, hint: number | null = null): Surface {
+    const r = this.road;
+    const d = Math.abs(r.lateral(r.nearest(x, y, hint), x, y));
+    if (d <= ROAD_HALF) return SURFACES.asphalt;
+    if (d <= ROAD_HALF + SHOULDER) return SHOULDER_SURFACE;
+    return this.underWater > 0 ? IN_WATER : OFF_ROAD;
+  }
+
+  wallContact(): WallContact | null {
+    return null;
+  }
+
+  locate(x: number, y: number, hint: number | null = null): number | null {
+    return this.road.nearest(x, y, hint);
+  }
+
+  slope(): Slope {
+    return this.slopeNow;
+  }
+
+  /** What the ground is doing under the car, for this step. */
+  private readGround(): void {
+    const { car, road, land } = this;
+    const i = road.nearest(car.x, car.y, car.trackIndex);
+    const s = this.slopeNow;
+    this.groundZ = land.driveHeight(car.x, car.y, i);
+    if (Math.abs(road.lateral(i, car.x, car.y)) <= ROAD_HALF + SHOULDER) {
+      s.grade = road.grade[i];
+      s.vcurv = road.vcurv[i];
+      s.tx = road.tx[i];
+      s.ty = road.ty[i];
+      return;
+    }
+    land.gradient(car.x, car.y, this.grad);
+    const { gx, gy } = this.grad;
+    const g = Math.hypot(gx, gy);
+    s.grade = g;
+    s.vcurv = 0;
+    s.tx = g > 1e-6 ? gx / g : 1;
+    s.ty = g > 1e-6 ? gy / g : 0;
+  }
+
+  private calmSteer(steer: number, dt: number): number {
+    const k = calmShare(this.car.speed);
+    const d = (12 + (CALM_STEER_RATE - 12) * k) * dt;
+    this.steerIn += Math.max(-d, Math.min(d, steer - this.steerIn));
+    return this.steerIn * (1 + (CALM_STEER_SHARE - 1) * k);
+  }
+
+  step(dt: number, input: PlayerInput): void {
+    const { car } = this;
+    this.time += dt;
+    this.rescued = false;
+    this.readGround();
+    if (this.groundZ < -0.2) {
+      this.underWater += dt;
+      if (this.underWater > WATER_RESET) {
+        this.backOnRoad();
+        this.rescued = true;
+        return;
+      }
+    } else this.underWater = 0;
+
+    this.ersActive = input.ers && this.ers > 0 && car.throttle > 0.5;
+    if (this.ersActive) this.ers = Math.max(0, this.ers - dt / ERS_DEPLOY_TIME);
+    else this.ers = Math.min(1, this.ers + dt * (0.25 * car.brake + ERS_TRICKLE));
+    if (input.drs) this.drsOpen = true;
+    if (car.brake > 0.05 || car.speed < 15) this.drsOpen = false;
+
+    car.gripFactor = 1;
+    car.dragFactor = this.drsOpen ? DRS_DRAG : 1;
+    car.extraPower = this.ersActive ? ERS_POWER : 0;
+    const x0 = car.x;
+    const y0 = car.y;
+    const driver: DriverInput = { throttle: input.throttle, brake: input.brake, steer: this.calmSteer(input.steer, dt) };
+    car.step(driver, dt, this);
+    this.distance += Math.hypot(car.x - x0, car.y - y0);
+  }
+
+  /** Where the car is on the road (m to the right of the centre). */
+  roadOffset(): number {
+    const r = this.road;
+    return r.lateral(r.nearest(this.car.x, this.car.y, this.car.trackIndex), this.car.x, this.car.y);
+  }
+}
+
+/** How far ahead (samples) the autopilot checks for corners. */
+const PILOT_SCAN = 150;
+const PILOT_BRAKING = 16;
+
+/**
+ * Hands off: follows the middle of its lane at a calm pace. Also what the tests drive with,
+ * to prove the road can always be driven.
+ */
+export class RoadPilot {
+  /** Speed it settles at (m/s). */
+  cruise = 55;
+  /** Metres right of the road's centre. */
+  lane = 3.4;
+  /** Sideways g it will take in a corner. */
+  cornering = 2.2;
+
+  constructor(private readonly road: EndlessRoad) {}
+
+  /** Steering here is what's given to OpenRoadDrive.step (before its softening). */
+  drive(car: Car): DriverInput {
+    const r = this.road;
+    const v = car.speed;
+    const i = r.nearest(car.x, car.y, car.trackIndex);
+    r.ensure(r.x[i] + 1200);
+    const look = Math.max(14, v * 0.75);
+    const k = Math.min(r.count - 1, i + Math.ceil(look / ROAD_SPACING));
+    // Aim for the lane, a little ahead.
+    const dx = r.x[k] - r.ty[k] * this.lane - car.x;
+    const dy = r.y[k] + r.tx[k] * this.lane - car.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    const err = Math.atan2(dy, dx) - car.heading;
+    const off = Math.atan2(Math.sin(err), Math.cos(err));
+    const curvature = (2 * Math.sin(off)) / dist;
+    // Full lock's turn at this speed, as the car works it out, softened as in OpenRoadDrive.
+    const p = car.params;
+    const accel = p.mu * (9.81 + (p.downforceCoef * v * v) / p.mass);
+    const yawLimit = Math.min(v / p.minTurnRadius, accel / Math.max(v, 1));
+    const share = 1 + (CALM_STEER_SHARE - 1) * calmShare(v);
+    const steer = Math.max(-1, Math.min(1, (curvature * Math.max(v, 3)) / Math.max(0.05, yawLimit) / share));
+    // Slow enough for everything inside braking distance.
+    const grip = this.cornering * 9.81;
+    let allowed = this.cruise;
+    const end = Math.min(r.count - 1, i + PILOT_SCAN);
+    for (let j = i; j < end; j++) {
+      const c = Math.abs(r.kappa[j]);
+      if (c < 1e-4) continue;
+      const corner = Math.sqrt(grip / c);
+      allowed = Math.min(allowed, Math.sqrt(corner * corner + 2 * PILOT_BRAKING * (j - i) * ROAD_SPACING));
+    }
+    const gap = allowed - v;
+    return { throttle: gap > 0.5 ? Math.min(1, gap / 8) : 0, brake: gap < -2 ? Math.min(1, -gap / 12) : 0, steer };
+  }
+}

@@ -1,8 +1,10 @@
 import { ClientDriver, GameScreen, HostDriver, PracticeDriver, type GameDriver } from './app/game';
 import { TimeTrialDriver } from './app/timeTrial';
+import { OpenRoadScreen } from './app/openRoad';
+import { OPEN_ROAD_MAPS } from './sim/openRoad/biomes';
 import { showGarage } from './app/garage';
 import { equippedSkin } from './net/wallet';
-import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
+import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showOpenRoadMenu, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
 import { accounts } from './net/accounts';
 import { gameAudio } from './audio/sound';
@@ -32,6 +34,7 @@ const params = new URLSearchParams(location.search);
 const joinCode = params.get('join');
 
 let game: GameScreen | null = null;
+let road: OpenRoadScreen | null = null;
 let cleanup: () => void = () => {};
 
 function trackDef(id: string): TrackDef | undefined {
@@ -66,6 +69,8 @@ function momentOffer(back: () => void): (() => void) | undefined {
 function stopGame(): void {
   game?.stop();
   game = null;
+  road?.stop();
+  road = null;
   const ctx = canvas.getContext('2d')!;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -89,6 +94,7 @@ function welcome(joining: boolean): void {
     onBots: (n) => host(n, true),
     onParty: (n) => host(n, true, 'party'),
     onPractice: practice,
+    onOpenRoad: openRoad,
     onTimeTrial: timeTrial,
     onGarage: garage,
     board: leaderboard(),
@@ -191,6 +197,35 @@ function practice(name: string): void {
   const driver = new PracticeDriver(new Track(def), name);
   driver.world().racers[0].skin = equippedSkin();
   runGame(driver, { menuNote: 'Practice: R puts you back on track.' });
+}
+
+// ---------- Open road
+
+function openRoad(): void {
+  stopGame();
+  showOpenRoadMenu(OPEN_ROAD_MAPS, driveOpenRoad, home);
+}
+
+/** A new road every time. */
+function driveOpenRoad(mapId: string): void {
+  stopGame();
+  clearUi();
+  const screen = new OpenRoadScreen(canvas, keyboard, mouse, mapId, Math.floor(Math.random() * 2 ** 31), equippedSkin());
+  road = screen;
+  screen.onMenu = () => {
+    screen.setPaused(true);
+    showPauseMenu(
+      () => {
+        screen.setPaused(false);
+        clearUi();
+      },
+      openRoad,
+      'Paused. F autopilot, C camera, T time of day, N music, H hide the display, R back on the road.',
+      'Change scenery',
+      { label: 'New road', onClick: () => driveOpenRoad(mapId) },
+    );
+  };
+  screen.start();
 }
 
 // ---------- Time trial

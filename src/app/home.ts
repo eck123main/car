@@ -85,6 +85,7 @@ const ICONS: Record<string, string> = {
   party: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01"/>',
   clock: '<circle cx="12" cy="13" r="7.5"/><path d="M12 13V9M10 2.5h4M18.5 6.5l1.5-1.5"/>',
   practice: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  road: '<path d="M3 20 9 5M21 20 15 5M12 6v3M12 12v3M12 18v2M3 12l4-3 3 2"/>',
   garage: '<path d="M3 20V9l9-5 9 5v11M7 20v-6h10v6M7 17h10"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
 };

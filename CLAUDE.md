@@ -140,6 +140,35 @@ alone: DRS free in every zone, ERS, no other cars.
   `f1td.tt.driven.<playerId>`); the others get a green **NEW** tag. Each row shows your best and
   medal (signed in). Drive/Back stay pinned at the bottom of the card.
 
+## Open road mode
+
+"Open road" on the welcome screen (`src/app/openRoad.ts`, world and driving in `src/sim/openRoad/`,
+drawing in `src/render3d/openRoad/`, wind and music in `src/audio/ambient.ts`): a calm drive with the
+same F1 car through endless natural scenery. No track, timer, rivals or walls. 3D only, solo, offline.
+Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` through `CarWorld`.
+- **Maps** (`biomes.ts`, all data): Green Straights, Alpine Pass, Frozen North, Red Canyon, Autumn
+  Woods, Sunset Coast, and The Long Way (each landscape fades into the next, `LEG_LENGTH` 9 km).
+  Each run gets a random seed; the world is a function of the seed, so nothing is stored.
+- **Road** (`road.ts`): x only ever increases (heading within `MAX_HEADING`), so it can't cross itself
+  and the nearest point can be found quickly. It ends 6 km behind the start. Height follows the valley
+  floor with limited grade and vertical curve.
+- **Land** (`land.ts`): mountains and mesas are masked by distance from the road (it runs up a valley);
+  the ground banks to the road's edge (cuttings, embankments). `height` takes the grid size, as coarse
+  tiles must sit lower beside the road. The coast's sea is on the right, sloping away from beside the road.
+- **Driving** (`drive.ts`): race car power, grip, ERS and DRS numbers. DRS is free anywhere and closes
+  on braking. Off-road is slow but drivable; nothing to hit (trees and rocks have no collision); under
+  water for 1.2 s puts you back on the road. **Steering at speed is softened on the input only**
+  (`CALM_STEER_SHARE` 0.2 by 85 m/s, `CALM_STEER_RATE` 10): the rate must stay quick, as a slow one
+  feeds a weave. Full lock at 288 km/h is a ~400 m radius, so Alpine's tight bends need a lift. The test
+  drives on/off keys looked at 8 times a second, flat out.
+- **Autopilot** (`RoadPilot`, **F**): W/S set the pace, steering takes over. The tests drive with it too.
+- **Keys**: C camera, M mirror, T time of day, H hide HUD, N music, F autopilot, R back on the road,
+  hold Q look back, Esc menu ("New road", "Change scenery"). Saved: `f1td.openroad.cam` / `.music` / `.km`.
+- **Rendering** (`view.ts`): quadtree terrain tiles (`terrainTiles.ts`), road chunks (`roadMesh.ts`),
+  merged plant tiles with far/near detail (`flora.ts`), sky, water and motes shaders (`atmosphere.ts`).
+  Meshes use local coordinates so long drives stay precise. 113-172 draw calls in chase view (72 in the
+  cockpit), over the first-person budget of ~50: the car model alone is 51. Dev: `window.f1road`.
+
 ## Ideal racing line (driving aid)
 
 **L** (or Settings: "Ideal racing line") paints the fastest line on the track, in 2D (from just
