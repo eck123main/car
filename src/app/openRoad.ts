@@ -430,7 +430,7 @@ export class OpenRoadScreen {
     ctx.fillText(`${(drive.distance / 1000).toFixed(1)} km this drive · ${total.toFixed(0)} km in all`, 18, 49);
     if (this.clock < HELP_TIME) {
       ctx.globalAlpha = Math.min(1, HELP_TIME - this.clock);
-      ctx.fillText('No track, no timer, no walls. Just drive.', 18, 76);
+      ctx.fillText('No track, no timer. Just drive.', 18, 76);
       ctx.fillText('Space DRS · Shift ERS · F autopilot · C camera · T time of day', 18, 95);
       ctx.fillText('N music · H hide this · R back on the road · Esc menu', 18, 114);
       ctx.globalAlpha = 1;

@@ -144,14 +144,31 @@ alone: DRS free in every zone, ERS, no other cars.
 
 "Open road" on the welcome screen (`src/app/openRoad.ts`, world and driving in `src/sim/openRoad/`,
 drawing in `src/render3d/openRoad/`, wind and music in `src/audio/ambient.ts`): a calm drive with the
-same F1 car through endless natural scenery. No track, timer, rivals or walls, but trees and rocks are solid. 3D only, solo, offline.
+same F1 car through endless natural scenery. No track, timer or rivals; trees, rocks, buildings and fences are solid. 3D only, solo, offline.
 Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` through `CarWorld`.
-- **Maps** (`biomes.ts`, all data): Green Straights, Alpine Pass, Frozen North, Red Canyon, Autumn
+- **Maps** (`biomes.ts`, all data): Green Hills, Alpine Pass, Frozen North, Red Canyon, Autumn
   Woods, Sunset Coast, and The Long Way (each landscape fades into the next, `LEG_LENGTH` 9 km).
   Each run gets a random seed; the world is a function of the seed, so nothing is stored.
-- **Road** (`road.ts`): x only ever increases (heading within `MAX_HEADING`), so it can't cross itself
-  and the nearest point can be found quickly. It ends 6 km behind the start. Height follows the valley
-  floor with limited grade and vertical curve.
+- **Road** (`road.ts`): x only ever increases (heading within `MAX_HEADING`, ~81°), so it can't cross
+  itself and the nearest point can be found quickly: a hairpin swings from one side through straight
+  ahead to the other. It ends 6 km behind the start. Height follows the valley floor with limited grade
+  and vertical curve. **Nothing is placed by rule, the land and noise decide**: how twisty a stretch is
+  comes from noise (`Land.twist`, skewing each biome's straight/radius/angle ranges from open to
+  twisty), with kinks, sweepers, double apexes (`SAME_WAY`) and straights that drift (`DRIFT_RADIUS`).
+  **Hairpins** appear only where the land ahead is too steep to drive up (`steepness` over the biome's
+  `zigFrom`): the road zigzags, each hairpin and leg its own, until it eases off. Check the mix with the
+  test "is a real mix", per map.
+- **Hills** (`Land.hillLift`, `hilly` in each biome): regions of open and hilly country from noise, part
+  of the floor so road and land agree. Between zigzag legs the land blends the two legs' heights
+  (`otherStretch`), so there's no step halfway.
+- **Fences** (`Road.fence`, drawn in `roadMesh.ts`, kind per biome: rail, wood, wire): over big hills,
+  round the outside of tight bends and along drops, with chevrons on hairpins and warning signs before
+  tight bends. **Solid** (`OpenRoadDrive.hitFences`): a touch slides along, over 17 m/s into it is a
+  crash; a car already outside one isn't stopped by it.
+- **Farms** (`farms.ts`, shapes in `render3d/openRoad/farmModels.ts`, `farms` in each biome): out in the
+  distance, on gentle ground: crops are the ground's colours (`Land.color`), no trees in fields or yards
+  (`plantsIn`), buildings in the plant tiles (no extra draw calls) and solid; field fences, bales and
+  animals drawn close up only and not solid.
 - **Land** (`land.ts`): mountains and mesas are masked by distance from the road (it runs up a valley);
   the ground banks to the road's edge (cuttings, embankments). `height` takes the grid size, as coarse
   tiles must sit lower beside the road. The coast's sea is on the right, sloping away from beside the road.
@@ -162,7 +179,7 @@ Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` thr
   soft). Over 9 m/s along the hit is a crash: stopped, damage shows, 1.4 s with a fade, then back on
   the road stopped, 40 m behind the nearest point, repaired. Slower just bumps off. Road posts aren't solid. **Steering at speed is softened on the input only**
   (`CALM_STEER_SHARE` 0.2 by 85 m/s, `CALM_STEER_RATE` 10): the rate must stay quick, as a slow one
-  feeds a weave. Full lock at 288 km/h is a ~400 m radius, so Alpine's tight bends need a lift. The test
+  feeds a weave. Full lock at 288 km/h is a ~400 m radius, so tight bends need a lift and hairpins real braking. The test
   drives on/off keys looked at 8 times a second, flat out.
 - **Autopilot** (`RoadPilot`, **F**): W/S set the pace, steering takes over. The tests drive with it too.
 - **Cameras**: the same 8 as the race's 3D view (`CAMS`, cockpit by default, remembered in `f1td.cam3d`

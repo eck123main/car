@@ -22,8 +22,18 @@ const START_CLEAR: [number, number] = [-300, 500];
 const MIN_EASE = 45;
 /** Hairpins ease in quicker: there's so little of them. */
 const HAIRPIN_EASE = 26;
-/** Most hairpins in one climb or descent, however wide the hill. */
-const MAX_HAIRPINS = 7;
+/** Most hairpins in one climb or descent, however big the hill. */
+const MAX_HAIRPINS = 9;
+/** A zigzag ends when the land ahead is less steep than this share of what started it. */
+const ZIG_END = 0.6;
+/** How far ahead the road reads the slope of the land (m). */
+const SLOPE_LOOK = 240;
+/** Legs of a zigzag aren't all the same: the road points anywhere from this to MAX_HEADING. */
+const ZIG_HEADING_MIN = 1.1;
+/** Straights aren't ruled lines: they drift this gently, if at all (radius, m). */
+const DRIFT_RADIUS: [number, number] = [2200, 7000];
+/** A corner carries on the same way (a double apex or a tightening bend) this often. */
+const SAME_WAY = 0.28;
 /** The road looks this far ahead for hills to climb (m). */
 const LOOK_AHEAD = 240;
 /** Steepest change of slope, per metre: crests and dips you can feel, still driveable at 300 km/h. */
@@ -52,19 +62,13 @@ export const FENCE_RIGHT = 2;
 /** Samples after a zigzag that still count as beside it. */
 const AFTER_ZIG = 60;
 
-/** A stretch of a hill the road zigzags up or down, by x. */
-export interface ClimbZone {
-  from: number;
-  to: number;
-}
-
 export interface RoadWorld {
   /** The landscape in charge at this x. */
   biomeAt(x: number): Biome;
   /** How high the valley floor is here, and so roughly where the road wants to be. */
   floor(x: number, y: number): number;
-  /** The next stretch at or past this x that's too steep to drive straight up. */
-  nextClimb(x: number, y: number): ClimbZone | null;
+  /** How twisty the road wants to be along here (0-1). */
+  twist(x: number): number;
   /** How far a hill lifts the land here (m). */
   hill(x: number, y: number): number;
 }
@@ -103,10 +107,11 @@ export class EndlessRoad {
   private left = 0;
   /** The heading the corner in progress ends on; null on a straight. */
   private toHeading: number | null = null;
-  /** The zigzag in progress: where it ends, the next hairpin's way, the first's way and how many so far. */
-  private zigTo: number | null = null;
+  /** Which way it set off turning: a small overshoot must not read as more to turn the other way. */
+  private turnWay = 1;
+  /** A zigzag in progress: the next hairpin's way and how many so far. */
+  private zigging = false;
   private zigDir = 1;
-  private zigFirst = 1;
   private zigCount = 0;
   private zigLegNext = false;
   /** Samples still counted as part of the zigzag just finished. */
@@ -152,17 +157,20 @@ export class EndlessRoad {
       this.target = 0;
       this.left = 0;
       this.toHeading = null;
-      this.zigTo = null;
+      this.zigging = false;
+      // (A gentle drift's slow ease mustn't carry a bend onto the start straight.)
+      this.ease = Math.max(this.ease, 1 / (200 * MIN_EASE));
     } else if (this.toHeading !== null) {
       // Start unwinding in time to end on the corner's heading.
-      const way = Math.sign(this.toHeading - this.heading) || Math.sign(this.target);
-      const stop = Math.sign(this.curv) === way ? (this.curv * this.curv) / (2 * this.ease) : 0;
-      if (way * (this.toHeading - this.heading) <= stop) this.target = 0;
+      const stop = Math.sign(this.curv) === this.turnWay ? (this.curv * this.curv) / (2 * this.ease) : 0;
+      if (this.turnWay * (this.toHeading - this.heading) <= stop) this.target = 0;
       if (this.target === 0 && this.curv === 0) {
         this.toHeading = null;
         this.nextSection(px, py);
       }
     } else {
+      // A long straight that has been drifting mustn't drift past the heading limit.
+      if (this.target !== 0 && Math.sign(this.target) === Math.sign(this.heading) && Math.abs(this.heading) > 0.9) this.target = 0;
       this.left -= ROAD_SPACING;
       if (this.left <= 0) this.nextSection(px, py);
     }
@@ -176,9 +184,9 @@ export class EndlessRoad {
     this.tx.push(cx);
     this.ty.push(cy);
     this.kappa.push(this.curv);
-    this.zigzag.push(this.zigTo !== null || this.afterZig > 0 ? 1 : 0);
-    if (this.zigTo === null && this.afterZig > 0) this.afterZig--;
-    if (this.zigTo !== null) this.afterZig = AFTER_ZIG;
+    this.zigzag.push(this.zigging || this.afterZig > 0 ? 1 : 0);
+    if (!this.zigging && this.afterZig > 0) this.afterZig--;
+    if (this.zigging) this.afterZig = AFTER_ZIG;
   }
 
   /** Turn until the road points this way. */
@@ -189,17 +197,21 @@ export class EndlessRoad {
       return;
     }
     this.toHeading = heading;
+    this.turnWay = way;
     this.target = way / radius;
     this.ease = 1 / (radius * ease);
   }
 
+  /** How steep the land is on the road's general way (+x) from a point, up or down. */
+  private steepness(x: number, y: number): number {
+    return Math.abs(this.world.floor(x + SLOPE_LOOK / 2, y) - this.world.floor(x - SLOPE_LOOK / 2, y)) / SLOPE_LOOK;
+  }
+
   /** Choose what the road does next: straight on, a corner, or a zigzag up the hill ahead. */
   private nextSection(x: number, y: number): void {
-    const biome = this.world.biomeAt(x);
-    const r = biome.road;
-    const between = ([a, b]: [number, number]) => a + (b - a) * this.rand();
-    if (this.zigTo !== null) {
-      this.nextOfZigzag(x, between, r.hairpin, r.leg);
+    const r = this.world.biomeAt(x).road;
+    if (this.zigging) {
+      this.nextOfZigzag(x, y);
       return;
     }
     // Straighten up for the start line, so the drive begins looking down the road.
@@ -209,30 +221,31 @@ export class EndlessRoad {
       else this.left = 80;
       return;
     }
-    const climb = this.world.nextClimb(x, y);
-    if (climb && x >= climb.from - 30) {
-      this.zigTo = climb.to;
-      // Coast roads swing away from the sea first, so their legs stay over land.
-      this.zigFirst = biome.land.sea ? -1 : this.rand() < 0.5 ? 1 : -1;
-      this.zigDir = this.zigFirst;
+    // Too steep to drive straight up: the land makes the road zigzag. Only past the start's calm.
+    if (x > START_CLEAR[1] && this.steepness(x, y) > r.zigFrom) {
+      this.zigging = true;
+      // Coast roads swing away from the sea first.
+      this.zigDir = this.world.biomeAt(x).land.sea ? -1 : this.rand() < 0.5 ? 1 : -1;
       this.zigCount = 0;
       this.zigLegNext = false;
-      this.nextOfZigzag(x, between, r.hairpin, r.leg);
+      this.nextOfZigzag(x, y);
       return;
     }
+    // Open or twisty, wherever this stretch of country falls: skew each range to that end.
+    const twist = this.world.twist(x);
+    const toLow = (range: [number, number]) => range[0] + (range[1] - range[0]) * Math.pow(this.rand(), 0.6 + 3.4 * twist);
+    const toHigh = (range: [number, number]) => range[1] - (range[1] - range[0]) * Math.pow(this.rand(), 0.8 + 2.4 * twist);
     const wasCorner = this.lastWasCorner;
-    if (wasCorner && this.rand() > r.esses) {
+    if (wasCorner && this.rand() > r.esses * (0.35 + 0.65 * twist)) {
       this.lastWasCorner = false;
-      this.target = 0;
-      this.left = between(r.straight);
-      // Don't drive past the start of the climb.
-      if (climb) this.left = Math.min(this.left, Math.max(40, climb.from - x));
+      this.left = this.clearStraight(x, y, toLow(r.straight));
+      this.drift();
       return;
     }
-    const radius = between(r.radius);
-    const angle = (between(r.angle) * Math.PI) / 180;
+    const radius = toLow(r.radius);
+    const angle = (toHigh(r.angle) * Math.PI) / 180;
     let dir: number;
-    if (wasCorner) dir = -this.lastDir;
+    if (wasCorner) dir = this.rand() < SAME_WAY ? this.lastDir : -this.lastDir;
     else {
       // Towards the lower ground, mostly, as roads do.
       const look = 700;
@@ -248,23 +261,50 @@ export class EndlessRoad {
     this.turnTo(heading, radius, Math.max(MIN_EASE, radius * 0.3));
   }
 
-  /** Hairpin, leg, hairpin, leg... until past the end of the hill, on an even count so the road comes back. */
-  private nextOfZigzag(x: number, between: (r: [number, number]) => number, hairpin: [number, number], leg: [number, number]): void {
+  /** A straight only runs until the land ahead makes the road do something about it. */
+  private clearStraight(x: number, y: number, length: number): number {
+    const r = this.world.biomeAt(x).road;
+    const c = Math.cos(this.heading);
+    const s = Math.sin(this.heading);
+    for (let d = 80; d < length; d += 80) {
+      if (this.steepness(x + c * d, y + s * d) > r.zigFrom) return d;
+    }
+    return length;
+  }
+
+  /** Most straights aren't quite: a slow drift one way, back towards the middle if it has wandered. */
+  private drift(): void {
+    if (this.rand() < 0.3) {
+      this.target = 0;
+      return;
+    }
+    const radius = DRIFT_RADIUS[0] + (DRIFT_RADIUS[1] - DRIFT_RADIUS[0]) * this.rand();
+    const way = Math.abs(this.heading) > 0.5 ? -Math.sign(this.heading) : this.rand() < 0.5 ? 1 : -1;
+    this.target = way / radius;
+    this.ease = 1 / (radius * MIN_EASE * 2);
+  }
+
+  /**
+   * Hairpin, leg, hairpin, leg... for as long as the land stays steep. Each is its own: the radius,
+   * the length of the leg and how far round it swings. One hairpin alone is a big turn up a hillside.
+   */
+  private nextOfZigzag(x: number, y: number): void {
+    const r = this.world.biomeAt(x).road;
+    const between = ([a, b]: [number, number]) => a + (b - a) * this.rand();
     if (this.zigLegNext) {
       this.zigLegNext = false;
       this.target = 0;
-      this.left = between(leg);
+      this.left = between(r.leg);
       return;
     }
-    const done = x >= (this.zigTo as number) || this.zigCount >= MAX_HAIRPINS;
-    if (done && this.zigDir === this.zigFirst && this.zigCount > 0) {
-      this.zigTo = null;
+    if (this.zigCount >= MAX_HAIRPINS || (this.zigCount > 0 && this.steepness(x, y) < r.zigFrom * ZIG_END)) {
+      this.zigging = false;
       this.lastWasCorner = true;
-      this.lastDir = -this.zigFirst;
-      this.turnTo(0, between(hairpin) * 2, MIN_EASE);
+      this.lastDir = -Math.sign(this.heading) || 1;
+      this.turnTo(0, between(r.hairpin) * 2, MIN_EASE);
       return;
     }
-    this.turnTo(this.zigDir * MAX_HEADING, between(hairpin), HAIRPIN_EASE);
+    this.turnTo(this.zigDir * (ZIG_HEADING_MIN + (MAX_HEADING - ZIG_HEADING_MIN) * this.rand()), between(r.hairpin), HAIRPIN_EASE);
     this.zigDir = -this.zigDir;
     this.zigCount++;
     this.zigLegNext = true;

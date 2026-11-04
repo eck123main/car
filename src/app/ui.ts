@@ -965,7 +965,7 @@ export function showOpenRoadMenu(maps: readonly OpenRoadMap[], onDrive: (id: str
         'div',
         { class: 'card wide' },
         el('h1', {}, 'Open road'),
-        el('p', { class: 'sub' }, 'No track, no timer, no walls. The same car on a road that never ends. Pick where to go.'),
+        el('p', { class: 'sub' }, 'No track, no timer. The same car on a road that never ends. Pick where to go.'),
         el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:12px 0' }, ...maps.map(card)),
         el('div', { class: 'buttons' }, el('button', { onclick: onBack }, 'Back')),
       ),

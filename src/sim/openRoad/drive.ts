@@ -55,7 +55,7 @@ function calmShare(v: number): number {
 
 /**
  * Driving on the open road: the real car (same physics, power, grip and DRS/ERS numbers as a race),
- * alone on an endless road with no walls, no timing and nothing to hit.
+ * alone on an endless road with no timing. Trees, rocks, buildings and fences are solid.
  */
 export class OpenRoadDrive implements CarWorld {
   readonly car = new Car(F1_CAR, '#e10600');
