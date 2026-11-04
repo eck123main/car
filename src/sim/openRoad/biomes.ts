@@ -31,6 +31,14 @@ export type TimeOfDay = 'dawn' | 'day' | 'golden' | 'dusk';
 export const TIMES: TimeOfDay[] = ['day', 'golden', 'dusk', 'dawn'];
 export const TIME_NAMES: Record<TimeOfDay, string> = { dawn: 'Dawn', day: 'Midday', golden: 'Golden hour', dusk: 'Sunset' };
 
+/** What lines the road over hills and round hairpins. All of them are solid. */
+export interface FenceDef {
+  kind: 'rail' | 'wood' | 'wire';
+  color: string;
+  /** Fenced where a hill lifts the land more than this (m). */
+  hillFrom: number;
+}
+
 /**
  * One hill per `every` metres of x, up to half that wide. Some are climbs: too steep for the road
  * to go straight up, so it zigzags up one side and down the other with hairpins.
@@ -63,6 +71,7 @@ export interface Biome {
     /** Hairpin radius (m) and the length of the legs between them on a zigzag climb (m). */
     hairpin: [number, number];
     leg: [number, number];
+    fence: FenceDef;
     asphalt: string;
     shoulder: string;
     line: string;
@@ -142,7 +151,7 @@ const MEADOW: Biome = {
   blurb: 'Rolling farmland, fenced hills and winding lanes between the fields.',
   card: ['#a8d4f2', '#7fa36a', '#6aa84a', '#3d3f42'],
   time: 'day',
-  road: { straight: [150, 650], radius: [130, 520], angle: [25, 85], esses: 0.55, grade: 0.08, hairpin: [38, 58], leg: [130, 240], asphalt: '#3d3f42', shoulder: '#8b8468', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#20242a' },
+  road: { straight: [150, 650], radius: [130, 520], angle: [25, 85], esses: 0.55, grade: 0.08, hairpin: [38, 58], leg: [130, 240], fence: { kind: 'wood', color: '#7a5a3a', hillFrom: 14 }, asphalt: '#3d3f42', shoulder: '#8b8468', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#20242a' },
   land: {
     base: 90,
     hills: { amp: 75, scale: 2600 },
@@ -179,7 +188,7 @@ const ALPINE: Biome = {
   blurb: 'Hairpins up the mountainside, pines, snowy peaks and a lake or two.',
   card: ['#8ec5ee', '#8b98a8', '#3f6b45', '#3a3c40'],
   time: 'day',
-  road: { straight: [60, 280], radius: [65, 240], angle: [35, 105], esses: 0.7, grade: 0.09, hairpin: [30, 42], leg: [190, 340], asphalt: '#3a3c40', shoulder: '#7d7a70', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#d12f2f' },
+  road: { straight: [60, 280], radius: [65, 240], angle: [35, 105], esses: 0.7, grade: 0.09, hairpin: [30, 42], leg: [190, 340], fence: { kind: 'rail', color: '#a9afb4', hillFrom: 30 }, asphalt: '#3a3c40', shoulder: '#7d7a70', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#d12f2f' },
   land: {
     base: 150,
     hills: { amp: 110, scale: 2400 },
@@ -217,7 +226,7 @@ const SNOW: Biome = {
   blurb: 'A ploughed road through deep snow, frosted pines and a low sun.',
   card: ['#d8e6f2', '#c6d3e0', '#f2f6fa', '#4a4d52'],
   time: 'golden',
-  road: { straight: [120, 480], radius: [90, 320], angle: [28, 90], esses: 0.55, grade: 0.08, hairpin: [34, 50], leg: [150, 290], asphalt: '#4a4d52', shoulder: '#cfd6dc', line: '#c4c8c8', centre: '#c4c8c8', post: '#22262a', postTop: '#f07020' },
+  road: { straight: [120, 480], radius: [90, 320], angle: [28, 90], esses: 0.55, grade: 0.08, hairpin: [34, 50], leg: [150, 290], fence: { kind: 'rail', color: '#7c858c', hillFrom: 24 }, asphalt: '#4a4d52', shoulder: '#cfd6dc', line: '#c4c8c8', centre: '#c4c8c8', post: '#22262a', postTop: '#f07020' },
   land: {
     base: 130,
     hills: { amp: 70, scale: 2200 },
@@ -254,7 +263,7 @@ const DESERT: Biome = {
   blurb: 'Desert highway over red ridges, past flat-topped rock towers.',
   card: ['#f2c79a', '#b85f38', '#c98a55', '#47423f'],
   time: 'golden',
-  road: { straight: [250, 950], radius: [150, 650], angle: [22, 80], esses: 0.45, grade: 0.08, hairpin: [40, 60], leg: [170, 310], asphalt: '#47423f', shoulder: '#b08a60', line: '#e8e2d0', centre: '#e9b53c', post: '#ece4d4', postTop: '#c23a28' },
+  road: { straight: [250, 950], radius: [150, 650], angle: [22, 80], esses: 0.45, grade: 0.08, hairpin: [40, 60], leg: [170, 310], fence: { kind: 'wire', color: '#6e5c48', hillFrom: 22 }, asphalt: '#47423f', shoulder: '#b08a60', line: '#e8e2d0', centre: '#e9b53c', post: '#ece4d4', postTop: '#c23a28' },
   land: {
     base: 110,
     hills: { amp: 45, scale: 2800 },
@@ -305,7 +314,7 @@ const FOREST: Biome = {
   blurb: 'Winding through red and gold trees, leaves drifting across the road.',
   card: ['#f4d9a8', '#b8703a', '#c9882e', '#3c3a38'],
   time: 'golden',
-  road: { straight: [50, 220], radius: [60, 230], angle: [35, 105], esses: 0.7, grade: 0.085, hairpin: [30, 44], leg: [120, 230], asphalt: '#3c3a38', shoulder: '#6e5a40', line: '#dcd8c4', centre: '#dcd8c4', post: '#efeade', postTop: '#20242a' },
+  road: { straight: [50, 220], radius: [60, 230], angle: [35, 105], esses: 0.7, grade: 0.085, hairpin: [30, 44], leg: [120, 230], fence: { kind: 'wood', color: '#5e4630', hillFrom: 22 }, asphalt: '#3c3a38', shoulder: '#6e5a40', line: '#dcd8c4', centre: '#dcd8c4', post: '#efeade', postTop: '#20242a' },
   land: {
     base: 130,
     hills: { amp: 95, scale: 1700 },
@@ -342,7 +351,7 @@ const COAST: Biome = {
   blurb: 'A cliff road with the ocean on your right, all the way to the sun.',
   card: ['#f5a26b', '#c76d6a', '#3f7f96', '#3f3f42'],
   time: 'dusk',
-  road: { straight: [100, 420], radius: [80, 300], angle: [28, 90], esses: 0.6, grade: 0.08, hairpin: [32, 46], leg: [130, 250], asphalt: '#3f3f42', shoulder: '#a39a7c', line: '#ecebe2', centre: '#ecebe2', post: '#f2f2ec', postTop: '#d12f2f' },
+  road: { straight: [100, 420], radius: [80, 300], angle: [28, 90], esses: 0.6, grade: 0.08, hairpin: [32, 46], leg: [130, 250], fence: { kind: 'rail', color: '#d8d6cc', hillFrom: 18 }, asphalt: '#3f3f42', shoulder: '#a39a7c', line: '#ecebe2', centre: '#ecebe2', post: '#f2f2ec', postTop: '#d12f2f' },
   land: {
     base: 62,
     hills: { amp: 22, scale: 1800 },

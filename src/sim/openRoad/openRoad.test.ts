@@ -4,7 +4,7 @@ import { OPEN_ROAD_MAPS } from './biomes';
 import { CRASH_TIME, OpenRoadDrive, RoadPilot } from './drive';
 import { Land, FINE_CELL } from './land';
 import { PLANT_TILE, type SolidPlant } from './plants';
-import { MAX_HEADING, MAX_VERTICAL_CURVE, ROAD_HALF, ROAD_SPACING } from './road';
+import { FENCE_LEFT, FENCE_OFFSET, FENCE_RIGHT, MAX_HEADING, MAX_VERTICAL_CURVE, ROAD_HALF, ROAD_SPACING } from './road';
 
 const DT = 1 / 120;
 
@@ -206,6 +206,61 @@ describe('driving it', () => {
     drive.backOnRoad();
     expect(Math.abs(drive.roadOffset())).toBeLessThan(ROAD_SPACING);
     expect(drive.car.speed).toBe(0);
+  });
+
+  /** A fenced straight stretch of road, and which side to try. */
+  const fenced = (drive: OpenRoadDrive) => {
+    const r = drive.road;
+    r.ensure(30000);
+    for (let i = r.startIndex; i < r.count - 40; i++) {
+      for (const [bit, side] of [[FENCE_LEFT, -1], [FENCE_RIGHT, 1]] as const) {
+        let all = true;
+        for (let k = i; k < i + 30; k++) all = all && (r.fence[k] & bit) !== 0 && Math.abs(r.kappa[k]) < 1 / 400;
+        if (all) return { i, side };
+      }
+    }
+    throw new Error('no fenced straight');
+  };
+
+  it('every map has fences over hills and round the outside of hairpins', () => {
+    for (const map of OPEN_ROAD_MAPS) {
+      const r = new Land(1234, map).road;
+      r.ensure(30000);
+      let fenced = 0;
+      for (let i = 0; i < r.count; i++) {
+        if (r.fence[i]) fenced++;
+        if (Math.abs(r.kappa[i]) > 1 / 60) expect(r.fence[i] & (r.kappa[i] > 0 ? FENCE_LEFT : FENCE_RIGHT)).not.toBe(0);
+      }
+      expect(fenced / r.count).toBeGreaterThan(0.1);
+    }
+  });
+
+  it('a fence holds the car on the road: a glancing touch slides along, a hard hit crashes', () => {
+    const glance = new OpenRoadDrive('alpine', 1234);
+    const { i, side } = fenced(glance);
+    const r = glance.road;
+    const place = (drive: OpenRoadDrive, angle: number, speed: number) => {
+      const heading = Math.atan2(r.ty[i], r.tx[i]) + angle * side;
+      drive.car.place(r.x[i] - r.ty[i] * 5 * side, r.y[i] + r.tx[i] * 5 * side, heading, i);
+      drive.car.vx = Math.cos(heading) * speed;
+      drive.car.vy = Math.sin(heading) * speed;
+    };
+    place(glance, 0.12, 30);
+    let furthest = 0;
+    for (let t = 0; t < 120; t++) {
+      glance.step(DT, { ...IDLE_INPUT, throttle: 0.4 });
+      furthest = Math.max(furthest, Math.abs(glance.roadOffset()));
+    }
+    expect(glance.crashes).toBe(0);
+    expect(furthest).toBeLessThan(FENCE_OFFSET);
+    expect(glance.car.speed).toBeGreaterThan(20);
+
+    const hard = new OpenRoadDrive('alpine', 1234);
+    fenced(hard);
+    place(hard, 0.9, 45);
+    for (let t = 0; t < 120 && hard.crashes === 0; t++) hard.step(DT, { ...IDLE_INPUT, throttle: 1 });
+    expect(hard.crashes).toBe(1);
+    expect(Math.abs(hard.roadOffset())).toBeLessThan(FENCE_OFFSET);
   });
 
   /** Aim the car straight at the nearest big solid plant to the road, from 40 m away. */

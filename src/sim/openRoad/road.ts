@@ -35,6 +35,20 @@ const SEARCH_RANGE = 3200;
 /** With a hint: further off the road than this, the car may be nearer another stretch of it (m). */
 const HINT_TRUSTED = 26;
 
+/** Tighter than this radius a bend gets a fence on the outside and warning signs (m). */
+export const TIGHT_RADIUS = 110;
+/** A fence, once it starts, runs at least this many samples. */
+const FENCE_HOLD = 30;
+/** Fences look at corners this far ahead (samples), so they start before them. */
+const FENCE_LEAD = 12;
+/** Land this far under the road, a little way off it, gets a fence (m). */
+const DROP_FENCE = 7;
+/** How far from the road's centre a fence stands (m). */
+export const FENCE_OFFSET = ROAD_HALF + SHOULDER + 2.2;
+/** Fence bits per sample. */
+export const FENCE_LEFT = 1;
+export const FENCE_RIGHT = 2;
+
 /** Samples after a zigzag that still count as beside it. */
 const AFTER_ZIG = 60;
 
@@ -51,6 +65,8 @@ export interface RoadWorld {
   floor(x: number, y: number): number;
   /** The next stretch at or past this x that's too steep to drive straight up. */
   nextClimb(x: number, y: number): ClimbZone | null;
+  /** How far a hill lifts the land here (m). */
+  hill(x: number, y: number): number;
 }
 
 /**
@@ -70,6 +86,8 @@ export class EndlessRoad {
   readonly grade: number[] = [];
   /** Change of grade per metre (+ = a dip). */
   readonly vcurv: number[] = [];
+  /** Which sides have a fence (FENCE_LEFT, FENCE_RIGHT). */
+  readonly fence: number[] = [];
   /** 1 where the road is part of a zigzag, with other legs close by. */
   readonly zigzag: number[] = [];
   /** Samples whose height is known; only those count as road so far. */
@@ -93,6 +111,7 @@ export class EndlessRoad {
   private zigLegNext = false;
   /** Samples still counted as part of the zigzag just finished. */
   private afterZig = 0;
+  private readonly fenceHold = [0, 0];
   private lastWasCorner = false;
   private lastDir = 1;
   private gradeNow = 0;
@@ -261,6 +280,7 @@ export class EndlessRoad {
       this.z.push(target);
       this.grade.push(0);
       this.vcurv.push(0);
+      this.fence.push(0);
       this.count = 1;
       return;
     }
@@ -273,7 +293,35 @@ export class EndlessRoad {
     this.z.push(this.z[i - 1] + this.gradeNow * ROAD_SPACING);
     this.grade.push(this.gradeNow);
     this.vcurv.push(this.curveNow);
+    this.fence.push(this.fenceHere(i, biome.road.fence.hillFrom));
     this.count = i + 1;
+  }
+
+  /** Fences where it matters: over hills, round the outside of tight bends, and along drops. */
+  private fenceHere(i: number, hillFrom: number): number {
+    const x = this.x[i];
+    const y = this.y[i];
+    const over = this.world.hill(x, y) > hillFrom;
+    const k = this.kappa[Math.min(this.kappa.length - 1, i + FENCE_LEAD)];
+    const tight = Math.abs(k) > 1 / TIGHT_RADIUS || Math.abs(this.kappa[i]) > 1 / TIGHT_RADIUS;
+    const way = Math.sign(k) || Math.sign(this.kappa[i]);
+    let bits = 0;
+    for (let s = 0; s < 2; s++) {
+      const side = s === 0 ? -1 : 1;
+      // A bend to the right (+) has its outside on the left.
+      let wanted = over || (tight && way === -side);
+      if (!wanted && i % 4 === 0) {
+        const fx = x - this.ty[i] * 34 * side;
+        const fy = y + this.tx[i] * 34 * side;
+        wanted = this.z[i] - this.world.floor(fx, fy) > DROP_FENCE;
+      }
+      if (wanted) this.fenceHold[s] = FENCE_HOLD;
+      if (this.fenceHold[s] > 0) {
+        this.fenceHold[s]--;
+        bits |= s === 0 ? FENCE_LEFT : FENCE_RIGHT;
+      }
+    }
+    return bits;
   }
 
   /** The sample nearest a point. With a hint (where it was last), only looks close to that. */

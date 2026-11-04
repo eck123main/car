@@ -109,6 +109,7 @@ export class Land {
       },
       floor: (x, y) => this.floor(x, y),
       nextClimb: (x, y) => this.nextClimb(x, y),
+      hill: (x, y) => this.hill(x, y),
     });
   }
 

@@ -6,7 +6,7 @@ import type { PlayerInput } from '../world';
 import { openRoadMap, type OpenRoadMap } from './biomes';
 import { Land } from './land';
 import { MAX_PLANT_RADIUS, SolidPlants } from './plants';
-import { type EndlessRoad, ROAD_HALF, ROAD_SPACING, SHOULDER } from './road';
+import { type EndlessRoad, FENCE_LEFT, FENCE_OFFSET, FENCE_RIGHT, ROAD_HALF, ROAD_SPACING, SHOULDER } from './road';
 
 /** As in the race world: ERS power, its battery (s) and DRS's cut in drag. */
 const ERS_POWER = 120_000;
@@ -22,6 +22,12 @@ const IN_WATER: Surface = { type: 'gravel', grip: 0.3, drag: 7, dragPerSpeed: 1.
 const WATER_RESET = 1.2;
 /** Hitting a tree or rock faster than this along the hit is a crash (m/s, ~32 km/h); slower just bumps. */
 const CRASH_FROM = 9;
+/** A fence gives more than a tree: only a hard hit is a crash (m/s along the hit, ~60 km/h). */
+const FENCE_CRASH_FROM = 17;
+/** Scrapes softer than this do no damage (m/s). */
+const SCRAPE = 4;
+/** The car's half width against a fence (m). */
+const CAR_SIDE = 0.95;
 /** How long the crash plays before you're back on the road (s). */
 export const CRASH_TIME = 1.4;
 /** After a crash you restart this far back along the road from where you were (m). */
@@ -74,6 +80,8 @@ export class OpenRoadDrive implements CarWorld {
   private readonly slopeNow: Slope = { grade: 0, vcurv: 0, tx: 1, ty: 0 };
   private steerIn = 0;
   private underWater = 0;
+  /** Where the car was across the road last step (m): a fence only stops a car coming from the road's side. */
+  private lastLateral = 0;
   private readonly grad = { gx: 0, gy: 0 };
   /** Nothing solid stands closer to the road's edge than this on this map (m). */
   private readonly clearFrom: number;
@@ -95,6 +103,7 @@ export class OpenRoadDrive implements CarWorld {
     this.steerIn = 0;
     this.underWater = 0;
     this.crashing = 0;
+    this.lastLateral = 0;
     this.drsOpen = this.ersActive = false;
     this.groundZ = r.z[index];
   }
@@ -161,14 +170,14 @@ export class OpenRoadDrive implements CarWorld {
         const d2 = dx * dx + dy * dy;
         if (d2 >= min * min) continue;
         const d = Math.max(1e-3, Math.sqrt(d2));
-        this.hit(dx / d, dy / d, min - d, along);
+        this.hit(dx / d, dy / d, min - d, along, CRASH_FROM);
         return;
       }
     });
   }
 
   /** The car met a plant: nx, ny points from the plant to the car, overlap in metres. */
-  private hit(nx: number, ny: number, overlap: number, along: number): void {
+  private hit(nx: number, ny: number, overlap: number, along: number, crashFrom: number): void {
     const { car } = this;
     car.x += nx * overlap;
     car.y += ny * overlap;
@@ -179,8 +188,8 @@ export class OpenRoadDrive implements CarWorld {
     // Where it landed, in the car's own frame (x forward, y right).
     const forward = along + Math.max(-1, Math.min(1, -nx * c - ny * s));
     const right = nx * s - ny * c;
-    car.impact(into, forward, right, 'wall');
-    if (into > CRASH_FROM) {
+    if (into > SCRAPE) car.impact(into, forward, right, 'wall');
+    if (into > crashFrom) {
       car.vx = car.vy = car.yawRate = 0;
       this.crashing = CRASH_TIME;
       this.crashes++;
@@ -190,6 +199,23 @@ export class OpenRoadDrive implements CarWorld {
     const k = into * (1 + BUMP_BOUNCE);
     car.vx += nx * k;
     car.vy += ny * k;
+  }
+
+  /** The fences along the road: they hold a car in, and it slides along them unless it hit hard. */
+  private hitFences(): void {
+    const { car, road } = this;
+    const i = road.nearest(car.x, car.y, car.trackIndex);
+    const lat = road.lateral(i, car.x, car.y);
+    const limit = FENCE_OFFSET - CAR_SIDE;
+    const before = this.lastLateral;
+    this.lastLateral = lat;
+    if (Math.abs(lat) <= limit || this.crashing > 0) return;
+    // Already outside (round the end of one, or off a different stretch): it doesn't stop you.
+    if (Math.abs(before) > limit + 0.01 || before * lat < 0) return;
+    if ((road.fence[i] & (lat > 0 ? FENCE_RIGHT : FENCE_LEFT)) === 0) return;
+    const side = lat > 0 ? 1 : -1;
+    this.hit(road.ty[i] * side, -road.tx[i] * side, Math.abs(lat) - limit, 0, FENCE_CRASH_FROM);
+    this.lastLateral = side * limit;
   }
 
   /** On the road near where the car is, a little way back so there's room to get going. */
@@ -248,6 +274,7 @@ export class OpenRoadDrive implements CarWorld {
     const driver: DriverInput = { throttle: input.throttle, brake: input.brake, steer: this.calmSteer(input.steer, dt) };
     car.step(driver, dt, this);
     this.distance += Math.hypot(car.x - x0, car.y - y0);
+    this.hitFences();
     this.hitPlants();
   }
 
