@@ -233,9 +233,9 @@ export class RoadMeshes {
           [base[0] + tx, base[1], base[2] + ty],
         ], color, -nx, -nz);
       }
-      // Black and yellow chevrons round the outside of a hairpin, pointing the way it goes.
+      // Black and yellow chevrons round the outside of a hairpin, pointing the way the road goes.
       const k = r.kappa[i];
-      if (Math.abs(k) > CHEVRON_FROM && i % CHEVRON_EVERY === 0 && Math.sign(k) === -side) this.chevron(i, side, Math.sign(k), ox, oy, oz, pos, col, uvs, nor);
+      if (Math.abs(k) > CHEVRON_FROM && i % CHEVRON_EVERY === 0 && Math.sign(k) === -side) this.chevron(i, side, ox, oy, oz, pos, col, uvs, nor);
     }
     // Warning signs on the right before a tight bend, the first of each.
     for (const ahead of WARN_AT) {
@@ -246,15 +246,12 @@ export class RoadMeshes {
   }
 
   /** A board facing the road: yellow with a black arrow. */
-  private chevron(i: number, side: number, way: number, ox: number, oy: number, oz: number, pos: number[], col: number[], uvs: number[], nor: number[]): void {
+  private chevron(i: number, side: number, ox: number, oy: number, oz: number, pos: number[], col: number[], uvs: number[], nor: number[]): void {
     const r = this.land.road;
     const off = FENCE_OFFSET - 0.12;
     const nx = r.ty[i] * side;
     const nz = -r.tx[i] * side;
-    const p = (along: number, up: number): number[] => {
-      const a = along * way;
-      return [r.x[i] + r.tx[i] * a - r.ty[i] * off * side - ox, r.z[i] + up - oz, r.y[i] + r.ty[i] * a + r.tx[i] * off * side - oy];
-    };
+    const p = (along: number, up: number): number[] => [r.x[i] + r.tx[i] * along - r.ty[i] * off * side - ox, r.z[i] + up - oz, r.y[i] + r.ty[i] * along + r.tx[i] * off * side - oy];
     const lo = 0.75;
     const hi = 2.05;
     const w = 0.95;
