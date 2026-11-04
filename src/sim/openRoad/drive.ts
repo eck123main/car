@@ -5,7 +5,7 @@ import { SURFACES, type Surface } from '../../track/types';
 import type { PlayerInput } from '../world';
 import { openRoadMap, type OpenRoadMap } from './biomes';
 import { Land } from './land';
-import { MAX_PLANT_RADIUS, SolidPlants } from './plants';
+import { MAX_PLANT_RADIUS, MAX_SOLID_RADIUS, SolidPlants } from './plants';
 import { type EndlessRoad, FENCE_LEFT, FENCE_OFFSET, FENCE_RIGHT, ROAD_HALF, ROAD_SPACING, SHOULDER } from './road';
 
 /** As in the race world: ERS power, its battery (s) and DRS's cut in drag. */
@@ -28,6 +28,8 @@ const FENCE_CRASH_FROM = 17;
 const SCRAPE = 4;
 /** The car's half width against a fence (m). */
 const CAR_SIDE = 0.95;
+/** Buildings are further from the road's centre than this (m): nearer, only plants are looked for. */
+const BUILDINGS_FROM = 60;
 /** How long the crash plays before you're back on the road (s). */
 export const CRASH_TIME = 1.4;
 /** After a crash you restart this far back along the road from where you were (m). */
@@ -156,8 +158,10 @@ export class OpenRoadDrive implements CarWorld {
    */
   private hitPlants(): void {
     const { car } = this;
-    const reach = CAR_CIRCLES[CAR_CIRCLES.length - 1] + CAR_RADIUS + MAX_PLANT_RADIUS;
-    if (Math.abs(this.roadOffset()) < ROAD_HALF + SHOULDER + this.clearFrom - reach) return;
+    const carReach = CAR_CIRCLES[CAR_CIRCLES.length - 1] + CAR_RADIUS;
+    const offset = Math.abs(this.roadOffset());
+    if (offset < ROAD_HALF + SHOULDER + this.clearFrom - carReach - MAX_PLANT_RADIUS) return;
+    const reach = carReach + (offset < BUILDINGS_FROM ? MAX_PLANT_RADIUS : MAX_SOLID_RADIUS);
     const c = Math.cos(car.heading);
     const s = Math.sin(car.heading);
     this.plants.near(car.x, car.y, reach, (p) => {

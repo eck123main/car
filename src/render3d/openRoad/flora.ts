@@ -4,6 +4,7 @@ import type { Land } from '../../sim/openRoad/land';
 import { hash2 } from '../../sim/openRoad/noise';
 import { biomeAtPoint, pickFrom, pickPlant, PLANT_TILE, plantsIn } from '../../sim/openRoad/plants';
 import { ROAD_HALF, SHOULDER } from '../../sim/openRoad/road';
+import { buildingTemplate, COW_TINTS, detailTemplate } from './farmModels';
 
 /** Sides of a low-poly cone or trunk. */
 const SIDES = 6;
@@ -19,7 +20,7 @@ const DETAIL_TILE = 160;
 const DETAIL_RANGE = 280;
 
 /** One plant shape: a unit tall, standing at the origin, ready to copy many times. */
-interface Template {
+export interface Template {
   pos: number[];
   nor: number[];
   /** Colour share from the plant's tint: 1 = all tint, 0 = fixed (the rest is `fixed`). */
@@ -29,7 +30,7 @@ interface Template {
   /** Wider than tall for rocks: scale sideways by this. */
 }
 
-class Builder implements Template {
+export class Builder implements Template {
   pos: number[] = [];
   nor: number[] = [];
   tint: number[] = [];
@@ -44,6 +45,34 @@ class Builder implements Template {
     this.tint.push(tint);
     this.fixed.push(fixed[0], fixed[1], fixed[2]);
     return n;
+  }
+
+  /** A flat four-cornered face with one normal, drawn from both sides (closed shapes never show the back). */
+  private face(p: number[][], n: number[], tint: number, fixed: Rgb): void {
+    const first = this.pos.length / 3;
+    for (const q of p) this.vert(q[0], q[1], q[2], n[0], n[1], n[2], tint, fixed);
+    if (p.length === 4) this.index.push(first, first + 1, first + 2, first, first + 2, first + 3, first, first + 2, first + 1, first, first + 3, first + 2);
+    else this.index.push(first, first + 1, first + 2, first, first + 2, first + 1);
+  }
+
+  /** A box with sharp edges (no bottom). */
+  box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, tint: number, fixed: Rgb): void {
+    this.face([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], [0, 0, -1], tint, fixed);
+    this.face([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], [0, 0, 1], tint, fixed);
+    this.face([[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [-1, 0, 0], tint, fixed);
+    this.face([[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]], [1, 0, 0], tint, fixed);
+    this.face([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [0, 1, 0], tint, fixed);
+  }
+
+  /** A pitched roof with its ridge along x, and the walls' colour filling the triangles at the ends. */
+  gable(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, roof: Rgb): void {
+    const mid = (z0 + z1) / 2;
+    const rise = y1 - y0;
+    const run = (z1 - z0) / 2;
+    this.face([[x0, y0, z0], [x1, y0, z0], [x1, y1, mid], [x0, y1, mid]], [0, run, -rise], 0, roof);
+    this.face([[x0, y0, z1], [x1, y0, z1], [x1, y1, mid], [x0, y1, mid]], [0, run, rise], 0, roof);
+    this.face([[x0, y0, z0], [x0, y0, z1], [x0, y1, mid]], [-1, 0, 0], 1, BLACK);
+    this.face([[x1, y0, z0], [x1, y0, z1], [x1, y1, mid]], [1, 0, 0], 1, BLACK);
   }
 
   /** A cone or cylinder between two heights. */
@@ -464,6 +493,17 @@ export class Flora {
       const t = far ? farTemplateOf(plant.kind) : templateOf(plant.kind);
       merge.add(t, x - x0, h - baseH - 0.15, y - y0, plantSize, pickFrom(gx, gy, seed, 8) * 6.28, tint, 0.85 + pickFrom(gx, gy, seed, 9) * 0.3);
     });
+    // The farms live in the same tiles: no extra draw calls, and they come and go with the trees.
+    land.farms.buildingsIn(x0, y0, size, (b) => {
+      merge.add(buildingTemplate(b.kind), b.x - x0, land.height(b.x, b.y) - baseH, b.y - y0, b.scale, b.yaw, tintOf(b.wall), 1);
+    });
+    if (!far) {
+      land.farms.detailsIn(x0, y0, size, (d, farm) => {
+        const def = farm.biome.land.farms!;
+        const hue = d.kind === 'cow' ? COW_TINTS[Math.floor(((d.x * 7.3 + d.y * 3.1) % 1 + 1) * 2) % COW_TINTS.length] : def.fenceColor;
+        merge.add(detailTemplate(d.kind), d.x - x0, land.height(d.x, d.y) - baseH, d.y - y0, d.size, d.yaw, tintOf(hue), 1);
+      });
+    }
     return merge.pos.length > 0 ? merge.mesh(this.material, x0, baseH, y0) : null;
   }
 

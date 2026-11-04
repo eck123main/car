@@ -27,6 +27,8 @@ const SOLID_RADIUS: Partial<Record<PlantKind, number>> = {
 const MIN_RADIUS = 0.3;
 /** The largest radius any plant has (m): boulders of up to size 5. */
 export const MAX_PLANT_RADIUS = 4;
+/** The largest building's radius (m). Buildings stand far from the road. */
+export const MAX_SOLID_RADIUS = 14;
 
 /** Hash a few different numbers out of one cell. */
 export const pickFrom = (ix: number, iy: number, seed: number, n: number): number => hash2(ix + n * 991, iy - n * 613, seed);
@@ -73,6 +75,7 @@ export function plantsIn(land: Land, x0: number, y0: number, size: number, minSi
       // Thin out where this biome is sparser than the tile's spacing.
       const keep = (spacing * spacing) / (f.spacing * f.spacing);
       if (pickFrom(gx, gy, seed, 3) > keep) continue;
+      if (land.farms.clears(x, y)) continue;
       const woods = land.woods(biome, x, y);
       // A few loners in the clearings.
       if (pickFrom(gx, gy, seed, 4) > woods * 0.92 + 0.05) continue;
@@ -94,7 +97,7 @@ export interface SolidPlant {
   x: number;
   y: number;
   radius: number;
-  kind: PlantKind;
+  kind: PlantKind | 'building';
 }
 
 /** Tiles kept: more than a car can touch at once. */
@@ -116,6 +119,7 @@ export class SolidPlants {
       const share = SOLID_RADIUS[plant.kind];
       if (share !== undefined) list.push({ x, y, radius: Math.max(MIN_RADIUS, share * size), kind: plant.kind });
     });
+    this.land.farms.buildingsIn(ix * PLANT_TILE, iy * PLANT_TILE, PLANT_TILE, (b) => list.push({ x: b.x, y: b.y, radius: b.radius, kind: 'building' }));
     if (this.tiles.size >= KEEP_TILES) this.tiles.delete(this.tiles.keys().next().value as string);
     this.tiles.set(key, list);
     return list;

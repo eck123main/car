@@ -1,4 +1,5 @@
 import { type Biome, type OpenRoadMap, type Rgb, rgb } from './biomes';
+import { Farms } from './farms';
 import { hash2, Noise2D, smoothstep } from './noise';
 import { type ClimbZone, EndlessRoad, ROAD_HALF, SHOULDER } from './road';
 
@@ -92,6 +93,8 @@ export class Land {
   private readonly mixOut: BiomeMix;
   private readonly colorB: Rgb = [0, 0, 0];
   private readonly ridges = new Map<string, Ridge | null>();
+  /** Farms in the distance: shared by the ground's colours, the plants and the physics. */
+  readonly farms: Farms;
 
   constructor(
     readonly seed: number,
@@ -102,6 +105,7 @@ export class Land {
     this.n3 = new Noise2D(seed + 2);
     for (const b of map.biomes) this.palettes.set(b.id, paletteOf(b));
     this.mixOut = { a: map.biomes[0], b: map.biomes[0], t: 0 };
+    this.farms = new Farms(this);
     this.road = new EndlessRoad(seed, {
       biomeAt: (x) => {
         const m = this.mix(x);
@@ -320,6 +324,8 @@ export class Land {
     out[2] = p.grass[2];
     mixInto(out, p.grass2, smoothstep(-0.2, 0.2, patch));
     mixInto(out, p.grass3, smoothstep(0.05, 0.3, this.n2.fbm(x / 95 + 9, y / 95, 2)));
+    const crop = b.land.farms ? this.farms.fieldColor(x, y) : null;
+    if (crop) mixInto(out, crop, 0.9);
     if (c.strata && h > b.land.base + 12) {
       const band = (h + patch * 14) / (c.strataHeight ?? 30);
       const n = p.strata!.length;

@@ -263,6 +263,43 @@ describe('driving it', () => {
     expect(Math.abs(hard.roadOffset())).toBeLessThan(FENCE_OFFSET);
   });
 
+  it('farms: fields and buildings in the distance, clear of the road, and buildings are solid', () => {
+    for (const id of ['meadow', 'alpine', 'coast', 'forest']) {
+      const land = new Land(1234, OPEN_ROAD_MAPS.find((m) => m.id === id)!);
+      land.road.ensure(30000);
+      let buildings = 0;
+      const seen: { x: number; y: number; radius: number }[] = [];
+      land.farms.buildingsIn(0, -8000, 30000, (b) => {
+        buildings++;
+        seen.push(b);
+      });
+      expect(buildings).toBeGreaterThan(8);
+      for (const b of seen) {
+        land.height(b.x, b.y);
+        expect(land.roadDistance).toBeGreaterThan(60);
+      }
+      // Crops never reach the road, and no tree grows in them.
+      const r = land.road;
+      // (Asking about a farm can make more road: stop where the road was.)
+      const end = r.count;
+      for (let i = r.startIndex; i < end; i += 10) expect(land.farms.fieldColor(r.x[i], r.y[i])).toBeNull();
+    }
+    {
+      const drive = new OpenRoadDrive('meadow', 1234);
+      let target: { x: number; y: number; radius: number } | null = null;
+      drive.land.farms.buildingsIn(0, -8000, 30000, (b) => {
+        if (!target && b.radius > 8) target = b;
+      });
+      const b = target as unknown as { x: number; y: number; radius: number };
+      expect(b).not.toBeNull();
+      drive.car.place(b.x - 40, b.y, 0, null);
+      drive.car.trackIndex = null;
+      drive.car.vx = 40;
+      for (let t = 0; t < 120 * 2 && drive.crashes === 0; t++) drive.step(DT, { ...IDLE_INPUT, throttle: 1 });
+      expect(drive.crashes).toBe(1);
+    }
+  });
+
   /** Aim the car straight at the nearest big solid plant to the road, from 40 m away. */
   const aimAtPlant = (drive: OpenRoadDrive, kinds: string[], speed: number) => {
     const r = drive.road;

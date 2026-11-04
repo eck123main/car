@@ -51,6 +51,23 @@ export interface RidgeDef {
   climb: { height: [number, number]; width: [number, number] };
 }
 
+export type BuildingKind = 'barn' | 'smallBarn' | 'silo' | 'house' | 'windmill' | 'chalet' | 'cabin' | 'shed' | 'ranch' | 'windpump' | 'villa';
+export type FarmAnimal = 'cow' | 'sheep';
+
+export interface FarmDef {
+  /** Chance of a farm per 900 m square of suitable land. */
+  chance: number;
+  /** A farm has the first building and some of the others. */
+  buildings: BuildingKind[];
+  /** Colours of the walls. */
+  walls: string[];
+  /** Crops; empty means fenced paddocks only. */
+  fields: string[];
+  animals?: FarmAnimal;
+  bales?: boolean;
+  fenceColor: string;
+}
+
 export interface Biome {
   id: string;
   name: string;
@@ -99,6 +116,8 @@ export interface Biome {
     bumps: number;
     /** Hills lying across the road's way. */
     ridges: RidgeDef;
+    /** Farmland off in the distance. */
+    farms?: FarmDef;
   };
   colors: {
     grass: string;
@@ -160,6 +179,7 @@ const MEADOW: Biome = {
     bank: 0.42,
     bumps: 0.5,
     ridges: { every: 2300, hill: { height: [28, 62], width: [350, 620] }, climbs: 0.35, climb: { height: [75, 125], width: [560, 820] } },
+    farms: { chance: 0.8, buildings: ['barn', 'house', 'silo', 'windmill', 'smallBarn'], walls: ['#a8392c', '#8e2f28', '#c9b48c', '#e6dfcf'], fields: ['#c9b44e', '#d8c860', '#8fb04a', '#6d9c3e', '#7a5c3a', '#e2d24c'], animals: 'cow', bales: true, fenceColor: '#8a6a48' },
   },
   colors: { grass: '#5e9c3a', grass2: '#7dad45', grass3: '#a9b955', rock: '#8a8a78', sand: '#b4a878', snow: '#f4f6f8', verge: '#88a257', snowLine: 9000, rockFrom: 1.1, water: '#4d8fb5', waterDeep: '#2a5f85' },
   flora: {
@@ -198,6 +218,7 @@ const ALPINE: Biome = {
     bank: 0.62,
     bumps: 0.5,
     ridges: { every: 2500, hill: { height: [30, 70], width: [350, 560] }, climbs: 0.8, climb: { height: [170, 290], width: [820, 1150] } },
+    farms: { chance: 0.45, buildings: ['chalet', 'chalet', 'smallBarn'], walls: ['#7a5230', '#6a4628', '#8a6038'], fields: ['#7fb04a', '#94bd52', '#6ea544'], animals: 'cow', fenceColor: '#6a5238' },
   },
   colors: { grass: '#4f8a3a', grass2: '#3c7434', grass3: '#7d9a46', rock: '#807d7a', sand: '#9c9078', snow: '#f6f8fb', verge: '#748c50', snowLine: 520, rockFrom: 0.78, water: '#3f8ba8', waterDeep: '#1e5470' },
   flora: {
@@ -236,6 +257,7 @@ const SNOW: Biome = {
     bank: 0.48,
     bumps: 0.6,
     ridges: { every: 2800, hill: { height: [25, 58], width: [330, 560] }, climbs: 0.55, climb: { height: [105, 185], width: [660, 920] } },
+    farms: { chance: 0.35, buildings: ['cabin', 'cabin', 'shed'], walls: ['#5a3c28', '#6a4630', '#7c2f28'], fields: [], fenceColor: '#3a2c22' },
   },
   colors: { grass: '#f1f5fa', grass2: '#e6edf5', grass3: '#dbe5f0', rock: '#5c6068', sand: '#e6edf5', snow: '#fbfcff', verge: '#e4eaf0', snowLine: -100, rockFrom: 0.8, water: '#b8d4e4', waterDeep: '#9fc2d6' },
   flora: {
@@ -272,6 +294,7 @@ const DESERT: Biome = {
     bank: 1.3,
     bumps: 0.35,
     ridges: { every: 3000, hill: { height: [22, 48], width: [340, 600] }, climbs: 0.4, climb: { height: [85, 145], width: [620, 880] } },
+    farms: { chance: 0.3, buildings: ['ranch', 'windpump', 'shed'], walls: ['#c8946a', '#b87c56', '#d4a880'], fields: ['#b89a58', '#a8a058'], animals: 'cow', fenceColor: '#6a5540' },
   },
   colors: {
     grass: '#c98a55',
@@ -323,6 +346,7 @@ const FOREST: Biome = {
     bank: 0.55,
     bumps: 0.6,
     ridges: { every: 2300, hill: { height: [30, 62], width: [300, 520] }, climbs: 0.55, climb: { height: [95, 165], width: [620, 880] } },
+    farms: { chance: 0.5, buildings: ['barn', 'cabin', 'silo', 'shed'], walls: ['#8e3a26', '#6a4a30', '#b0813c'], fields: ['#c98a2e', '#d9a93a', '#9a8a3c', '#b8622a'], animals: 'sheep', bales: true, fenceColor: '#5e4630' },
   },
   colors: { grass: '#8a7a38', grass2: '#a0702e', grass3: '#7a8a3c', rock: '#6e6458', sand: '#9c8a60', snow: '#f4f6f8', verge: '#94803c', snowLine: 9000, rockFrom: 0.85, water: '#46788a', waterDeep: '#284e60' },
   flora: {
@@ -361,6 +385,7 @@ const COAST: Biome = {
     bank: 0.9,
     bumps: 0.4,
     ridges: { every: 2600, hill: { height: [16, 42], width: [300, 520] }, climbs: 0.6, climb: { height: [95, 155], width: [620, 880] } },
+    farms: { chance: 0.55, buildings: ['villa', 'villa', 'shed'], walls: ['#efe6d6', '#e8d8bc', '#f2ece0'], fields: ['#5f8a3e', '#74983f', '#a8a452'], animals: 'sheep', fenceColor: '#9a8a6c' },
   },
   colors: { grass: '#6c9a48', grass2: '#88a653', grass3: '#a3ad5e', rock: '#8c7a66', sand: '#e0c896', snow: '#f4f6f8', verge: '#94a460', snowLine: 9000, rockFrom: 0.68, water: '#1f7fa8', waterDeep: '#0e4a70' },
   flora: {
