@@ -10,7 +10,7 @@ const DT = 1 / 120;
 
 describe('endless road', () => {
   for (const map of OPEN_ROAD_MAPS) {
-    it(`${map.id}: never doubles back and stays gentle for 60 km`, () => {
+    it(`${map.id}: never doubles back and stays driveable for 60 km`, () => {
       const land = new Land(1234, map);
       const r = land.road;
       r.ensure(60000);
@@ -23,9 +23,65 @@ describe('endless road', () => {
         expect(r.z[i]).toBeGreaterThan(0);
         if (Math.abs(r.kappa[i]) > 0) tightest = Math.min(tightest, 1 / Math.abs(r.kappa[i]));
       }
-      expect(tightest).toBeGreaterThan(160);
+      expect(tightest).toBeGreaterThan(28);
+    });
+
+    it(`${map.id}: is mostly bends, with hairpins and big climbs and descents`, () => {
+      const land = new Land(1234, map);
+      const r = land.road;
+      r.ensure(40000);
+      let bending = 0;
+      let hairpins = 0;
+      let inHairpin = false;
+      for (let i = 1; i < r.count; i++) {
+        const k = Math.abs(r.kappa[i]);
+        if (k > 1 / 800) bending++;
+        const tight = k > 1 / 70;
+        if (tight && !inHairpin) hairpins++;
+        inHairpin = tight;
+      }
+      expect(bending / r.count).toBeGreaterThan(0.3);
+      expect(hairpins).toBeGreaterThan(4);
+      // Up and down: the biggest rise and fall over 3 km of road.
+      let rise = 0;
+      let fall = 0;
+      const span = Math.round(3000 / ROAD_SPACING);
+      for (let i = r.startIndex; i + span < r.count; i += 25) {
+        rise = Math.max(rise, r.z[i + span] - r.z[i]);
+        fall = Math.max(fall, r.z[i] - r.z[i + span]);
+      }
+      expect(rise).toBeGreaterThan(60);
+      expect(fall).toBeGreaterThan(60);
+    });
+
+    it(`${map.id}: the land has no cliffs between the legs of a zigzag`, () => {
+      const land = new Land(1234, map);
+      const r = land.road;
+      r.ensure(20000);
+      for (let i = r.startIndex; i < r.count; i += 3) {
+        if (Math.abs(r.kappa[i]) < 1 / 70) continue;
+        // Across the inside of a hairpin, out past the next leg.
+        const side = Math.sign(r.kappa[i]);
+        let last = land.height(r.x[i], r.y[i]);
+        for (let d = 6; d < 200; d += 6) {
+          const h = land.height(r.x[i] - r.ty[i] * d * side, r.y[i] + r.tx[i] * d * side);
+          expect(Math.abs(h - last)).toBeLessThan(14);
+          last = h;
+        }
+      }
     });
   }
+
+  it('a car driven off one leg of a zigzag finds the next leg is road', () => {
+    const land = new Land(1234, OPEN_ROAD_MAPS.find((m) => m.id === 'alpine')!);
+    const r = land.road;
+    r.ensure(12000);
+    let i = r.startIndex;
+    while (Math.abs(Math.atan2(r.ty[i], r.tx[i])) < MAX_HEADING - 0.02 || Math.abs(r.kappa[i]) > 0) i++;
+    // Straight on the next leg, 60 samples (240 m) of road further on.
+    const j = i + 90;
+    expect(r.nearest(r.x[j], r.y[j], i)).toBe(j);
+  });
 
   it('is the same for the same seed, and different for another', () => {
     const map = OPEN_ROAD_MAPS[0];
@@ -119,7 +175,7 @@ describe('driving it', () => {
     expect(bends.worst).toBeLessThan(ROAD_HALF);
   });
 
-  it('reaches the same top speed as the race car on a long straight, more with DRS', () => {
+  it('reaches the same top speed as the race car when given the room, more with DRS', () => {
     const top = (drs: boolean) => {
       const drive = new OpenRoadDrive('meadow', 5);
       const pilot = new RoadPilot(drive.road);

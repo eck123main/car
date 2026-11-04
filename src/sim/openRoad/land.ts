@@ -1,6 +1,6 @@
 import { type Biome, type OpenRoadMap, type Rgb, rgb } from './biomes';
-import { Noise2D, smoothstep } from './noise';
-import { EndlessRoad, ROAD_HALF, SHOULDER } from './road';
+import { hash2, Noise2D, smoothstep } from './noise';
+import { type ClimbZone, EndlessRoad, ROAD_HALF, SHOULDER } from './road';
 
 /** Metres of driving in each landscape on the long way, and over how many it fades to the next. */
 export const LEG_LENGTH = 9000;
@@ -13,6 +13,26 @@ const DECK = 0.28;
 export const LEVEL_WIDTH = 4;
 /** How quickly banks steepen away from the road (m). */
 const BANK_EASE = 22;
+
+/** The zigzag on a climb stops this share of the hill's width short of the top, and starts this far out. */
+const CLIMB_TOP = 0.1;
+const CLIMB_FOOT = 0.8;
+/** Hills only start this far past the start line, so a drive begins in the open (m). */
+const HILLS_FROM = 1000;
+/** Near a hill the sea stands back this far, so the road climbs over a headland (m). */
+const HEADLAND = 800;
+
+/** Land further from the road than this isn't blended between the legs of a zigzag (m). */
+const BLEND_LEGS = 260;
+
+/** One hill across the road's way. */
+interface Ridge {
+  /** Where its crest is (x), how far either side it reaches, how high it is. */
+  cx: number;
+  w: number;
+  a: number;
+  climb: boolean;
+}
 
 /** Colours worked out once per biome. */
 interface Palette {
@@ -71,6 +91,7 @@ export class Land {
   private readonly palettes = new Map<string, Palette>();
   private readonly mixOut: BiomeMix;
   private readonly colorB: Rgb = [0, 0, 0];
+  private readonly ridges = new Map<string, Ridge | null>();
 
   constructor(
     readonly seed: number,
@@ -87,6 +108,7 @@ export class Land {
         return m.t < 0.5 ? m.a : m.b;
       },
       floor: (x, y) => this.floor(x, y),
+      nextClimb: (x, y) => this.nextClimb(x, y),
     });
   }
 
@@ -104,11 +126,83 @@ export class Land {
     return out;
   }
 
+  /** The hill of one cell of a biome's list, if it has one. */
+  private ridgeOf(b: Biome, c: number): Ridge | null {
+    const key = `${b.id}:${c}`;
+    const known = this.ridges.get(key);
+    if (known !== undefined) return known;
+    const r = b.land.ridges;
+    const roll = (n: number) => hash2(c, n * 53 + 7, this.seed);
+    const between = ([lo, hi]: [number, number], t: number) => lo + (hi - lo) * t;
+    // The first hill past the start is always a climb, so every drive soon meets one.
+    const climb = c === 1 || roll(1) < r.climbs;
+    const shape = climb ? r.climb : r.hill;
+    const w = between(shape.width, roll(2));
+    const cx = (c + 0.3 + 0.4 * roll(3)) * r.every;
+    const ridge = cx - w < HILLS_FROM && cx + w > -HILLS_FROM ? null : { cx, w, a: between(shape.height, roll(4)), climb };
+    this.ridges.set(key, ridge);
+    return ridge;
+  }
+
+  /** How the crest of a hill wanders with y, so a hill isn't a ruled line across the map. */
+  private ridgeShift(w: number, x: number, y: number): number {
+    return this.n3.at(y / 1700 + 9.7, x / 6000) * w * 0.18;
+  }
+
+  /** How much the hills lift the land of a biome here (m). */
+  private ridgeLift(b: Biome, x: number, y: number): number {
+    const c = Math.floor(x / b.land.ridges.every);
+    let sum = 0;
+    for (let k = c - 1; k <= c + 1; k++) {
+      const r = this.ridgeOf(b, k);
+      if (!r) continue;
+      const u = (x + this.ridgeShift(r.w, x, y) - r.cx) / r.w;
+      if (Math.abs(u) >= 1) continue;
+      const v = 1 - u * u;
+      sum += r.a * v * v * (0.8 + 0.2 * this.n2.at(y / 1300, k * 3.1));
+    }
+    return sum;
+  }
+
+  /** How close a point is to a hill of this biome (1 on it, 0 well clear). */
+  private nearRidge(b: Biome, x: number): number {
+    const c = Math.floor(x / b.land.ridges.every);
+    let most = 0;
+    for (let k = c - 1; k <= c + 1; k++) {
+      const r = this.ridgeOf(b, k);
+      if (r) most = Math.max(most, 1 - smoothstep(1, 1.3, Math.abs(x - r.cx) / r.w));
+    }
+    return most;
+  }
+
+  /** How far the hills lift the land at a point (m). */
+  hill(x: number, y: number): number {
+    const m = this.mix(x);
+    const { b, t } = m;
+    const h = this.ridgeLift(m.a, x, y);
+    return t > 0 ? h + (this.ridgeLift(b, x, y) - h) * t : h;
+  }
+
+  /** The next stretch at or past x that the road has to zigzag on: up to a crest or down from one. */
+  nextClimb(x: number, y: number): ClimbZone | null {
+    const m = this.mix(x);
+    const b = m.t < 0.5 ? m.a : m.b;
+    const c = Math.floor(x / b.land.ridges.every);
+    for (let k = c - 1; k <= c + 2; k++) {
+      const r = this.ridgeOf(b, k);
+      if (!r || !r.climb) continue;
+      const cx = r.cx - this.ridgeShift(r.w, x, y);
+      if (x < cx - r.w * CLIMB_TOP) return { from: cx - r.w * CLIMB_FOOT, to: cx - r.w * CLIMB_TOP };
+      if (x < cx + r.w * CLIMB_FOOT) return { from: cx + r.w * CLIMB_TOP, to: cx + r.w * CLIMB_FOOT };
+    }
+    return null;
+  }
+
   private floorOf(b: Biome, x: number, y: number): number {
     const l = b.land;
     let h = l.base + l.hills.amp * this.n1.fbm(x / l.hills.scale, y / l.hills.scale, 3) + l.roll.amp * this.n2.fbm(x / l.roll.scale, y / l.roll.scale, 2);
     if (l.lakes) h -= l.lakes.depth * smoothstep(l.lakes.threshold, l.lakes.threshold + 0.14, this.n3.fbm(x / l.lakes.scale + 40, y / l.lakes.scale, 2));
-    return h;
+    return h + this.ridgeLift(b, x, y);
   }
 
   /** The valley floor: the ground the road follows. */
@@ -146,7 +240,7 @@ export class Land {
     }
     if (l.sea && side > 0) {
       const s = l.sea;
-      const off = s.near + (s.far - s.near) * (0.5 + 0.5 * this.n3.at(x / 1500, 3.1));
+      const off = s.near + (s.far - s.near) * (0.5 + 0.5 * this.n3.at(x / 1500, 3.1)) + HEADLAND * this.nearRidge(b, x);
       // An even slope down to the sea, so the water shows from the road over the falling ground.
       const out = Math.max(0, Math.min(1, (d - off) / s.width));
       h += (-14 - h) * out;
@@ -182,7 +276,19 @@ export class Land {
     const deck = roadZ - (cell > FINE_CELL ? DECK + Math.min(2.5, cell * 0.04) : DECK);
     if (e <= 0) return deck;
     const reach = (bank * e * e) / (e + BANK_EASE);
-    return Math.max(deck - reach, Math.min(deck + reach, h));
+    const own = Math.max(deck - reach, Math.min(deck + reach, h));
+    if (d > BLEND_LEGS) return own;
+    // Between the legs of a zigzag each pulls the land to its own height: meet in the middle, not in a step.
+    const k = road.otherStretch(i, x, y, d);
+    if (k < 0) return own;
+    const d2 = Math.hypot(road.x[k] - x, road.y[k] - y);
+    const e2 = Math.max(0, d2 - start);
+    const deck2 = road.z[k] - (roadZ - deck);
+    const reach2 = (bank * e2 * e2) / (e2 + BANK_EASE);
+    const other = Math.max(deck2 - reach2, Math.min(deck2 + reach2, h));
+    const near4 = d * d * d * d;
+    const far4 = d2 * d2 * d2 * d2;
+    return own + ((other - own) * near4) / (near4 + far4);
   }
 
   /** How steep the ground is at a point, and which way it rises. */

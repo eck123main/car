@@ -31,6 +31,18 @@ export type TimeOfDay = 'dawn' | 'day' | 'golden' | 'dusk';
 export const TIMES: TimeOfDay[] = ['day', 'golden', 'dusk', 'dawn'];
 export const TIME_NAMES: Record<TimeOfDay, string> = { dawn: 'Dawn', day: 'Midday', golden: 'Golden hour', dusk: 'Sunset' };
 
+/**
+ * One hill per `every` metres of x, up to half that wide. Some are climbs: too steep for the road
+ * to go straight up, so it zigzags up one side and down the other with hairpins.
+ */
+export interface RidgeDef {
+  every: number;
+  hill: { height: [number, number]; width: [number, number] };
+  /** Share of the hills that are climbs. */
+  climbs: number;
+  climb: { height: [number, number]; width: [number, number] };
+}
+
 export interface Biome {
   id: string;
   name: string;
@@ -48,6 +60,9 @@ export interface Biome {
     esses: number;
     /** Steepest climb (rise per metre). */
     grade: number;
+    /** Hairpin radius (m) and the length of the legs between them on a zigzag climb (m). */
+    hairpin: [number, number];
+    leg: [number, number];
     asphalt: string;
     shoulder: string;
     line: string;
@@ -73,6 +88,8 @@ export interface Biome {
     bank: number;
     /** Bumps on the ground (m). */
     bumps: number;
+    /** Hills lying across the road's way. */
+    ridges: RidgeDef;
   };
   colors: {
     grass: string;
@@ -121,18 +138,19 @@ export interface Biome {
 
 const MEADOW: Biome = {
   id: 'meadow',
-  name: 'Green Straights',
-  blurb: 'Rolling meadows and very long straights. Flat out and breathe.',
+  name: 'Green Hills',
+  blurb: 'Rolling farmland, fenced hills and winding lanes between the fields.',
   card: ['#a8d4f2', '#7fa36a', '#6aa84a', '#3d3f42'],
   time: 'day',
-  road: { straight: [1000, 3400], radius: [550, 1600], angle: [8, 38], esses: 0.2, grade: 0.045, asphalt: '#3d3f42', shoulder: '#8b8468', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#20242a' },
+  road: { straight: [150, 650], radius: [130, 520], angle: [25, 85], esses: 0.55, grade: 0.08, hairpin: [38, 58], leg: [130, 240], asphalt: '#3d3f42', shoulder: '#8b8468', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#20242a' },
   land: {
     base: 90,
     hills: { amp: 75, scale: 2600 },
     roll: { amp: 9, scale: 460 },
     mountains: { amp: 420, scale: 3400, near: 1200, far: 2600, rise: 1800 },
-    bank: 0.22,
+    bank: 0.42,
     bumps: 0.5,
+    ridges: { every: 2300, hill: { height: [28, 62], width: [350, 620] }, climbs: 0.35, climb: { height: [75, 125], width: [560, 820] } },
   },
   colors: { grass: '#5e9c3a', grass2: '#7dad45', grass3: '#a9b955', rock: '#8a8a78', sand: '#b4a878', snow: '#f4f6f8', verge: '#88a257', snowLine: 9000, rockFrom: 1.1, water: '#4d8fb5', waterDeep: '#2a5f85' },
   flora: {
@@ -158,10 +176,10 @@ const MEADOW: Biome = {
 const ALPINE: Biome = {
   id: 'alpine',
   name: 'Alpine Pass',
-  blurb: 'Pines and big snowy peaks, sweeping bends and a lake or two.',
+  blurb: 'Hairpins up the mountainside, pines, snowy peaks and a lake or two.',
   card: ['#8ec5ee', '#8b98a8', '#3f6b45', '#3a3c40'],
   time: 'day',
-  road: { straight: [150, 700], radius: [170, 520], angle: [22, 75], esses: 0.6, grade: 0.07, asphalt: '#3a3c40', shoulder: '#7d7a70', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#d12f2f' },
+  road: { straight: [60, 280], radius: [65, 240], angle: [35, 105], esses: 0.7, grade: 0.09, hairpin: [30, 42], leg: [190, 340], asphalt: '#3a3c40', shoulder: '#7d7a70', line: '#e8e8e0', centre: '#e8e8e0', post: '#f2f2ec', postTop: '#d12f2f' },
   land: {
     base: 150,
     hills: { amp: 110, scale: 2400 },
@@ -170,6 +188,7 @@ const ALPINE: Biome = {
     lakes: { scale: 2200, depth: 230, threshold: 0.28 },
     bank: 0.62,
     bumps: 0.5,
+    ridges: { every: 2500, hill: { height: [30, 70], width: [350, 560] }, climbs: 0.8, climb: { height: [170, 290], width: [820, 1150] } },
   },
   colors: { grass: '#4f8a3a', grass2: '#3c7434', grass3: '#7d9a46', rock: '#807d7a', sand: '#9c9078', snow: '#f6f8fb', verge: '#748c50', snowLine: 520, rockFrom: 0.78, water: '#3f8ba8', waterDeep: '#1e5470' },
   flora: {
@@ -198,15 +217,16 @@ const SNOW: Biome = {
   blurb: 'A ploughed road through deep snow, frosted pines and a low sun.',
   card: ['#d8e6f2', '#c6d3e0', '#f2f6fa', '#4a4d52'],
   time: 'golden',
-  road: { straight: [250, 1200], radius: [260, 760], angle: [18, 60], esses: 0.35, grade: 0.055, asphalt: '#4a4d52', shoulder: '#cfd6dc', line: '#c4c8c8', centre: '#c4c8c8', post: '#22262a', postTop: '#f07020' },
+  road: { straight: [120, 480], radius: [90, 320], angle: [28, 90], esses: 0.55, grade: 0.08, hairpin: [34, 50], leg: [150, 290], asphalt: '#4a4d52', shoulder: '#cfd6dc', line: '#c4c8c8', centre: '#c4c8c8', post: '#22262a', postTop: '#f07020' },
   land: {
     base: 130,
     hills: { amp: 70, scale: 2200 },
     roll: { amp: 14, scale: 420 },
     mountains: { amp: 620, scale: 3600, near: 500, far: 1500, rise: 1700 },
     lakes: { scale: 2600, depth: 190, threshold: 0.33 },
-    bank: 0.45,
+    bank: 0.48,
     bumps: 0.6,
+    ridges: { every: 2800, hill: { height: [25, 58], width: [330, 560] }, climbs: 0.55, climb: { height: [105, 185], width: [660, 920] } },
   },
   colors: { grass: '#f1f5fa', grass2: '#e6edf5', grass3: '#dbe5f0', rock: '#5c6068', sand: '#e6edf5', snow: '#fbfcff', verge: '#e4eaf0', snowLine: -100, rockFrom: 0.8, water: '#b8d4e4', waterDeep: '#9fc2d6' },
   flora: {
@@ -231,10 +251,10 @@ const SNOW: Biome = {
 const DESERT: Biome = {
   id: 'desert',
   name: 'Red Canyon',
-  blurb: 'Empty desert highway past flat-topped rock towers. Endless horizon.',
+  blurb: 'Desert highway over red ridges, past flat-topped rock towers.',
   card: ['#f2c79a', '#b85f38', '#c98a55', '#47423f'],
   time: 'golden',
-  road: { straight: [1000, 3800], radius: [500, 1500], angle: [8, 44], esses: 0.25, grade: 0.05, asphalt: '#47423f', shoulder: '#b08a60', line: '#e8e2d0', centre: '#e9b53c', post: '#ece4d4', postTop: '#c23a28' },
+  road: { straight: [250, 950], radius: [150, 650], angle: [22, 80], esses: 0.45, grade: 0.08, hairpin: [40, 60], leg: [170, 310], asphalt: '#47423f', shoulder: '#b08a60', line: '#e8e2d0', centre: '#e9b53c', post: '#ece4d4', postTop: '#c23a28' },
   land: {
     base: 110,
     hills: { amp: 45, scale: 2800 },
@@ -242,6 +262,7 @@ const DESERT: Biome = {
     mesas: { height: 190, scale: 1500, near: 130 },
     bank: 1.3,
     bumps: 0.35,
+    ridges: { every: 3000, hill: { height: [22, 48], width: [340, 600] }, climbs: 0.4, climb: { height: [85, 145], width: [620, 880] } },
   },
   colors: {
     grass: '#c98a55',
@@ -284,7 +305,7 @@ const FOREST: Biome = {
   blurb: 'Winding through red and gold trees, leaves drifting across the road.',
   card: ['#f4d9a8', '#b8703a', '#c9882e', '#3c3a38'],
   time: 'golden',
-  road: { straight: [130, 560], radius: [180, 520], angle: [20, 68], esses: 0.55, grade: 0.06, asphalt: '#3c3a38', shoulder: '#6e5a40', line: '#dcd8c4', centre: '#dcd8c4', post: '#efeade', postTop: '#20242a' },
+  road: { straight: [50, 220], radius: [60, 230], angle: [35, 105], esses: 0.7, grade: 0.085, hairpin: [30, 44], leg: [120, 230], asphalt: '#3c3a38', shoulder: '#6e5a40', line: '#dcd8c4', centre: '#dcd8c4', post: '#efeade', postTop: '#20242a' },
   land: {
     base: 130,
     hills: { amp: 95, scale: 1700 },
@@ -292,6 +313,7 @@ const FOREST: Biome = {
     mountains: { amp: 330, scale: 2200, near: 500, far: 1400, rise: 1500 },
     bank: 0.55,
     bumps: 0.6,
+    ridges: { every: 2300, hill: { height: [30, 62], width: [300, 520] }, climbs: 0.55, climb: { height: [95, 165], width: [620, 880] } },
   },
   colors: { grass: '#8a7a38', grass2: '#a0702e', grass3: '#7a8a3c', rock: '#6e6458', sand: '#9c8a60', snow: '#f4f6f8', verge: '#94803c', snowLine: 9000, rockFrom: 0.85, water: '#46788a', waterDeep: '#284e60' },
   flora: {
@@ -320,7 +342,7 @@ const COAST: Biome = {
   blurb: 'A cliff road with the ocean on your right, all the way to the sun.',
   card: ['#f5a26b', '#c76d6a', '#3f7f96', '#3f3f42'],
   time: 'dusk',
-  road: { straight: [250, 1100], radius: [220, 640], angle: [14, 58], esses: 0.5, grade: 0.05, asphalt: '#3f3f42', shoulder: '#a39a7c', line: '#ecebe2', centre: '#ecebe2', post: '#f2f2ec', postTop: '#d12f2f' },
+  road: { straight: [100, 420], radius: [80, 300], angle: [28, 90], esses: 0.6, grade: 0.08, hairpin: [32, 46], leg: [130, 250], asphalt: '#3f3f42', shoulder: '#a39a7c', line: '#ecebe2', centre: '#ecebe2', post: '#f2f2ec', postTop: '#d12f2f' },
   land: {
     base: 62,
     hills: { amp: 22, scale: 1800 },
@@ -329,6 +351,7 @@ const COAST: Biome = {
     sea: { near: 12, far: 90, width: 240 },
     bank: 0.9,
     bumps: 0.4,
+    ridges: { every: 2600, hill: { height: [16, 42], width: [300, 520] }, climbs: 0.6, climb: { height: [95, 155], width: [620, 880] } },
   },
   colors: { grass: '#6c9a48', grass2: '#88a653', grass3: '#a3ad5e', rock: '#8c7a66', sand: '#e0c896', snow: '#f4f6f8', verge: '#94a460', snowLine: 9000, rockFrom: 0.68, water: '#1f7fa8', waterDeep: '#0e4a70' },
   flora: {
