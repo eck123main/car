@@ -178,7 +178,7 @@ export class PracticeDriver implements GameDriver {
   reset(atStart = false): void {
     const me = this.w.racer(this.meId)!;
     const ss = this.track.samples;
-    const i = atStart ? ss.length - 10 : (this.track.query(me.car.x, me.car.y, me.car.trackIndex)?.index ?? ss.length - 10);
+    const i = atStart ? ss.length - 10 : (this.track.locate(me.car.x, me.car.y, me.car.trackIndex) ?? me.car.trackIndex ?? ss.length - 10);
     const s = ss[i];
     me.car.place(s.x, s.y, Math.atan2(s.ty, s.tx), i);
     me.car.repair();

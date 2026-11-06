@@ -692,17 +692,41 @@ export class Session {
         // A lost timed lap ends qualifying for this driver.
         r.frozen = this.quali.get(id)!.status === 'done';
       } else {
-        const hit = this.track.query(r.car.x, r.car.y, r.car.trackIndex);
         // Back onto the stretch of track the car was on (not whichever is nearest: at
-        // Suzuka's crossover that could be the other road).
-        const index = hit?.index ?? 0;
-        const t = this.track.samples[index];
-        r.car.place(t.x, t.y, Math.atan2(t.ty, t.tx), index);
+        // Suzuka's crossover that could be the other road). Never off the road: if the car is
+        // too far out to find, the last stretch it was on.
+        const index =
+          this.track.locate(r.car.x, r.car.y, r.car.trackIndex) ?? r.car.trackIndex ?? this.track.locate(r.car.x, r.car.y, null, r.car.heading) ?? 0;
+        const spot = this.clearSpot(r, index);
+        r.car.place(spot.x, spot.y, spot.heading, spot.index);
         r.frozen = false;
       }
       r.car.repair();
       events.push({ kind: 'reset', racerId: id, note: 'Back on track' });
     }
+  }
+
+  /**
+   * Where a recovered car goes back on: the centreline at `index`, or beside it (still on the
+   * road) if another car is there, so it isn't shoved off the moment it reappears.
+   */
+  private clearSpot(r: Racer, index: number): { x: number; y: number; heading: number; index: number } {
+    const ss = this.track.samples;
+    const n = ss.length;
+    const others = this.world.racers.filter((o) => o !== r && !o.car.retired && !this.recovering.has(o.id) && !this.finishTimes.has(o.id));
+    const free = (x: number, y: number) => others.every((o) => Math.hypot(o.car.x - x, o.car.y - y) > 9);
+    // Back along the track a few metres at a time, centre first, then each side.
+    for (let back = 0; back <= 20; back += 5) {
+      const i = (index - back + n) % n;
+      const t = ss[i];
+      for (const side of [0, -0.5, 0.5]) {
+        const x = t.x + t.nx * t.halfWidth * side;
+        const y = t.y + t.ny * t.halfWidth * side;
+        if (free(x, y)) return { x, y, heading: Math.atan2(t.ty, t.tx), index: i };
+      }
+    }
+    const t = ss[index];
+    return { x: t.x, y: t.y, heading: Math.atan2(t.ty, t.tx), index };
   }
 
   // ---------- Helpers
