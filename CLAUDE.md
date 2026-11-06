@@ -75,7 +75,8 @@ plus Mario Kart style items (`src/sim/items.ts`, drawing `src/render/items.ts`).
   - **Hook** (car ahead within 250 m pulled back 1.5 s), **Magnet** (you're pushed towards the car
     ahead, 3 s), **Lightning** (every car ahead slowed 2 s), **Teleport** (to 15 m behind the car
     ahead within 500 m, at its speed, but never past the next timing line, `LapTimer.nextLine`,
-    or the lap wouldn't count). Items that need a target are kept until there is one.
+    or the lap wouldn't count). With no target they are **wasted** (a message says so), so any
+    item can be thrown away; a homing rocket with nobody ahead flies straight.
   - **Rainbow** 6 s: gentle boost, untouchable, knocks out cars it touches. **Ghost** 4 s:
     untouchable, see-through, passes through cars (`collisions.ts` skips it), rockets and drops,
     and steals a random other driver's item. **Shield** 12 s: blocks the next hit of any kind
@@ -471,7 +472,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Throttle / brake / steer | **W A S D** and **arrow keys** (both work) | Keyboard is on/off, so throttle and steering ramp smoothly in code |
 | DRS | **Space** | Press once (or hold): opens in a DRS zone when allowed (within 1 s at detection in races) and stays open to the end of the zone or until you brake. A press up to 0.75 s before the zone counts. The HUD says why when it isn't allowed |
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
-| Pit limiter | **P** | Must be on in the pit lane, otherwise a speeding penalty |
+| Pit limiter | **P** | Forced on by the pit autopilot anyway; no speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |
 | Camera view | **C** | Fixed map (default) or rotating (you always drive up) |
 | Switch driver | **← / →** (or A / D) | Spectating only: after your qualifying lap, once you've finished, or when you joined late |
@@ -499,7 +500,7 @@ The timing tower is always shown (no Tab needed).
   tracked, e.g. to check bots stay on the road.
 - **Timing**: three equal sectors; a lap only counts if the car passes every sector line
   in order (no faking laps by reversing). Uses simulation time, not wall-clock time.
-- Pit lane speed limit.
+- Pit lane speed limit (enforced by the autopilot, no penalty).
 - DRS rules (as above).
 - **Mandatory pit stop**: every car must pit at least once and use at least two
   different dry compounds (as in real F1 dry races). A car that doesn't gets **+30 s**
@@ -610,7 +611,8 @@ The timing tower is always shown (no Tab needed).
   only moves over into its box at the last moment, so a car parked in the box before
   never blocks it (this jammed the lane when the whole field pitted under the SC).
 - **Big crashes wreck the car** (above a set impact speed). Then **R** (for every player,
-  online too): in a race, back on track where you crashed, repaired; in qualifying,
+  online too): in a race, back on the centreline where you crashed (never off the road; beside it or a
+  few metres back if a car is there, `Session.clearSpot`), repaired; in qualifying,
   back to the pit exit (a timed lap in progress is lost). Always a **5 s wait** as a ghost,
   never a penalty (practice too). Bots reset
   themselves 2 s after wrecking. Leaving the race counts as DNF.
@@ -621,11 +623,13 @@ The timing tower is always shown (no Tab needed).
   like real circuits. Track files can set the real side: `"pit": {"side": "right"}`
   (Silverstone: right). Without it, the side with more room is used.
 - A pit wall separates the lane from the track, with openings at the entry and exit.
-- **Entering**: drive into the lane through the entry opening. Over 100 km/h at entry
-  = **+5 s penalty** (the autopilot brakes you to 80 anyway). From then on the car **drives itself** to the
+- **Entering**: drive into the lane through the entry opening. No speeding penalty (players
+  found it annoying): the autopilot brakes you to 80. From then on the car **drives itself** to the
   driver's own box (one box per car, 10 boxes), with the limiter on.
 - **The stop**: 3-4 s stationary (3 s + up to 1 s crew variation, deterministic), plus
-  5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted.
+  5 s per 100% damage for repairs. The tyres chosen with keys 1-5 are fitted, but **a stop
+  always changes compound** (`pitTyre`): picking the set already on the car fits the nearest
+  other one (S→M, M→H, H→M, I↔W), so a stop on any lap counts for the mandatory stop.
 - **Leaving**: the driver drives off; the pit limiter (80 km/h) stays forced on until the
   car is past the lane.
 - **No contact in the pits**: a car in the pits (driving in, stopped, or leaving until it's past
