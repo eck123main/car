@@ -1,5 +1,5 @@
 import { boxLane } from '../sim/pit';
-import type { Compound } from '../sim/tyres';
+import { pitTyre, type Compound } from '../sim/tyres';
 import type { RaceWorld, Racer } from '../sim/world';
 
 /**
@@ -115,7 +115,7 @@ export class PitStops {
       const phase = r.pit.phase;
       // A new session (its clock starts again): start afresh.
       if (!c || t < c.since) {
-        c = { phase, since: t, stopEnds: r.pit.stopEnds, oldTyre: r.tyres.compound, newTyre: r.input.nextTyre, release: null };
+        c = { phase, since: t, stopEnds: r.pit.stopEnds, oldTyre: r.tyres.compound, newTyre: pitTyre(r.tyres.compound, r.input.nextTyre), release: null };
         this.crews.set(r.id, c);
         continue;
       }
@@ -127,7 +127,7 @@ export class PitStops {
       }
       if (phase === 'stopped') {
         c.stopEnds = r.pit.stopEnds;
-        c.newTyre = r.input.nextTyre;
+        c.newTyre = pitTyre(c.oldTyre, r.input.nextTyre);
       }
     }
   }

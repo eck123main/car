@@ -73,3 +73,24 @@ export class Tyres {
     this.wear = Math.min(1, this.wear + (distance / ((life / CLIFF) * trackLength)) * rate);
   }
 }
+
+/**
+ * The tyres a pit stop actually fits: a stop always changes compound. If the driver's choice
+ * is the set already on the car, the crew fits the closest other one (dry stays dry, so a
+ * stop on any lap counts for the two-compound rule; rain tyres swap with each other).
+ */
+export function pitTyre(current: Compound, chosen: Compound): Compound {
+  if (chosen !== current) return chosen;
+  switch (current) {
+    case 'soft':
+      return 'medium';
+    case 'medium':
+      return 'hard';
+    case 'hard':
+      return 'medium';
+    case 'inter':
+      return 'wet';
+    case 'wet':
+      return 'inter';
+  }
+}

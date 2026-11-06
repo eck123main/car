@@ -95,7 +95,7 @@ export function drawPitStatus(ctx: CanvasRenderingContext2D, world: RaceWorld, r
       if (s !== null && advice.boxNow) {
         const toEntry = world.track.forwardDistance(s, lane.entry);
         if (toEntry < BOX_CALL_RANGE) {
-          text = `BOX THIS LAP · ${advice.reason} · pit entry ${Math.round(toEntry)} m, ${lane.side > 0 ? 'right' : 'left'}, slow to 80`;
+          text = `BOX THIS LAP · ${advice.reason} · pit entry ${Math.round(toEntry)} m, ${lane.side > 0 ? 'right' : 'left'}`;
           color = '#ffd400';
         }
       }

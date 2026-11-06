@@ -87,10 +87,11 @@ describe('Session', () => {
     const standings = session.standings();
     expect(standings.every((s) => s.status === 'finished')).toBe(true);
     expect(standings.every((s) => s.laps >= 4)).toBe(true);
-    // b never stopped; c stopped but kept mediums: both break the two-compound rule.
+    // b never stopped: it breaks the two-compound rule. c asked for mediums again, but a stop
+    // always changes compound, so its stop (on another lap than a's) counts.
     const reasons = events.flatMap((e) => (e.kind === 'penalty' ? [`${e.racerId}:${e.penalty.reason}`] : []));
     expect(reasons).toContain('b:No pit stop / one compound');
-    expect(reasons).toContain('c:No pit stop / one compound');
+    expect(reasons.some((r) => r.startsWith('c:No pit'))).toBe(false);
     expect(reasons.some((r) => r.startsWith('a:No pit'))).toBe(false);
     // Totals include penalties and are in order.
     const totals = standings.map((s) => s.totalTime!);

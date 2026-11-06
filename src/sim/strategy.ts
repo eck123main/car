@@ -1,4 +1,4 @@
-import { DRY_COMPOUNDS, tyreLife, type Compound } from './tyres';
+import { DRY_COMPOUNDS, pitTyre, tyreLife, type Compound } from './tyres';
 
 const WORN = 0.7;
 const DAMAGED = 0.3;
@@ -77,7 +77,8 @@ function mandatoryWindow(s: StrategyInput): [number, number] | null {
   if (s.stops > 0 && dryUsed.size >= 2) return null;
 
   // The second stint goes on the chosen tyres, or the most durable different compound.
-  const next = s.nextTyre !== s.compound && DRY_COMPOUNDS.includes(s.nextTyre) ? s.nextTyre : s.compound === 'hard' ? 'medium' : 'hard';
+  const fitted = pitTyre(s.compound, s.nextTyre);
+  const next = DRY_COMPOUNDS.includes(fitted) ? fitted : s.compound === 'hard' ? 'medium' : 'hard';
   const wear = s.tyreWear !== false;
   const lifeNow = Math.floor(Math.min(s.laps, tyreLife(s.compound, s.laps, wear)) * (1 - s.wear / 0.75));
   const lifeNext = Math.floor(Math.min(s.laps, tyreLife(next, s.laps, wear)));

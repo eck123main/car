@@ -86,12 +86,12 @@ for (const id of ['silverstone', 'test'] as const) {
       expect(r.car.damage).toBe(0);
     });
 
-    it('gives a penalty for entering the pit lane too fast', () => {
+    it('gives no penalty for entering the pit lane fast (the autopilot slows the car)', () => {
       const { world, r } = setup(30);
       const events: WorldEvent[] = [];
       driveIntoPits(world, r, 30, events, 4);
       expect(events.some((e) => e.kind === 'pitEntry')).toBe(true);
-      expect(penaltyTime(r)).toBe(5);
+      expect(penaltyTime(r)).toBe(0);
     });
 
     it('has a separate box for each of 10 cars', () => {

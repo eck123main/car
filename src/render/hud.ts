@@ -1,7 +1,7 @@
 import type { Car } from '../physics/car';
 import type { Track } from '../track/track';
 import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
-import { COMPOUNDS } from '../sim/tyres';
+import { COMPOUNDS, pitTyre } from '../sim/tyres';
 import type { PitAdvice } from '../sim/strategy';
 import type { Racer, DrsHint } from '../sim/world';
 import { gearFor } from '../audio/sound';
@@ -296,8 +296,9 @@ export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width:
   const wear = r.tyres.wear;
   ctx.fillStyle = wear > 0.75 ? '#ff4136' : wear > 0.5 ? '#ffb347' : '#aaa';
   ctx.fillText(`${Math.round(wear * 100)}% worn`, x + 56, y + 45);
-  if (r.input.nextTyre !== r.tyres.compound) {
-    const next = COMPOUNDS[r.input.nextTyre];
+  {
+    // A stop always changes compound, so this is what the crew will fit.
+    const next = COMPOUNDS[pitTyre(r.tyres.compound, r.input.nextTyre)];
     ctx.fillStyle = next.color;
     ctx.textAlign = 'right';
     ctx.fillText(`Next: ${next.letter}`, x + w - 14, y + 28);

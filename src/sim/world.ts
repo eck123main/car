@@ -5,8 +5,8 @@ import type { Track } from '../track/track';
 import { resolveCollisions } from './collisions';
 import { collideCarDebris, debrisAlive, MAX_DEBRIS, moveDebris, spawnDebris, type Debris, type DebrisKind } from './debris';
 import { applyItemEffects, newItemState, type ItemState } from './items';
-import { newPitState, PIT_SPEED_LIMIT, PIT_SPEEDING_PENALTY, updatePit, type PitEvent, type PitState } from './pit';
-import { type Compound, Tyres, tyreLife } from './tyres';
+import { newPitState, PIT_SPEED_LIMIT, updatePit, type PitEvent, type PitState } from './pit';
+import { type Compound, pitTyre, Tyres, tyreLife } from './tyres';
 
 export { PIT_SPEED_LIMIT } from './pit';
 
@@ -345,10 +345,10 @@ export class RaceWorld {
 
   private handlePitEvent(r: Racer, e: PitEvent, events: WorldEvent[]): void {
     if (e.kind === 'pitEntry') {
+      // No speeding penalty: the autopilot slows the car to the limit anyway.
       events.push({ kind: 'pitEntry', racerId: r.id });
-      if (e.speeding) this.addPenalty(r, PIT_SPEEDING_PENALTY, 'Speeding at pit entry', events);
     } else if (e.kind === 'pitStopDone') {
-      const compound = r.input.nextTyre;
+      const compound = pitTyre(r.tyres.compound, r.input.nextTyre);
       r.tyres = new Tyres(compound);
       if (!r.compoundsUsed.includes(compound)) r.compoundsUsed.push(compound);
       r.car.repair();
