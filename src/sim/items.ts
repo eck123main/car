@@ -462,7 +462,11 @@ export class ItemSystem {
     r.items.charges = item === 'triple' ? 3 : 1;
   }
 
-  /** Use the held item. Some (hook, magnet, teleport, blue shell) wait for a target and are kept until there is one. */
+  /**
+   * Use the held item. Items that need a target (hook, magnet, teleport, blue shell) are
+   * wasted when there is none, so a player can always get rid of one; a homing rocket with
+   * nobody ahead flies straight.
+   */
   private use(r: Racer, racers: readonly Racer[], order: Racer[], time: number): void {
     const item = r.items.held!;
     const car = r.car;
@@ -487,20 +491,25 @@ export class ItemSystem {
         break;
       case 'homing': {
         const target = this.carAhead(r, order, HOMING_RANGE);
-        if (!target) return;
-        this.fire(r, 'homing', target, time);
+        this.fire(r, target ? 'homing' : 'rocket', target, time);
         break;
       }
       case 'blue': {
         const leader = order.find((o) => this.active(o));
-        if (!leader || leader === r) return;
+        if (!leader || leader === r) {
+          this.notes.push({ racerId: r.id, text: 'Blue shell wasted: nobody ahead' });
+          break;
+        }
         this.fire(r, 'blue', leader, time);
         this.notes.push({ racerId: leader.id, text: `${r.name}'s blue shell is coming for you!` });
         break;
       }
       case 'hook': {
         const target = this.carAhead(r, order, HOOK_RANGE);
-        if (!target) return;
+        if (!target) {
+          this.notes.push({ racerId: r.id, text: 'Hook wasted: nobody in reach' });
+          break;
+        }
         if (!this.protectedFrom(target, `${r.name}'s hook`)) {
           target.items.hooked = HOOK_TIME;
           target.items.hookedBy = r.id;
@@ -510,7 +519,10 @@ export class ItemSystem {
       }
       case 'magnet': {
         const target = this.carAhead(r, order, MAGNET_RANGE);
-        if (!target) return;
+        if (!target) {
+          this.notes.push({ racerId: r.id, text: 'Magnet wasted: nobody in reach' });
+          break;
+        }
         r.items.magnet = MAGNET_TIME;
         r.items.magnetTo = target.id;
         break;
@@ -529,7 +541,7 @@ export class ItemSystem {
         break;
       }
       case 'teleport':
-        if (!this.teleport(r, order)) return;
+        if (!this.teleport(r, order)) this.notes.push({ racerId: r.id, text: 'Teleport wasted: nobody in reach' });
         break;
       case 'ghost': {
         r.items.ghost = GHOST_TIME;

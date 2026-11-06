@@ -165,6 +165,14 @@ describe('Items', () => {
     expect(run(true)).toBeLessThan(run(false) - 8);
   });
 
+  it.each(['hook', 'magnet', 'teleport', 'blue', 'homing'] as const)('%s can be used with nobody in reach: it is just wasted', (kind) => {
+    // b is far behind a: nobody ahead of a to target.
+    const { a, step } = pair(-800, 50);
+    a.items.held = kind;
+    step({ a: { useItem: true } });
+    expect(a.items.held).toBeNull();
+  });
+
   it('a tyre barrier dropped behind takes out the car that runs into it, then is gone', () => {
     // b leads; a follows 30 m back, on b's line.
     const { a, b, items, step } = pair(30);
