@@ -34,7 +34,9 @@ const FEATURES: Record<string, string> = {
   // Traced from OpenStreetMap (scripts/osm-circuit.ts).
   'brands-hatch': 'osm-brands-hatch', jerez: 'osm-jerez', zolder: 'osm-zolder', donington: 'osm-donington',
   dijon: 'osm-dijon', jarama: 'osm-jarama', anderstorp: 'osm-anderstorp', mosport: 'osm-mosport', aida: 'osm-aida',
-  'bahrain-outer': 'osm-bahrain-outer',
+  'bahrain-outer': 'osm-bahrain-outer', 'mont-tremblant': 'osm-mont-tremblant',
+  // Street and public-road circuits routed along OpenStreetMap's roads (scripts/osm-streets.ts).
+  adelaide: 'osm-adelaide', 'long-beach': 'osm-long-beach', reims: 'osm-reims',
 };
 
 /** Heights every this many metres of the (game) lap. */

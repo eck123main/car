@@ -233,7 +233,7 @@ coin balance shows in the account bar, with a red dot when today's reward or spi
 - **Skins** (`src/cosmetics/skins.ts`): shop common 300 / rare 750 / epic 1500 (prices also in
   `skin_shop`; `skins.test.ts` keeps SQL and TS in sync, also rewards and spin odds). **Medal
   skins** count a medal towards every lower one: Bronze 10 bronze+, Silver 15 silver+, Gold 20
-  gold+, Author 5 author, Perfectionist author on every track (54). They're worked out from the
+  gold+, Author 5 author, Perfectionist author on every track (58). They're worked out from the
   board like medals, so the database lets any `medal-*` id be equipped (not checked there).
 - The equipped skin is cached per account (`f1td.skin.<id>`) so a game starts without waiting,
   sent in `hello` (and the host's constructor), checked with `isSkinId`, carried in
@@ -704,7 +704,16 @@ The timing tower is always shown (no Tab needed).
   runs. OSM has today's layouts: Jarama is the 3.9 km circuit, Zolder has its later chicanes. Start
   lines moved up the straight at Brands Hatch, Jerez and Anderstorp (the time trial rolling start
   needs straight road behind the line; Anderstorp's real pits are away from the start).
-  Adelaide and Long Beach aren't mapped as circuits in OSM (street tracks), so they're not in.
+  Mont-Tremblant (0.6, the 1968/70 layout without the later chicane) the same way.
+  **Old street and public-road layouts** are routed along OSM's roads with `scripts/osm-streets.ts`
+  (the shortest drive through a list of points in lap order; see its header): **Adelaide** (1985-95
+  GP layout with Rundle Road and the full Brabham Straight; OSM's own relation is the shorter
+  Supercars one; 0.6), **Long Beach** (1976-81 layout reconstructed from history, as no full map was
+  found: Ocean Boulevard, down Linden, Shoreline Drive, Queen's Hairpin at Chestnut Place, back on
+  Seaside Way and up Pine; today's streets, so ~2.9 vs 3.25 km; the east hairpin uses today's
+  infield road with its tightest corner rounded off; 0.7) and **Reims-Gueux** (1954-72 triangle:
+  D27 pits, D26 bypass, the 1953 link to Muizon, back on the N31 to Thillois; the rebuilt N31
+  junction makes Muizon a little shorter, 7.9 vs 8.3 km; 0.5).
   Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
   `scripts/import-track.ts` (see its header).
