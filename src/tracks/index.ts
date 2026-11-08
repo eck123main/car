@@ -12,6 +12,7 @@ import brandsHatch from './brands-hatch.json';
 import buddh from './buddh.json';
 import buenosAires from './buenos-aires.json';
 import cota from './cota.json';
+import detroit from './detroit.json';
 import dijon from './dijon.json';
 import donington from './donington.json';
 import estoril from './estoril.json';
@@ -42,6 +43,7 @@ import mosport from './mosport.json';
 import mugello from './mugello.json';
 import nurburgring from './nurburgring.json';
 import paulRicard from './paul-ricard.json';
+import phoenix from './phoenix.json';
 import portimao from './portimao.json';
 import redBullRing from './red-bull-ring.json';
 import reims from './reims.json';
@@ -124,6 +126,8 @@ export const TRACKS: Record<string, TrackDef> = {
   'long-beach': parseTrackDef(longBeach),
   'mont-tremblant': parseTrackDef(montTremblant),
   reims: parseTrackDef(reims),
+  detroit: parseTrackDef(detroit),
+  phoenix: parseTrackDef(phoenix),
   test: parseTrackDef(testCircuit),
 };
 

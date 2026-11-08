@@ -233,7 +233,7 @@ coin balance shows in the account bar, with a red dot when today's reward or spi
 - **Skins** (`src/cosmetics/skins.ts`): shop common 300 / rare 750 / epic 1500 (prices also in
   `skin_shop`; `skins.test.ts` keeps SQL and TS in sync, also rewards and spin odds). **Medal
   skins** count a medal towards every lower one: Bronze 10 bronze+, Silver 15 silver+, Gold 20
-  gold+, Author 5 author, Perfectionist author on every track (58). They're worked out from the
+  gold+, Author 5 author, Perfectionist author on every track (60). They're worked out from the
   board like medals, so the database lets any `medal-*` id be equipped (not checked there).
 - The equipped skin is cached per account (`f1td.skin.<id>`) so a game starts without waiting,
   sent in `hello` (and the host's constructor), checked with `isSkinId`, carried in
@@ -713,7 +713,17 @@ The timing tower is always shown (no Tab needed).
   Seaside Way and up Pine; today's streets, so ~2.9 vs 3.25 km; the east hairpin uses today's
   infield road with its tightest corner rounded off; 0.7) and **Reims-Gueux** (1954-72 triangle:
   D27 pits, D26 bypass, the 1953 link to Muizon, back on the N31 to Thillois; the rebuilt N31
-  junction makes Muizon a little shorter, 7.9 vs 8.3 km; 0.5).
+  junction makes Muizon a little shorter, 7.9 vs 8.3 km; 0.5; DRS zones set by hand, the auto ones
+  covered whole 2 km straights, worth 4 s). Long Beach starts on Ocean Boulevard (the 1976-77 start;
+  Shoreline Drive's curve sent the time trial rolling start off). **Detroit** (1983-88, anticlockwise:
+  riverfront start, Atwater, St. Antoine, Jefferson, Beaubien, Congress, Brush, Larned under the
+  building, Washington, Civic Center Drive, Atwater tunnel under Hart Plaza; the pit straight is today's
+  Riverwalk, `--prefer`; the ramp to Civic Center Drive is gone, `--link`; 3.7 vs 4.0 km; 0.6, 18.5 m)
+  and **Phoenix** (1991 layout: Jefferson, 1st, Jackson, 3rd, Madison to a hairpin at 7th, back on
+  Jefferson, across the car park to Washington, 3rd Ave, Adams, 5th Ave; Madison east of 3rd is built
+  over and linked straight; 4th Ave instead of the built-over end of 5th; 3.77 vs 3.72 km; 0.6, 18.5 m).
+  Their heights come from USGS bare earth (`elevation.ts --dataset ned10m`), as SRTM saw downtown
+  buildings (Detroit came out 64 m, the real range is 8 m); Long Beach too (30 m → 9 m).
   Menus list tracks **A-Z by name** (`trackChoices`).
   Import new circuits with
   `scripts/import-track.ts` (see its header).

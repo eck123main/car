@@ -4,13 +4,16 @@
  * and scripts/elevation.ts (feature id `osm-<id>`). For street tracks that OSM doesn't map as
  * raceways, or maps only in a later layout (scripts/osm-circuit.ts finds laps of raceway ways).
  *
- *   npx tsx scripts/osm-streets.ts <id> <out.geojson> --via "lat,lon;lat,lon;..." [--round "lat,lon;..."] [--cache dir]
+ *   npx tsx scripts/osm-streets.ts <id> <out.geojson> --via "lat,lon;lat,lon;..." [--round "lat,lon;..."]
+ *     [--prefer wayId,...] [--link "lat,lon:lat,lon;..."] [--drop-spikes] [--cache dir]
  *
  * The first point is the start line. Each leg is the shortest drive along any road or raceway
  * (one-way streets ignored: races close them), so put a point on every street the lap uses and
  * between parallel streets. Prints each leg's length and the lap length to check against the
  * real one. --round drops the points within 25 m of each given corner, so the spline rounds it off:
  * for a corner tighter than the game's wider track can take (walls reaching the other side of it).
+ * --prefer makes those ways (a riverside path where the pits were) count as roads. --link joins the
+ * nearest road points to two places with a straight piece: a road the race used that is gone now.
  * Map data © OpenStreetMap contributors (ODbL).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -38,7 +41,8 @@ const ky = 110_540;
 const ROADS = /^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|raceway)(_link)?$/;
 /** Cost per metre: real roads first, then lanes, then paths (OSM sometimes splits a junction with a
  * cycleway or a crossing, which the race drove straight over). */
-const costOf = (w: Way) => (ROADS.test(w.tags?.highway ?? '') ? 1 : w.tags?.highway === 'service' ? 3 : /^(footway|cycleway|path|pedestrian)$/.test(w.tags?.highway ?? '') ? 8 : 0);
+const preferred = new Set((flag('prefer') ?? '').split(',').filter(Boolean).map(Number));
+const costOf = (w: Way) => (preferred.has(w.id) || ROADS.test(w.tags?.highway ?? '') ? 1 : w.tags?.highway === 'service' ? 3 : /^(footway|cycleway|path|pedestrian)$/.test(w.tags?.highway ?? '') ? 8 : 0);
 const ways = (await download()).filter((w) => w.type === 'way' && costOf(w) > 0 && w.tags?.area !== 'yes');
 
 // Graph of road nodes (joined ways share nodes, so the same coordinates).
@@ -118,6 +122,14 @@ function route(a: string, b: string): string[] {
   return path;
 }
 
+for (const pair of (flag('link') ?? '').split(';').filter((x) => x.trim())) {
+  const [a, b] = pair.split(':').map((p) => nearest(p.split(',').map(Number) as [number, number]));
+  const d = dist(pos.get(a)!, pos.get(b)!);
+  links.get(a)!.set(b, d);
+  links.get(b)!.set(a, d);
+  nameOf.set(`${a}|${b}`, 'link');
+  nameOf.set(`${b}|${a}`, 'link');
+}
 const nodes = via.map(nearest);
 let lap: string[] = [];
 let total = 0;
@@ -142,9 +154,10 @@ for (let changed = true; changed; ) {
     }
   }
 }
-// Drop spikes: out along one carriageway of a dual road and back along the other (the lap comes back
-// within 25 m of itself after 80+ m), where a junction only joins one side.
-for (let i = 0; i < lap.length; i++) {
+// --drop-spikes: out along one carriageway of a dual road and back along the other (the lap comes back
+// within 25 m of itself after 80+ m), where a junction only joins one side. Opt-in: on a tight street
+// circuit the lap really does come back close to itself.
+for (let i = 0; i < lap.length && args.includes('--drop-spikes'); i++) {
   let along = 0;
   for (let j = i + 1; j < Math.min(lap.length, i + 40); j++) {
     along += dist(pos.get(lap[j - 1])!, pos.get(lap[j])!);

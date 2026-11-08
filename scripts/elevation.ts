@@ -2,7 +2,7 @@
  * Real elevation for the circuits: samples terrain heights (SRTM, 30 m, via the free
  * OpenTopoData API) along each track and writes them into its file as `"elevation"`.
  *
- *   npx tsx scripts/elevation.ts <f1-circuits.geojson> [more.geojson ...] [--cache dir] [--dry] [track ids...]
+ *   npx tsx scripts/elevation.ts <f1-circuits.geojson> [more.geojson ...] [--cache dir] [--dry] [--dataset ned10m] [track ids...]
  *
  * The GeoJSON is bacinger/f1-circuits' combined file (f1-circuits.geojson), plus, for circuits
  * traced from OpenStreetMap, the trace each was imported from (a feature with id `osm-<track id>`,
@@ -12,7 +12,8 @@
  * back to latitude/longitude. Heights are scaled like the track (real gradients on a half-size
  * track: half the height), smoothed (the data includes trees and buildings), and stored every
  * STEP metres of the lap from the start line, lowest point = 0, with side-by-side stretches
- * evened out (scripts/level-heights.ts). Tracks without source coordinates (Fuji, Valencia,
+ * evened out (scripts/level-heights.ts). SRTM sees the tops of buildings, so downtown street circuits in the
+ * US use --dataset ned10m (USGS bare earth, US only): Detroit, Phoenix, Long Beach. Tracks without source coordinates (Fuji, Valencia,
  * Yeongam, Buddh: their traces weren't kept) are skipped. --dry prints without writing. --cache keeps API answers.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -37,6 +38,7 @@ const FEATURES: Record<string, string> = {
   'bahrain-outer': 'osm-bahrain-outer', 'mont-tremblant': 'osm-mont-tremblant',
   // Street and public-road circuits routed along OpenStreetMap's roads (scripts/osm-streets.ts).
   adelaide: 'osm-adelaide', 'long-beach': 'osm-long-beach', reims: 'osm-reims',
+  detroit: 'osm-detroit', phoenix: 'osm-phoenix',
 };
 
 /** Heights every this many metres of the (game) lap. */
@@ -66,6 +68,7 @@ const flag = (name: string) => {
 const dry = args.includes('--dry');
 if (dry) args.splice(args.indexOf('--dry'), 1);
 const cacheDir = flag('cache');
+const dataset = flag('dataset') ?? 'srtm30m';
 const geoFiles = args.filter((a) => a.endsWith('.geojson'));
 const only = args.filter((a) => !a.endsWith('.geojson'));
 if (!geoFiles.length) {
@@ -153,7 +156,7 @@ for (const id of only.length ? only : Object.keys(FEATURES)) {
 
 /** Heights (m) at [lat, lon] points, 100 per request, at most one request a second. */
 async function heights(id: string, points: [number, number][]): Promise<number[]> {
-  const cacheFile = cacheDir ? `${cacheDir}/${id}.json` : null;
+  const cacheFile = cacheDir ? `${cacheDir}/${id}${dataset === 'srtm30m' ? '' : `-${dataset}`}.json` : null;
   if (cacheFile && existsSync(cacheFile)) {
     const cached = JSON.parse(readFileSync(cacheFile, 'utf8')) as { points: [number, number][]; heights: number[] };
     if (cached.points.length === points.length && cached.points.every((p, i) => Math.abs(p[0] - points[i][0]) < 1e-6 && Math.abs(p[1] - points[i][1]) < 1e-6)) return cached.heights;
@@ -161,7 +164,7 @@ async function heights(id: string, points: [number, number][]): Promise<number[]
   const out: number[] = [];
   for (let i = 0; i < points.length; i += 100) {
     const batch = points.slice(i, i + 100);
-    const url = `https://api.opentopodata.org/v1/srtm30m?locations=${batch.map(([la, lo]) => `${la.toFixed(6)},${lo.toFixed(6)}`).join('|')}`;
+    const url = `https://api.opentopodata.org/v1/${dataset}?locations=${batch.map(([la, lo]) => `${la.toFixed(6)},${lo.toFixed(6)}`).join('|')}`;
     type Answer = { status: string; results?: { elevation: number | null }[] };
     let data = null as Answer | null;
     for (let attempt = 0; attempt < 5 && data?.status !== 'OK'; attempt++) {

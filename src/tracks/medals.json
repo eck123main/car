@@ -54,7 +54,9 @@
   "aida": {"author":36.49,"gold":37.95,"silver":40.14,"bronze":43.79},
   "bahrain-outer": {"author":26.03,"gold":27.08,"silver":28.64,"bronze":31.24},
   "adelaide": {"author":38.7,"gold":40.25,"silver":42.57,"bronze":46.44},
-  "long-beach": {"author":32.35,"gold":33.65,"silver":35.59,"bronze":38.82},
+  "long-beach": {"author":32.56,"gold":33.87,"silver":35.82,"bronze":39.08},
   "mont-tremblant": {"author":36.73,"gold":38.2,"silver":40.41,"bronze":44.08},
-  "reims": {"author":44.1,"gold":45.87,"silver":48.51,"bronze":52.92}
+  "reims": {"author":44.1,"gold":45.87,"silver":48.51,"bronze":52.92},
+  "detroit": {"author":41.15,"gold":42.8,"silver":45.27,"bronze":49.38},
+  "phoenix": {"author":41.02,"gold":42.67,"silver":45.13,"bronze":49.23}
 }
