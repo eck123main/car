@@ -1,3 +1,4 @@
+import { CAR_CLASSES } from '../sim/carClass';
 import type { Car } from '../physics/car';
 import type { Track } from '../track/track';
 import { SECTOR_COUNT, type LapTimer } from '../game/lapTimer';
@@ -318,11 +319,28 @@ export function drawRacerStatus(ctx: CanvasRenderingContext2D, r: Racer, _width:
     ctx.textAlign = 'left';
   }
 
-  bar(ctx, x + 14, y + 64, w - 28, 10, r.ers, r.ersActive ? '#4dd2ff' : '#1f7fbf', 'ERS');
+  const cls = CAR_CLASSES[r.carClass];
+  if (cls.ers) bar(ctx, x + 14, y + 64, w - 28, 10, r.ers, r.ersActive ? '#4dd2ff' : '#1f7fbf', 'ERS');
 
   // DRS light: grey = no, outlined = allowed in this/next zone, filled = open.
   const bx = x + 14;
   const by = y + 88;
+  if (!cls.drs) {
+    // No DRS or ERS (GT3): the car's name, and the limiter / tow.
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'left';
+    ctx.fillText(cls.name, bx, by - 6);
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    if (r.input.limiter) {
+      ctx.fillStyle = '#ffd400';
+      ctx.fillText('PIT LIMITER', bx, by + 17);
+    } else if (r.slipstream > 0.2) {
+      ctx.fillStyle = '#9fd8ff';
+      ctx.fillText('TOW', bx, by + 17);
+    }
+    return;
+  }
   ctx.lineWidth = 2;
   ctx.strokeStyle = r.drsEligible || r.drsOpen ? '#2ecc40' : '#555';
   ctx.fillStyle = r.drsOpen ? '#2ecc40' : 'transparent';

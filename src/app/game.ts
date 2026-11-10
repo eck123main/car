@@ -1118,7 +1118,7 @@ export class GameScreen {
     const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ...look(r) }));
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
-    view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
+    view.showIdealLine(settings().idealLine ? idealLine(world.track, undefined, me.carClass) : null);
     const flag = this.wheelFlag(session);
     const leader = session?.standings[0];
     view.setRace({
@@ -1216,7 +1216,7 @@ export class GameScreen {
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
     this.worldToScreen = ctx.getTransform();
     gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
-    if (settings().idealLine) drawIdealLine(ctx, world.track, idealLine(world.track), me.car.trackIndex);
+    if (settings().idealLine) drawIdealLine(ctx, world.track, idealLine(world.track, undefined, me.carClass), me.car.trackIndex);
     drawPitBoxes(ctx, world);
     const pit = this.pitScene(world, poses);
     drawPitUnder(ctx, pit, poses);
@@ -1230,7 +1230,7 @@ export class GameScreen {
     // Time trial ghosts, under the real cars.
     for (const g of this.driver.ghostCars?.() ?? []) {
       ctx.globalAlpha = 0.45;
-      drawCar(ctx, me.car.params, g.x, g.y, g.heading, 0, g.color, { drsOpen: false, compound: me.tyres.compound, rainLight: false, time: world.time });
+      drawCar(ctx, me.car.params, g.x, g.y, g.heading, 0, g.color, { drsOpen: false, compound: me.tyres.compound, rainLight: false, time: world.time, body: me.carClass });
       ctx.globalAlpha = 1;
       drawNameTag(ctx, g.label, g.x, g.y, g.color);
     }
@@ -1249,6 +1249,7 @@ export class GameScreen {
       const paint = rainbow ? rainbowColor(this.driver.now(), r.id) : r.color;
       drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, paint, {
         livery: rainbow ? null : skinLivery(r.skin),
+        body: r.carClass,
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         lost: r.car.lost,
