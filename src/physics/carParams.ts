@@ -54,7 +54,7 @@ export interface CarParams {
   maxDamage: number;
 }
 
-/** Roughly modelled on a modern F1 car. Every car uses the same params for now. */
+/** Roughly modelled on a modern F1 car. */
 export const F1_CAR: CarParams = {
   mass: 800,
   cgToFront: 1.95,
@@ -92,5 +92,52 @@ export const F1_CAR: CarParams = {
   damageThreshold: 3,
   crashSpeed: 25,
   damagePerSpeed: 0.025,
+  maxDamage: 0.8,
+};
+
+/**
+ * A GT3 car (911 GT3 R, M4 GT3, 296 GT3 and friends): heavier, less power, a fraction of the
+ * downforce, so it brakes earlier, is slower through fast corners and makes more of the slow
+ * ones. It still leans arcade like the F1 car (ABS and traction control, as the real ones
+ * have: no lockups or wheelspin). Tougher bodywork, too.
+ */
+export const GT3_CAR: CarParams = {
+  mass: 1300,
+  // ~46% of the weight on the front axle.
+  cgToFront: 1.45,
+  cgToRear: 1.25,
+  length: 4.6,
+  width: 2.0,
+  inertia: 2600,
+
+  mu: 2.0,
+
+  power: 440_000,
+  maxDriveForce: 12_000,
+  combinedGripPenalty: 0.55,
+  brakeGrip: 0.95,
+
+  dragCoef: 0.8,
+  downforceCoef: 1.2,
+  aeroBalanceFront: 0.4,
+  rollingResistance: 0.015,
+
+  minTurnRadius: 6.5,
+  turnGripUse: 1,
+  yawResponse: 6.5,
+  steerRate: 6,
+  steerReturnRate: 9,
+  wheelAngleVisual: 0.38,
+  throttleRate: 6,
+  brakeRate: 7,
+
+  reverseForce: 6000,
+  maxReverseSpeed: 8,
+
+  wallRestitution: 0.25,
+  wallFriction: 0.5,
+  damageThreshold: 4,
+  crashSpeed: 28,
+  damagePerSpeed: 0.02,
   maxDamage: 0.8,
 };

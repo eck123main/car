@@ -1,5 +1,9 @@
 import { PART_NAMES, type Car, type CarParts } from '../physics/car';
 import { MINIMAP_SIZE } from './hud';
+import type { CarClassId } from '../sim/carClass';
+
+/** A GT3 has a splitter and bumper where an F1 car has its front wing. */
+const GT3_NAMES: Record<keyof CarParts, string> = { ...PART_NAMES, frontWing: 'Front / splitter' };
 
 const OK = '#2ecc40';
 const HURT = '#ffd400';
@@ -12,8 +16,8 @@ function color(d: number): string {
   return d < 0.15 ? OK : d < 0.45 ? HURT : BAD;
 }
 
-/** A top-down F1 car (nose up) with each damageable part coloured, under the minimap. */
-export function drawDamage(ctx: CanvasRenderingContext2D, car: Car, width: number): void {
+/** A top-down car (nose up) with each damageable part coloured, under the minimap. */
+export function drawDamage(ctx: CanvasRenderingContext2D, car: Car, width: number, body: CarClassId = 'f1'): void {
   const w = MINIMAP_SIZE;
   const h = 190;
   const x0 = width - w - 20;
@@ -47,6 +51,13 @@ export function drawDamage(ctx: CanvasRenderingContext2D, car: Car, width: numbe
     ctx.fill();
     ctx.stroke();
   };
+
+  if (body === 'gt3') {
+    drawGt3Parts(d, shape, mirror, wheel);
+    ctx.restore();
+    listParts(ctx, car, x0, y0, w, GT3_NAMES);
+    return;
+  }
 
   // Suspension arms.
   ctx.beginPath();
@@ -87,18 +98,45 @@ export function drawDamage(ctx: CanvasRenderingContext2D, car: Car, width: numbe
   // Rear wing.
   shape([[-24, 146], [24, 146], [24, 158], [-24, 158]], color(d.rearWing));
   ctx.restore();
+  listParts(ctx, car, x0, y0, w, PART_NAMES);
+}
 
+type Shape = (pts: [number, number][], fill: string) => void;
+
+/** The GT3 version: bonnet and splitter, doors and arches each side, the rear wing. */
+function drawGt3Parts(d: CarParts, shape: Shape, mirror: (pts: [number, number][]) => [number, number][], wheel: (x: number, y: number) => void): void {
+  wheel(-24, 40);
+  wheel(24, 40);
+  wheel(-24, 120);
+  wheel(24, 120);
+  const front = color(d.frontWing);
+  shape([[-26, 6], [26, 6], [28, 14], [-28, 14]], front);
+  shape([[-24, 14], [24, 14], [27, 58], [-27, 58]], front);
+  const side: [number, number][] = [[14, 58], [27, 58], [24, 90], [27, 140], [14, 140], [14, 58]];
+  shape(mirror(side), color(d.left));
+  shape(side, color(d.right));
+  // Cabin: windscreen, roof, rear window.
+  shape([[-14, 58], [14, 58], [14, 140], [-14, 140]], BODY);
+  shape([[-12, 62], [12, 62], [13, 76], [-13, 76]], '#0b0b0d');
+  shape([[-11, 112], [11, 112], [9, 126], [-9, 126]], '#0b0b0d');
+  shape([[-27, 140], [27, 140], [26, 148], [-26, 148]], BODY);
+  shape([[-30, 148], [30, 148], [30, 158], [-30, 158]], color(d.rearWing));
+}
+
+/** Part list with percentages, beside the diagram. */
+function listParts(ctx: CanvasRenderingContext2D, car: Car, x0: number, y0: number, w: number, names: Record<keyof CarParts, string>): void {
+  const d = car.parts;
   // Part list with percentages.
   ctx.font = '13px system-ui, sans-serif';
   ctx.textAlign = 'left';
   let y = y0 + 40;
-  for (const p of Object.keys(PART_NAMES) as (keyof CarParts)[]) {
+  for (const p of Object.keys(names) as (keyof CarParts)[]) {
     ctx.fillStyle = color(d[p]);
     ctx.beginPath();
     ctx.arc(x0 + 112, y - 4, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ddd';
-    ctx.fillText(PART_NAMES[p], x0 + 122, y);
+    ctx.fillText(names[p], x0 + 122, y);
     ctx.fillStyle = '#999';
     ctx.textAlign = 'right';
     ctx.fillText(`${Math.round(d[p] * 100)}%`, x0 + w - 12, y);
@@ -108,6 +146,6 @@ export function drawDamage(ctx: CanvasRenderingContext2D, car: Car, width: numbe
   if (car.damage > 0.15) {
     ctx.fillStyle = '#aaa';
     ctx.font = '11px system-ui, sans-serif';
-    ctx.fillText('Pit to repair', x0 + 112, y0 + h - 14);
+    ctx.fillText('Pit to repair', x0 + 112, y0 + 190 - 14);
   }
 }

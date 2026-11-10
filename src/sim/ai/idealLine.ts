@@ -1,4 +1,3 @@
-import { F1_CAR } from '../../physics/carParams';
 import type { Track } from '../../track/track';
 import type { PlayerInput, RaceWorld } from '../world';
 import { IDLE_INPUT } from '../world';
@@ -6,6 +5,7 @@ import { TRACKS } from '../../tracks';
 import IDEAL from '../../tracks/ideal-lines.json';
 import type { CarParams } from '../../physics/carParams';
 import { racingLine, speedProfile, type RacingLine } from './racingLine';
+import { CAR_CLASSES, type CarClassId } from '../carClass';
 
 /**
  * The ideal line: the fastest racing line and speeds found for each track by driving laps in
@@ -38,17 +38,22 @@ export interface IdealLine {
 }
 
 const RECORDS = IDEAL as Record<string, IdealRecord>;
-const cache = new WeakMap<Track, IdealLine>();
+const cache = new WeakMap<Track, Map<CarClassId, IdealLine>>();
 
-/** The ideal line for a track (the bots' line where the search hasn't been run yet). */
-export function idealLine(track: Track, trackId = idOf(track)): IdealLine {
-  const cached = cache.get(track);
+/**
+ * The ideal line for a track (the bots' line where the search hasn't been run yet). The line
+ * was searched with the F1 car; other classes drive the same line at their own speeds.
+ */
+export function idealLine(track: Track, trackId = idOf(track), cls: CarClassId = 'f1'): IdealLine {
+  let byClass = cache.get(track);
+  if (!byClass) cache.set(track, (byClass = new Map()));
+  const cached = byClass.get(cls);
   if (cached) return cached;
   const rec = trackId ? RECORDS[trackId] : undefined;
   const ideal = rec?.offsets.length === Math.floor(track.samples.length / COARSE)
-    ? { ...buildIdeal(track, rec, rec.offsets), time: rec.time }
-    : fallback(track);
-  cache.set(track, ideal);
+    ? { ...buildIdeal(track, rec, rec.offsets, cls), time: cls === 'f1' ? rec.time : null }
+    : fallback(track, cls);
+  byClass.set(cls, ideal);
   return ideal;
 }
 
@@ -57,17 +62,19 @@ function idOf(track: Track): string | undefined {
   return Object.keys(TRACKS).find((id) => TRACKS[id].name === track.name);
 }
 
-function fallback(track: Track): IdealLine {
+function fallback(track: Track, cls: CarClassId): IdealLine {
+  const { params, ers } = CAR_CLASSES[cls];
   const line = racingLine(track);
-  const speed = speedProfile(track, line, F1_CAR, 1);
-  return { line, speed, cue: cues(track, line, speed, F1_CAR, 1), time: null };
+  const speed = speedProfile(track, line, params, 1);
+  return { line, speed, cue: cues(track, line, speed, params, 1, ers ? ERS_POWER : 0), time: null };
 }
 
-/** The line through these coarse offsets, with its planned speeds. */
-export function buildIdeal(track: Track, s: IdealSettings, coarse: number[]): Omit<IdealLine, 'time'> {
+/** The line through these coarse offsets, with its planned speeds for a class of car. */
+export function buildIdeal(track: Track, s: IdealSettings, coarse: number[], cls: CarClassId = 'f1'): Omit<IdealLine, 'time'> {
+  const { params, ers } = CAR_CLASSES[cls];
   const line = coarseLine(track, coarse, s.margin);
-  const speed = idealSpeeds(track, line, F1_CAR, s.corner, s.brake);
-  return { line, speed, cue: cues(track, line, speed, F1_CAR, s.corner) };
+  const speed = idealSpeeds(track, line, params, s.corner, s.brake);
+  return { line, speed, cue: cues(track, line, speed, params, s.corner, ers ? ERS_POWER : 0) };
 }
 
 /** ERS on top of the engine while working out where the car gets to on a straight (W). */
@@ -79,7 +86,7 @@ const ERS_POWER = 120_000;
  * grip shared with cornering), so a braking zone starts where that speed meets the braking
  * curve, not where a car at an impossible top speed would brake.
  */
-export function cues(track: Track, line: RacingLine, plan: number[], p: CarParams, corner: number): Uint8Array {
+export function cues(track: Track, line: RacingLine, plan: number[], p: CarParams, corner: number, ersPower = ERS_POWER): Uint8Array {
   const ss = track.samples;
   const n = ss.length;
   const ds = track.length / n;
@@ -96,7 +103,7 @@ export function cues(track: Track, line: RacingLine, plan: number[], p: CarParam
       const grip = p.mu * (G + c * vi * vi);
       const lat = Math.min(1, (vi * vi * Math.abs(line.curvature[i])) / (grip * corner));
       const share = Math.min(1, Math.sqrt(Math.max(0, (1 - lat * lat) / p.combinedGripPenalty)));
-      const drive = Math.min(p.maxDriveForce, (p.power + ERS_POWER) / Math.max(vi, 1), grip * p.mass * share);
+      const drive = Math.min(p.maxDriveForce, (p.power + ersPower) / Math.max(vi, 1), grip * p.mass * share);
       const acc = (drive - p.dragCoef * vi * vi - p.rollingResistance * p.mass * G) / p.mass - G * ss[i].grade;
       v[j] = Math.min(plan[j], Math.sqrt(Math.max(0, vi * vi + 2 * acc * ds)));
     }

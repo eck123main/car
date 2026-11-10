@@ -11,11 +11,11 @@ import { QuadBuilder } from './trackMesh';
  * mesh; only the parts that move (front wheels, DRS flap, steering wheel) are separate.
  */
 
-type V3 = [number, number, number];
+export type V3 = [number, number, number];
 
-const CARBON = '#1c1d20';
-const TYRE = '#161616';
-const WORN_TYRE = new THREE.Color('#4d463f');
+export const CARBON = '#1c1d20';
+export const TYRE = '#161616';
+export const WORN_TYRE = new THREE.Color('#4d463f');
 const DRS_GREEN = '#2ecc40';
 /**
  * Steering wheel angle (rad) per 1/m of curvature driven: like a real car, the wheel follows the
@@ -51,7 +51,7 @@ export function mirrorUv(geo: THREE.BufferGeometry, u0: number, u1: number): voi
 }
 
 /** A box tapering from a rear face at x0 to a front face at x1 (widths, bottoms, tops). */
-function tbox(q: QuadBuilder, x0: number, x1: number, w0: number, w1: number, b0: number, t0: number, b1: number, t1: number, color: string, z = 0): void {
+export function tbox(q: QuadBuilder, x0: number, x1: number, w0: number, w1: number, b0: number, t0: number, b1: number, t1: number, color: string, z = 0): void {
   q.box(
     [[x0, b0, z - w0 / 2], [x1, b1, z - w1 / 2], [x1, b1, z + w1 / 2], [x0, b0, z + w0 / 2]],
     [[x0, t0, z - w0 / 2], [x1, t1, z - w1 / 2], [x1, t1, z + w1 / 2], [x0, t0, z + w0 / 2]],
@@ -60,7 +60,7 @@ function tbox(q: QuadBuilder, x0: number, x1: number, w0: number, w1: number, b0
 }
 
 /** A thin square bar from p to q (suspension arms, mirror stalks). */
-function strut(q: QuadBuilder, p: V3, r: V3, t: number, color: string): void {
+export function strut(q: QuadBuilder, p: V3, r: V3, t: number, color: string): void {
   const d = new THREE.Vector3(r[0] - p[0], r[1] - p[1], r[2] - p[2]);
   const u = new THREE.Vector3().crossVectors(d, new THREE.Vector3(0, 1, 0));
   if (u.lengthSq() < 1e-6) u.set(1, 0, 0);
@@ -127,7 +127,7 @@ export function rearWingGeometry(l: Livery): THREE.BufferGeometry {
 }
 
 /** Damage this small doesn't show. */
-const SHOWS_FROM = 0.08;
+export const SHOWS_FROM = 0.08;
 
 /** Stable 0..1 noise from a point (1 cm grid), so a dent is the same shape every frame. */
 function noise(x: number, y: number, z: number): number {
@@ -237,8 +237,8 @@ export function discGlow(heat: number): number {
   return Math.max(0, Math.min(1, (heat - 0.25) / 0.6));
 }
 
-const DISC_DARK = new THREE.Color('#34312e');
-const DISC_HOT = new THREE.Color('#ff5a10');
+export const DISC_DARK = new THREE.Color('#34312e');
+export const DISC_HOT = new THREE.Color('#ff5a10');
 
 const shared = {
   wheelFront: null as THREE.BufferGeometry | null,
@@ -247,13 +247,32 @@ const shared = {
   scuff: null as THREE.BufferGeometry | null,
 };
 
-function wheelGeometry(radius: number, width: number): THREE.BufferGeometry {
+export function wheelGeometry(radius: number, width: number): THREE.BufferGeometry {
   const g = new THREE.CylinderGeometry(radius, radius, width, 16);
   g.rotateX(Math.PI / 2);
   return g;
 }
 
-export class CarModel {
+/** What the 3D view needs from a car model (the F1 car and the GT3 car both have it). */
+export interface Car3d {
+  readonly group: THREE.Group;
+  wheel: SteeringWheel | null;
+  update(x: number, y: number, heading: number, steer: number, drsOpen: boolean, compound: Compound): void;
+  setWear(wear: number): void;
+  setShadow(reach: number, angle: number): void;
+  setLost(lost: number): void;
+  setDamage(d: CarParts): void;
+  paint(color: string | null): void;
+  setBrakeHeat(heat: number): void;
+  addMirrorGlass(view: THREE.Texture): void;
+  addSteeringWheel(): SteeringWheel;
+  set driverVisible(on: boolean);
+  set haloVisible(on: boolean);
+  set mirrorsVisible(on: boolean);
+  dispose(): void;
+}
+
+export class CarModel implements Car3d {
   readonly group = new THREE.Group();
   private readonly frontWheels: THREE.Group[] = [];
   /** Wheels FL, FR, RL, RR and the wings, hidden when knocked off. */
@@ -612,23 +631,43 @@ export function elbowFor(s: THREE.Vector3, w: THREE.Vector3, upper: number, fore
 const WHEEL_POS: V3 = [0.03, 0.755, 0];
 const WHEEL_TILT = 0.35;
 
+/**
+ * Where the wheel and the driver's shoulders are in a car (car frame), and the wheel's style:
+ * an F1 wheel with its display, or a GT wheel (round, flat-bottomed, buttons) with the display
+ * on the dash. The arms are the same length in every car.
+ */
+export interface Cockpit {
+  wheel: V3;
+  tilt: number;
+  /** The right shoulder: x, y, and how far out from the wheel's centre line (the left mirrors it). */
+  shoulder: V3;
+  style: 'f1' | 'gt';
+  /** GT: the dash display's centre (car frame), facing the driver. */
+  display?: V3;
+}
+
+export const F1_COCKPIT: Cockpit = { wheel: WHEEL_POS, tilt: WHEEL_TILT, shoulder: SHOULDER, style: 'f1' };
+
 /** Shoulder, elbow and wrist (car frame) of one arm (side -1 left, 1 right) with the wheel at `angle`. */
-export function armJoints(angle: number, side: number): { shoulder: THREE.Vector3; elbow: THREE.Vector3; wrist: THREE.Vector3 } {
+export function armJoints(angle: number, side: number, cockpit: Cockpit = F1_COCKPIT): { shoulder: THREE.Vector3; elbow: THREE.Vector3; wrist: THREE.Vector3 } {
   // The arm going over the top of the wheel (left in a right turn) rolls its shoulder forward.
   const reach = Math.max(0, angle * -side) / WHEEL_MAX;
-  const shoulder = new THREE.Vector3(SHOULDER[0] + 0.04 * reach, SHOULDER[1], side * (SHOULDER[2] - 0.02 * reach));
+  const [sx, sy, sz] = cockpit.shoulder;
+  const shoulder = new THREE.Vector3(sx + 0.04 * reach, sy, cockpit.wheel[2] + side * (sz - 0.02 * reach));
   const wrist = new THREE.Vector3(WRIST[0], WRIST[1], side * WRIST[2])
-    .applyAxisAngle(new THREE.Vector3(0, 0, 1), WHEEL_TILT)
+    .applyAxisAngle(new THREE.Vector3(0, 0, 1), cockpit.tilt)
     .applyAxisAngle(new THREE.Vector3(1, 0, 0), angle)
-    .add(new THREE.Vector3(...WHEEL_POS));
+    .add(new THREE.Vector3(...cockpit.wheel));
   const pole = new THREE.Vector3(ELBOW_POLE.x, ELBOW_POLE.y, side * ELBOW_POLE.z);
   return { shoulder, elbow: elbowFor(shoulder, wrist, UPPER_ARM, FOREARM, pole), wrist };
 }
 
 /** Where the raised right hand is at the finish (car frame), in view from the cockpit. */
-export function raisedHand(time: number, win: boolean): V3 {
+export function raisedHand(time: number, win: boolean, cockpit: Cockpit = F1_COCKPIT): V3 {
   const beat = Math.sin(time * (win ? 9 : 7));
-  return win ? [-0.06, 1 + beat * 0.035, 0.2] : [-0.06, 1, 0.2 + beat * 0.065];
+  const [x, y, z] = win ? [-0.06, 1 + beat * 0.035, 0.2] : [-0.06, 1, 0.2 + beat * 0.065];
+  // Moved with the wheel, for cars where it sits elsewhere.
+  return [x + cockpit.wheel[0] - WHEEL_POS[0], y + cockpit.wheel[1] - WHEEL_POS[1], z + cockpit.wheel[2]];
 }
 
 /** What the steering wheel's display shows. */
@@ -710,6 +749,8 @@ export class SteeringWheel {
   readonly group = new THREE.Group();
   /** Upper arms and forearms, in the car's frame (they don't turn with the wheel). */
   readonly arms = new THREE.Group();
+  /** A GT car's display and shift lights on the dash, in the car's frame (empty in an F1 car). */
+  readonly dash = new THREE.Group();
   private readonly inner = new THREE.Group();
   private readonly canvas = document.createElement('canvas');
   private readonly ctx: CanvasRenderingContext2D;
@@ -730,29 +771,36 @@ export class SteeringWheel {
   private readonly ledTex: THREE.CanvasTexture;
   private lit = '';
 
-  constructor(livery?: Livery) {
-    this.group.position.set(...WHEEL_POS);
+  constructor(
+    livery?: Livery,
+    private readonly cockpit: Cockpit = F1_COCKPIT,
+  ) {
+    this.group.position.set(...cockpit.wheel);
     // Tilted back towards the driver.
     const inner = this.inner;
-    inner.rotation.z = WHEEL_TILT;
+    inner.rotation.z = cockpit.tilt;
     this.group.add(inner);
     const mat = new THREE.MeshLambertMaterial({ color: '#202124' });
     const grip = new THREE.MeshLambertMaterial({ color: '#0e0e0f' });
-    const body = new THREE.BoxGeometry(0.04, 0.13, 0.24);
-    const handle = new THREE.BoxGeometry(0.05, 0.17, 0.05);
-    this.disposables.push(mat, grip, body, handle);
-    inner.add(new THREE.Mesh(body, mat));
-    // Trim along the top of the wheel, in the car's colours.
-    const trimGeo = new THREE.BoxGeometry(0.043, 0.012, 0.24);
-    const trimMat = new THREE.MeshLambertMaterial({ color: livery?.wings ?? '#50525a' });
-    this.disposables.push(trimGeo, trimMat);
-    const trim = new THREE.Mesh(trimGeo, trimMat);
-    trim.position.y = 0.068;
-    inner.add(trim);
-    for (const z of [-0.14, 0.14]) {
-      const h = new THREE.Mesh(handle, grip);
-      h.position.set(0, -0.01, z);
-      inner.add(h);
+    this.disposables.push(mat, grip);
+    if (cockpit.style === 'gt') this.buildGtWheel(mat, grip, livery);
+    else {
+      const body = new THREE.BoxGeometry(0.04, 0.13, 0.24);
+      const handle = new THREE.BoxGeometry(0.05, 0.17, 0.05);
+      this.disposables.push(body, handle);
+      inner.add(new THREE.Mesh(body, mat));
+      // Trim along the top of the wheel, in the car's colours.
+      const trimGeo = new THREE.BoxGeometry(0.043, 0.012, 0.24);
+      const trimMat = new THREE.MeshLambertMaterial({ color: livery?.wings ?? '#50525a' });
+      this.disposables.push(trimGeo, trimMat);
+      const trim = new THREE.Mesh(trimGeo, trimMat);
+      trim.position.y = 0.068;
+      inner.add(trim);
+      for (const z of [-0.14, 0.14]) {
+        const h = new THREE.Mesh(handle, grip);
+        h.position.set(0, -0.01, z);
+        inner.add(h);
+      }
     }
     this.canvas.width = 256;
     this.canvas.height = 128;
@@ -768,6 +816,7 @@ export class SteeringWheel {
     screen.rotation.y = -Math.PI / 2;
     screen.position.set(-0.021, 0.01, 0);
     inner.add(screen);
+    if (cockpit.style === 'gt') this.toDash(screen, 0, 1.6);
     // Shift lights in a row across the top of the wheel: green, red, then blue.
     this.ledCanvas.width = 128;
     this.ledCanvas.height = 8;
@@ -781,7 +830,74 @@ export class SteeringWheel {
     leds.rotation.y = -Math.PI / 2;
     leds.position.set(-0.021, 0.056, 0);
     inner.add(leds);
+    if (cockpit.style === 'gt') this.toDash(leds, 0.045, 1.6);
     this.buildHands(livery);
+  }
+
+  /**
+   * GT cars: the display (and its shift lights) sits on the dash behind the wheel and doesn't
+   * turn with it. `up`: height above the display's centre (before scaling); `scale`: bigger
+   * than on an F1 wheel.
+   */
+  private toDash(mesh: THREE.Mesh, up: number, scale: number): void {
+    const at = this.cockpit.display ?? [0.18, 0.93, this.cockpit.wheel[2]];
+    mesh.removeFromParent();
+    // Tilted back like the wheel, facing the driver.
+    const holder = new THREE.Group();
+    holder.position.set(...at);
+    holder.rotation.z = 0.3;
+    mesh.position.set(0, up * scale, 0);
+    mesh.scale.setScalar(scale);
+    holder.add(mesh);
+    this.dash.add(holder);
+  }
+
+  /**
+   * A GT wheel: a round rim with a flat bottom, a carbon centre full of buttons and two rotary
+   * knobs (traction control, ABS), grips where the hands go (z = +-0.15, as on the F1 wheel).
+   */
+  private buildGtWheel(mat: THREE.Material, grip: THREE.Material, livery?: Livery): void {
+    const inner = this.inner;
+    // Rim: most of a circle round the sides and top, closed by a straight bar at the bottom.
+    const rimGeo = new THREE.TorusGeometry(0.155, 0.019, 6, 24, Math.PI * 1.55);
+    rimGeo.rotateZ(-Math.PI * 0.275);
+    rimGeo.rotateY(Math.PI / 2);
+    const barGeo = new THREE.BoxGeometry(0.036, 0.034, 0.24);
+    const centreGeo = new THREE.BoxGeometry(0.03, 0.13, 0.2);
+    const spokeGeo = new THREE.BoxGeometry(0.022, 0.03, 0.1);
+    const knobGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.02, 10).rotateZ(Math.PI / 2);
+    const buttonGeo = new THREE.BoxGeometry(0.012, 0.018, 0.024);
+    const markGeo = new THREE.BoxGeometry(0.04, 0.03, 0.02);
+    const trimMat = new THREE.MeshLambertMaterial({ color: livery?.wings ?? '#50525a' });
+    this.disposables.push(rimGeo, barGeo, centreGeo, spokeGeo, knobGeo, buttonGeo, markGeo, trimMat);
+    inner.add(new THREE.Mesh(rimGeo, grip));
+    const bar = new THREE.Mesh(barGeo, grip);
+    bar.position.y = -0.124;
+    inner.add(bar);
+    inner.add(new THREE.Mesh(centreGeo, mat));
+    for (const side of [-1, 1]) {
+      const spoke = new THREE.Mesh(spokeGeo, mat);
+      spoke.position.set(0, 0, side * 0.1);
+      inner.add(spoke);
+    }
+    // A strip of the car's colour at the top, to see how far the wheel is turned.
+    const mark = new THREE.Mesh(markGeo, trimMat);
+    mark.position.y = 0.155;
+    inner.add(mark);
+    // Lit buttons in two rows, and the two knobs below them.
+    const colours = ['#e8262b', '#27b34a', '#2f6dff', '#ffcf1f', '#f2f2f2', '#ff7a1a'];
+    colours.forEach((c, i) => {
+      const m = new THREE.MeshBasicMaterial({ color: c });
+      this.disposables.push(m);
+      const b = new THREE.Mesh(buttonGeo, m);
+      b.position.set(-0.018, i < 3 ? 0.042 : 0.012, (i % 3) * 0.04 - 0.04);
+      inner.add(b);
+    });
+    for (const z of [-0.045, 0.045]) {
+      const knob = new THREE.Mesh(knobGeo, trimMat);
+      knob.position.set(-0.022, -0.035, z);
+      inner.add(knob);
+    }
   }
 
   private buildHands(livery?: Livery): void {
@@ -882,13 +998,13 @@ export class SteeringWheel {
       mesh.quaternion.setFromUnitVectors(up, d.normalize());
     };
     for (const [i, hand] of this.hands.entries()) {
-      const joints = armJoints(this.angle + this.kick, i === 0 ? -1 : 1);
+      const joints = armJoints(this.angle + this.kick, i === 0 ? -1 : 1, this.cockpit);
       const { shoulder } = joints;
       let { elbow, wrist } = joints;
       // The right hand leaves the wheel at the finish.
       const off = i === 1 ? this.lift : 0;
       if (off > 0.01) {
-        wrist = wrist.clone().lerp(new THREE.Vector3(...raisedHand(this.clock, this.win)), off);
+        wrist = wrist.clone().lerp(new THREE.Vector3(...raisedHand(this.clock, this.win, this.cockpit)), off);
         elbow = elbowFor(shoulder, wrist, UPPER_ARM, FOREARM, new THREE.Vector3(ELBOW_POLE.x, ELBOW_POLE.y, ELBOW_POLE.z));
       }
       hand.grip.visible = off < 0.05;
@@ -920,13 +1036,27 @@ export class SteeringWheel {
     c.fillStyle = info.limiter ? '#4dd2ff' : '#d8dade';
     c.font = 'bold 16px system-ui, sans-serif';
     c.fillText(String(Math.round(info.speedKmh)), 104, 18);
-    // DRS light (left), ERS bar (bottom).
-    c.fillStyle = info.drsOpen ? DRS_GREEN : info.drsAvailable ? '#ffd400' : '#2a2b30';
-    c.fillRect(6, 8, 18, 18);
-    c.fillStyle = '#2a2b30';
-    c.fillRect(8, 50, 112, 8);
-    c.fillStyle = info.ersActive ? '#ffd400' : '#4dd2ff';
-    c.fillRect(8, 50, 112 * info.ers, 8);
+    if (this.cockpit.style === 'gt') {
+      // GT: no DRS or ERS. Traction control and ABS settings along the bottom, as on the knobs.
+      c.font = 'bold 9px system-ui, sans-serif';
+      const tag = (label: string, value: string, x: number, color: string) => {
+        c.fillStyle = color;
+        c.fillRect(x, 50, 36, 11);
+        c.fillStyle = '#050608';
+        c.fillText(`${label} ${value}`, x + 18, 56);
+      };
+      tag('TC', '4', 6, '#ffcf1f');
+      tag('ABS', '3', 46, '#4dd2ff');
+      tag('MAP', '1', 86, '#c9ccd1');
+    } else {
+      // DRS light (left), ERS bar (bottom).
+      c.fillStyle = info.drsOpen ? DRS_GREEN : info.drsAvailable ? '#ffd400' : '#2a2b30';
+      c.fillRect(6, 8, 18, 18);
+      c.fillStyle = '#2a2b30';
+      c.fillRect(8, 50, 112, 8);
+      c.fillStyle = info.ersActive ? '#ffd400' : '#4dd2ff';
+      c.fillRect(8, 50, 112 * info.ers, 8);
+    }
     // Tyre and wear (left), gap to the best lap (right).
     c.font = 'bold 11px system-ui, sans-serif';
     if (info.tyre) {

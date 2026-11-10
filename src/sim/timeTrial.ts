@@ -1,6 +1,6 @@
-import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
 import { racingLine, speedProfile } from './ai/racingLine';
+import { CAR_CLASSES, type CarClassId } from './carClass';
 import { GhostRecorder, type Ghost } from './ghost';
 import { Tyres, type Compound } from './tyres';
 import { RaceWorld, type PlayerInput, type Racer, type WorldEvent } from './world';
@@ -25,7 +25,9 @@ export interface TimeTrialLap {
  * all four wheels off the track (kerbs count as track) and stays out of the pit lane.
  * Every lap is set on the same terms: it starts from the same rolling start (the car goes
  * back there after each lap, so nobody carries speed out of the last corner), on fresh
- * tyres and a full ERS battery. DRS can be used in every zone.
+ * tyres and a full ERS battery. DRS can be used in every zone (cars that have DRS and ERS).
+ * `trackId` is the leaderboard key (`boardKey`: the track, plus the class unless F1), which the
+ * ghosts are saved under.
  */
 export class TimeTrial {
   readonly world: RaceWorld;
@@ -44,9 +46,10 @@ export class TimeTrial {
     readonly trackId: string,
     name: string,
     color: string,
+    readonly carClass: CarClassId = 'f1',
   ) {
     this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false, collisions: false });
-    this.me = this.world.addRacer('me', name, color, TIME_TRIAL_COMPOUND);
+    this.me = this.world.addRacer('me', name, color, TIME_TRIAL_COMPOUND, carClass);
     this.restart();
   }
 
@@ -56,7 +59,7 @@ export class TimeTrial {
     const ss = track.samples;
     const i = restartIndex(track);
     const s = ss[i];
-    const speed = Math.min(RESTART_MAX_SPEED, speedProfile(track, racingLine(track), F1_CAR, RESTART_PACE)[i]);
+    const speed = Math.min(RESTART_MAX_SPEED, speedProfile(track, racingLine(track), CAR_CLASSES[this.carClass].params, RESTART_PACE)[i]);
     me.car.place(s.x, s.y, Math.atan2(s.ty, s.tx), i);
     me.car.vx = s.tx * speed;
     me.car.vy = s.ty * speed;

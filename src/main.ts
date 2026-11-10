@@ -4,6 +4,7 @@ import { OpenRoadScreen } from './app/openRoad';
 import { OPEN_ROAD_MAPS } from './sim/openRoad/biomes';
 import { showGarage } from './app/garage';
 import { equippedSkin } from './net/wallet';
+import { boardKey, isCarClassId, type CarClassId } from './sim/carClass';
 import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showOpenRoadMenu, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
 import { accounts } from './net/accounts';
@@ -231,19 +232,26 @@ function driveOpenRoad(mapId: string): void {
 // ---------- Time trial
 
 const TT_TRACK_KEY = 'f1td.tt.track';
+const TT_CLASS_KEY = 'f1td.tt.class';
 
-function timeTrial(name: string, track?: string): void {
+function timeTrial(name: string, track?: string, carClass?: CarClassId): void {
   let last = DEFAULT_TRACK;
+  let cls: CarClassId = 'f1';
   try {
     last = track ?? localStorage.getItem(TT_TRACK_KEY) ?? DEFAULT_TRACK;
+    const saved = carClass ?? localStorage.getItem(TT_CLASS_KEY);
+    if (isCarClassId(saved)) cls = saved;
+    localStorage.setItem(TT_CLASS_KEY, cls);
   } catch {
-    // Default track then.
+    // Default track and car then.
   }
   stopGame();
   showTimeTrialMenu({
     // Only the real circuits (and not the editor's custom track): times must be comparable.
     tracks: realTracks(),
     track: TRACKS[last] ? last : DEFAULT_TRACK,
+    carClass: cls,
+    onClass: (c, t) => timeTrial(name, t, c),
     board: leaderboard(),
     signedIn: leaderboard().global && !!accounts()?.account(),
     onBack: home,
@@ -253,12 +261,13 @@ function timeTrial(name: string, track?: string): void {
       } catch {
         // Remembering the track is a convenience only.
       }
-      markTrackDriven(id);
-      const driver = new TimeTrialDriver(new Track(TRACKS[id]), id, name, leaderboard(), ghost);
+      const key = boardKey(id, cls);
+      markTrackDriven(key);
+      const driver = new TimeTrialDriver(new Track(TRACKS[id]), key, name, leaderboard(), ghost);
       driver.tt.me.skin = equippedSkin();
       runGame(driver, {
         menuNote: 'Time trial (paused). R or ENTER restarts the lap, G switches the ghost.',
-        onLeave: () => timeTrial(name),
+        onLeave: () => timeTrial(name, id, cls),
         leaveLabel: 'Change track',
         extra: { label: 'Restart lap', onClick: () => (driver.restartRequested = true) },
       });

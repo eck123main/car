@@ -18,6 +18,8 @@ import { settings, updateSettings, type Settings } from './settings';
 import { wallet } from '../net/wallet';
 import { skinDef } from '../cosmetics/skins';
 import { circuitSvg, icon, randomTrack } from './home';
+import { boardKey, CAR_CLASS_ORDER, CAR_CLASSES, type CarClassId } from '../sim/carClass';
+import { drawCar } from '../render/drawCar';
 import { REAL_TRACK_IDS, TRACKS } from '../tracks';
 
 const root = document.getElementById('ui') as HTMLDivElement;
@@ -911,10 +913,14 @@ export function showTyrePicker(state: () => TyrePickerState, onPick: (c: Compoun
 export interface TimeTrialMenu {
   tracks: { id: string; name: string }[];
   track: string;
+  /** The car (each class has its own leaderboard, ghosts and medals). */
+  carClass: CarClassId;
+  /** Picked another car: the menu is shown again for it. */
+  onClass: (cls: CarClassId, track: string) => void;
   board: Leaderboard;
   /** Signed in: medals are earned (and shown as won). */
   signedIn: boolean;
-  /** Track id, and whose ghost to race (see GhostChoice). */
+  /** Track id (not the board key), and whose ghost to race (see GhostChoice). */
   onDrive: (track: string, ghost: string) => void;
   onBack: () => void;
 }
@@ -973,10 +979,48 @@ export function showOpenRoadMenu(maps: readonly OpenRoadMap[], onDrive: (id: str
   );
 }
 
+/** A car class, drawn top-down as in the game (nose to the right). */
+function carIcon(cls: CarClassId): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const w = 132;
+  const h = 56;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return canvas;
+  const p = CAR_CLASSES[cls].params;
+  // Same scale for every car, so their sizes compare.
+  const scale = (w * 0.8) / 6.6;
+  ctx.scale(dpr, dpr);
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(scale, scale);
+  drawCar(ctx, p, 0.3, 0, 0, 0.15, '#e10600', { compound: 'soft', body: cls });
+  return canvas;
+}
+
 /** Time trial: pick a track, see its leaderboard, drive. */
 export function showTimeTrialMenu(m: TimeTrialMenu): void {
   // The track list: a stand-in for a <select> (`select.value`), which can't show badges.
   const select = { value: m.tracks.some((t) => t.id === m.track) ? m.track : (m.tracks[0]?.id ?? '') };
+  /** Where this car's laps on a track are kept. */
+  const key = (track: string) => boardKey(track, m.carClass);
+  const cls = CAR_CLASSES[m.carClass];
+  const carPicker = el(
+    'div',
+    { class: 'car-picker' },
+    ...CAR_CLASS_ORDER.map((id) =>
+      el(
+        'button',
+        { class: `car-choice${id === m.carClass ? ' selected' : ''}`, onclick: () => id !== m.carClass && m.onClass(id, select.value) },
+        carIcon(id),
+        el('b', {}, CAR_CLASSES[id].name),
+        el('small', { class: 'muted' }, CAR_CLASSES[id].blurb),
+      ),
+    ),
+  );
   const driven = drivenTracks();
   const search = el('input', { type: 'text', placeholder: 'Search tracks', style: 'flex:1;min-width:0' });
   let filter: 'all' | 'new' | 'driven' = 'all';
@@ -985,7 +1029,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   const listNote = el('p', { class: 'muted', style: 'margin:6px 0 0' });
   const rowEls = new Map<string, HTMLButtonElement>();
   /** Tried before: a lap on the board (any device), or started here. */
-  const triedOn = (id: string) => driven.has(id) || bests[id] !== undefined;
+  const triedOn = (id: string) => driven.has(key(id)) || bests[key(id)] !== undefined;
   const renderList = () => {
     const q = search.value.trim().toLowerCase();
     chips.replaceChildren(
@@ -1002,8 +1046,9 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
     for (const t of m.tracks) {
       const tried = triedOn(t.id);
       if ((filter === 'new' && tried) || (filter === 'driven' && !tried) || (q && !t.name.toLowerCase().includes(q))) continue;
-      const times = medalTimes(t.id);
-      const got = m.signedIn && times ? medalFor(bests[t.id], times) : null;
+      const times = medalTimes(key(t.id));
+      const best = bests[key(t.id)];
+      const got = m.signedIn && times ? medalFor(best, times) : null;
       const row = el(
         'button',
         {
@@ -1016,7 +1061,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
         },
         el('span', { class: 'name' }, t.name),
         tried ? null : el('span', { class: 'new-tag' }, 'NEW'),
-        el('span', { class: 'best' }, bests[t.id] !== undefined ? formatLapTime(bests[t.id]) : tried ? 'no lap yet' : ''),
+        el('span', { class: 'best' }, best !== undefined ? formatLapTime(best) : tried ? 'no lap yet' : ''),
         got ? el('span', { class: 'medal-chip', style: `--medal:${MEDAL_COLORS[got]}` }, MEDAL_NAMES[got]) : el('span', { class: 'medal-chip empty' }),
       );
       rowEls.set(t.id, row);
@@ -1037,8 +1082,8 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   /** Our best time per track. */
   let bests: Record<string, number> = {};
   const showMedals = () => {
-    const times = medalTimes(select.value);
-    const best = bests[select.value];
+    const times = medalTimes(key(select.value));
+    const best = bests[key(select.value)];
     const won = m.signedIn && times ? medalFor(best, times) : null;
     medalBox.replaceChildren(
       ...(times
@@ -1060,16 +1105,16 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
     }
     const counts = new Map<Medal, number>(MEDALS.map((x) => [x, 0]));
     for (const t of m.tracks) {
-      const tt = medalTimes(t.id);
-      const got = tt ? medalFor(bests[t.id], tt) : null;
+      const tt = medalTimes(key(t.id));
+      const got = tt ? medalFor(bests[key(t.id)], tt) : null;
       if (got) counts.set(got, counts.get(got)! + 1);
     }
     const yours = best === undefined ? 'No lap here yet.' : `Your best here: ${formatLapTime(best)}.`;
-    medalSummary.textContent = `${yours} Your medals: ${MEDALS.map((x) => `${counts.get(x)} ${MEDAL_NAMES[x]}`).join(' · ')}`;
+    medalSummary.textContent = `${yours} Your ${cls.name} medals: ${MEDALS.map((x) => `${counts.get(x)} ${MEDAL_NAMES[x]}`).join(' · ')}`;
   };
   // Our times (guests too, to know which tracks we've driven); medals only count signed in.
   m.board
-    .bestsOf(me, m.tracks.map((t) => t.id))
+    .bestsOf(me, m.tracks.map((t) => key(t.id)))
     .then((b) => {
       bests = b;
       renderList();
@@ -1090,7 +1135,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
     const ghostOption = (value: string, text: string) => el('option', { value }, text);
     ghost.replaceChildren(ghostOption('auto', 'Record lap (yours once you hold the record)'), ghostOption('personal', 'Your best lap'), ghostOption('off', 'No ghost'));
     try {
-      const rows = await m.board.top(track, 10);
+      const rows = await m.board.top(key(track), 10);
       if (shownFor !== track) return;
       rows.forEach((r, i) => {
         if (r.player !== me) ghost.append(ghostOption(r.player, `P${i + 1} ${r.name} · ${formatLapTime(r.time)}`));
@@ -1125,9 +1170,11 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
         el(
           'p',
           { class: 'sub' },
-          'Alone on track, soft tyres, DRS in every zone and ERS. All four wheels off the track and the lap is cancelled. ' +
-            "Beat the times below and race the record holder's ghost.",
+          `Alone on track on soft tyres${cls.drs ? ', DRS in every zone and ERS' : ''}. All four wheels off the track and the lap is cancelled. ` +
+            "Beat the times below and race the record holder's ghost. Every car has its own leaderboard.",
         ),
+        el('h2', {}, 'Car'),
+        carPicker,
         el('div', { class: 'invite', style: 'align-items:center' }, search, chips),
         list,
         listNote,
@@ -1138,7 +1185,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
         el('h2', {}, 'Ghost to race'),
         ghost,
         el('p', { class: 'muted' }, 'Press G while driving to switch ghost.'),
-        el('h2', {}, m.board.global ? 'World leaderboard' : 'Leaderboard (this device only)'),
+        el('h2', {}, `${cls.name} ${m.board.global ? 'world leaderboard' : 'leaderboard (this device only)'}`),
         status,
         table,
         // Kept in view at the bottom of the card, so Drive is always one click away.

@@ -1,4 +1,6 @@
 import MEDAL_TABLE from '../tracks/medals.json';
+import GT3_MEDAL_TABLE from '../tracks/medals-gt3.json';
+import { parseBoardKey, type CarClassId } from './carClass';
 
 /**
  * Time trial medals, like Trackmania's: beat a track's medal time to earn that medal. Author is
@@ -30,13 +32,21 @@ export function medalTimesFrom(author: number): MedalTimes {
 }
 
 const TABLE = MEDAL_TABLE as Record<string, MedalTimes>;
+/** Other classes' medal times (scripts/class-medals.ts), by track. */
+const CLASS_TABLES: Partial<Record<CarClassId, Record<string, MedalTimes>>> = {
+  gt3: GT3_MEDAL_TABLE as Record<string, MedalTimes>,
+};
 
-/** How many tracks have medals. */
+/** How many tracks have F1 medals (the medal skins count F1 medals only). */
 export const MEDAL_TRACK_COUNT = Object.keys(TABLE).length;
 
-/** A track's medal times, or null if it has none (the test circuit, editor tracks). */
-export function medalTimes(trackId: string): MedalTimes | null {
-  return TABLE[trackId] ?? null;
+/**
+ * Medal times for a leaderboard key (a track id for F1, `track@class` for other classes; see
+ * `boardKey`), or null if it has none (the test circuit, editor tracks).
+ */
+export function medalTimes(key: string): MedalTimes | null {
+  const { track, cls } = parseBoardKey(key);
+  return (cls === 'f1' ? TABLE : CLASS_TABLES[cls])?.[track] ?? null;
 }
 
 /** The best medal a lap time earns (equal to the medal time counts), or null. */

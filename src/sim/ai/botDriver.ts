@@ -1,4 +1,4 @@
-import { F1_CAR } from '../../physics/carParams';
+import { F1_CAR, type CarParams } from '../../physics/carParams';
 import type { Track } from '../../track/track';
 import { HOMING_RANGE, HOOK_RANGE, MAGNET_RANGE, TELEPORT_RANGE } from '../items';
 import { fastLane, PIT_SPEED_LIMIT } from '../pit';
@@ -115,10 +115,12 @@ export class BotDriver {
     private readonly track: Track,
     readonly id: string,
     readonly difficulty: Difficulty,
+    /** The car it drives (its speeds are planned for it). */
+    params: CarParams = F1_CAR,
   ) {
     this.skill = SKILL[difficulty];
     this.line = racingLine(track);
-    this.profile = speedProfile(track, this.line, F1_CAR, this.skill.pace);
+    this.profile = speedProfile(track, this.line, params, this.skill.pace);
     this.scProfile = safetyCarProfile(track);
     const [lo, hi] = this.skill.reaction;
     this.reaction = lo + (hi - lo) * hash01(id);

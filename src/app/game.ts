@@ -418,13 +418,14 @@ export class GameScreen {
       list.replaceChildren();
       list.style.display = open ? 'flex' : 'none';
       if (!open || !this.view3d) return;
-      const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/view3d');
+      const { CAM3D_ORDER, camNames } = await import('../render3d/view3d');
+      const names = camNames(this.driver.world()?.racer(this.driver.meId)?.carClass);
       for (const c of CAM3D_ORDER) {
         const b = button(() => {
           this.setCam3d(c);
           list.style.display = 'none';
         });
-        b.textContent = CAM3D_NAMES[c];
+        b.textContent = names[c];
         b.style.textAlign = 'left';
         if (this.view3d?.mode === c) b.style.borderColor = '#ffd400';
         list.append(b);
@@ -468,8 +469,8 @@ export class GameScreen {
     this.view3d.mode = cam;
     this.view3d.snap();
     saveCam3d(cam);
-    void import('../render3d/view3d').then(({ CAM3D_NAMES }) =>
-      this.toasts.push({ text: `CAMERA: ${CAM3D_NAMES[cam]}`, color: '#ffffff', until: this.driver.now() + 2 }),
+    void import('../render3d/view3d').then(({ camNames }) =>
+      this.toasts.push({ text: `CAMERA: ${camNames(this.driver.world()?.racer(this.driver.meId)?.carClass)[cam]}`, color: '#ffffff', until: this.driver.now() + 2 }),
     );
   }
 
@@ -1098,6 +1099,7 @@ export class GameScreen {
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
+        body: r.carClass,
         trackIndex: r.car.trackIndex,
         lost: r.car.lost,
         parts: r.car.parts,
@@ -1118,7 +1120,7 @@ export class GameScreen {
     const others = world.racers.filter((r) => r !== me).map((r) => ({ ...carView(r), ...look(r) }));
     // Hold Q to look behind.
     view.lookBack = !this.paused && this.keyboard.isDown(['KeyQ']);
-    view.showIdealLine(settings().idealLine ? idealLine(world.track) : null);
+    view.showIdealLine(settings().idealLine ? idealLine(world.track, undefined, me.carClass) : null);
     const flag = this.wheelFlag(session);
     const leader = session?.standings[0];
     view.setRace({
@@ -1146,9 +1148,10 @@ export class GameScreen {
       },
       world.time,
       dt,
+      (id) => world.racer(id)?.carClass ?? 'f1',
     );
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
-      others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
+      others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color, body: me.carClass }),
     );
     const items = this.driver.items?.() ?? null;
     view.render(
@@ -1216,7 +1219,7 @@ export class GameScreen {
     this.camera.apply(ctx, canvas.width, canvas.height, dpr);
     this.worldToScreen = ctx.getTransform();
     gfx.tiles.draw(ctx, this.camera.bounds(canvas.width, canvas.height, dpr), Camera.maxZoom() * dpr);
-    if (settings().idealLine) drawIdealLine(ctx, world.track, idealLine(world.track), me.car.trackIndex);
+    if (settings().idealLine) drawIdealLine(ctx, world.track, idealLine(world.track, undefined, me.carClass), me.car.trackIndex);
     drawPitBoxes(ctx, world);
     const pit = this.pitScene(world, poses);
     drawPitUnder(ctx, pit, poses);
@@ -1230,7 +1233,7 @@ export class GameScreen {
     // Time trial ghosts, under the real cars.
     for (const g of this.driver.ghostCars?.() ?? []) {
       ctx.globalAlpha = 0.45;
-      drawCar(ctx, me.car.params, g.x, g.y, g.heading, 0, g.color, { drsOpen: false, compound: me.tyres.compound, rainLight: false, time: world.time });
+      drawCar(ctx, me.car.params, g.x, g.y, g.heading, 0, g.color, { drsOpen: false, compound: me.tyres.compound, rainLight: false, time: world.time, body: me.carClass });
       ctx.globalAlpha = 1;
       drawNameTag(ctx, g.label, g.x, g.y, g.color);
     }
@@ -1249,6 +1252,7 @@ export class GameScreen {
       const paint = rainbow ? rainbowColor(this.driver.now(), r.id) : r.color;
       drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, paint, {
         livery: rainbow ? null : skinLivery(r.skin),
+        body: r.carClass,
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         lost: r.car.lost,
@@ -1301,7 +1305,7 @@ export class GameScreen {
     );
     const recoverAt = spectating ? null : this.driver.recoverAt();
     drawHud(ctx, me.car, world.track.name, w, h, spectating ? '' : this.driver.resetHint, recoverAt !== null ? recoverAt - now : null);
-    drawDamage(ctx, me.car, w);
+    drawDamage(ctx, me.car, w, me.carClass);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);
     drawRacerStatus(ctx, me, w, h, advice);

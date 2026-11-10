@@ -8,6 +8,7 @@ import { betterMedal, MEDAL_COLORS, MEDAL_NAMES, medalFor, medalTimes, type Meda
 import { ghostDelta, ghostPose, ghostTrace, type Ghost } from '../sim/ghost';
 import type { SessionEvent } from '../sim/session';
 import { TimeTrial, type TimeTrialLap } from '../sim/timeTrial';
+import { CAR_CLASSES, parseBoardKey } from '../sim/carClass';
 import type { PlayerInput, Racer } from '../sim/world';
 import type { Track } from '../track/track';
 import type { GameDriver, GhostCar } from './game';
@@ -63,6 +64,7 @@ export class TimeTrialDriver implements GameDriver {
 
   constructor(
     private readonly track: Track,
+    /** The leaderboard key: the track id, plus the car class unless F1 (`boardKey`). */
     private readonly trackId: string,
     name: string,
     private readonly store: Leaderboard,
@@ -71,7 +73,7 @@ export class TimeTrialDriver implements GameDriver {
     private readonly signedIn = store.global && !!accounts()?.account(),
   ) {
     this.medals = medalTimes(trackId);
-    this.tt = new TimeTrial(track, trackId, name, TIME_TRIAL_COLOR);
+    this.tt = new TimeTrial(track, trackId, name, TIME_TRIAL_COLOR, parseBoardKey(trackId).cls);
     this.tt.onLap = (lap) => this.lapDone(lap);
     const pb = loadPersonalGhost(trackId, this.player);
     if (pb) {
@@ -234,7 +236,7 @@ export class TimeTrialDriver implements GameDriver {
       me: this.player,
       state: this.boardState,
       global: this.store.global,
-      trackName: this.track.name,
+      trackName: this.tt.carClass === 'f1' ? this.track.name : `${this.track.name} · ${CAR_CLASSES[this.tt.carClass].name}`,
       ghost: this.ghostLabel(),
     });
     if (this.medals) drawMedals(ctx, bottom + 8, { times: this.medals, best: this.best, signedIn: this.signedIn });

@@ -2,6 +2,8 @@ import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHE
 import type { CarParams } from '../physics/carParams';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { liveryFor, type Livery } from './livery';
+import type { CarClassId } from '../sim/carClass';
+import { drawGt3Body } from './drawGt3';
 
 export interface CarLook {
   /** DRS flap open: the rear wing lights up green. */
@@ -18,6 +20,8 @@ export interface CarLook {
   lost?: number;
   /** Damage per part (0-1): shows as bare carbon, scratches, bent wings and wheels out of line. */
   parts?: CarParts;
+  /** The kind of car (default F1): a GT3 has a closed body. */
+  body?: CarClassId;
 }
 
 /** Damage this small doesn't show. */
@@ -50,8 +54,8 @@ const CARBON = '#1b1b1b';
 const TYRE = '#121212';
 
 /**
- * Top-down F1 car, drawn in world metres, nose along +x. Same outline for every car; the
- * paint comes from the car's livery. Details are kept bold, as a car is only ~35 px long.
+ * Top-down car, drawn in world metres, nose along +x: the F1 outline, or a GT3 (`look.body`).
+ * The paint comes from the car's livery. Details are kept bold, as a car is only ~35 px long.
  */
 export function drawCar(
   ctx: CanvasRenderingContext2D,
@@ -78,6 +82,11 @@ export function drawCar(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
+  if (look.body === 'gt3') {
+    drawGt3Body(ctx, p, steer, liv, lost, dmg, toe, (d) => drawBodyDamage(ctx, d), !!look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0);
+    ctx.restore();
+    return;
+  }
 
   // Floor: a dark carbon edge showing round the sidepods.
   ctx.fillStyle = CARBON;

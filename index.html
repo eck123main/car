@@ -104,6 +104,11 @@
       .new-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #111; background: #2ecc40; border-radius: 4px; padding: 1px 6px; }
       .medal-chip { font-size: 11px; font-weight: 600; color: var(--medal); border: 1px solid var(--medal); border-radius: 999px; padding: 0 7px; }
       .medal-chip.empty { border: 0; padding: 0; }
+      .car-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+      button.car-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 12px 10px; border-radius: 10px; }
+      button.car-choice canvas { align-self: center; }
+      button.car-choice small { white-space: normal; line-height: 1.3; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+      button.car-choice.selected { background: #2a1418; box-shadow: inset 0 0 0 2px #e10600; }
       .tt-preview { display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 10px 14px; border: 1px solid #262830; border-radius: 12px; background: rgba(0,0,0,0.25); }
       .tt-preview .circuit-art { width: 150px; height: 112px; flex: none; aspect-ratio: auto; cursor: default; }
       .tt-preview .circuit-art:hover { transform: none; }

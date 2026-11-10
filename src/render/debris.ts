@@ -37,10 +37,22 @@ export function drawDebris(ctx: CanvasRenderingContext2D, debris: readonly Debri
     ctx.scale(lift, lift);
     switch (p.kind) {
       case 'frontWing':
-        drawFrontWing(ctx, liv, 0.25, 0.95, 1.9);
+        if (owner?.carClass === 'gt3') {
+          // A GT3's splitter: a carbon lip, with the bumper's paint on its top.
+          ctx.fillStyle = CARBON;
+          ctx.fillRect(-0.28, -0.97, 0.56, 1.94);
+          ctx.fillStyle = liv.nose;
+          ctx.fillRect(-0.1, -0.85, 0.2, 1.7);
+        } else drawFrontWing(ctx, liv, 0.25, 0.95, 1.9);
         break;
       case 'rearWing':
-        drawRearWing(ctx, liv, -0.22);
+        if (owner?.carClass === 'gt3') {
+          ctx.fillStyle = liv.wings;
+          ctx.fillRect(-0.22, -0.95, 0.44, 1.9);
+          ctx.fillStyle = liv.endplates;
+          ctx.fillRect(-0.3, -1.0, 0.6, 0.1);
+          ctx.fillRect(-0.3, 0.9, 0.6, 0.1);
+        } else drawRearWing(ctx, liv, -0.22);
         break;
       case 'wheel': {
         const sidewall = p.compound ? COMPOUNDS[p.compound].color : '#777';
