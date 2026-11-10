@@ -51,6 +51,13 @@ const LIVERIES: Record<string, Livery> = {
   '#8b5a2b': { body: '#111111', stripe: '#c9a227', flash: '#c9a227', nose: '#c9a227', wings: '#111111', endplates: '#c9a227', helmet: '#c9a227' },
 };
 
+/** A livery's accent: pinstripes, splitter lip, gurney flap, brake calipers (GT3). */
+export function accentOf(l: Livery): string {
+  const body = l.body.toLowerCase();
+  for (const c of [l.flash, l.stripe, l.nose, l.endplates, l.pods, l.front]) if (c && c.toLowerCase() !== body) return c;
+  return body === '#e10600' || body === '#d40000' ? '#ffffff' : '#e10600';
+}
+
 /** The livery for a car colour; unknown colours get a plain scheme in that colour. */
 export function liveryFor(color: string): Livery {
   return (

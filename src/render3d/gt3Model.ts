@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR, type CarParts } from '../physics/car';
-import type { Livery } from '../render/livery';
+import { accentOf, type Livery } from '../render/livery';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import {
   CARBON,
@@ -21,6 +21,20 @@ import {
   type Cockpit,
   type V3,
 } from './carModel';
+import {
+  FRONT_AXLE,
+  GLASS_TOP,
+  halfWidth,
+  liveryTexture,
+  REAR_AXLE,
+  ROOF_FRONT,
+  ROOF_HALF,
+  ROOF_REAR,
+  shellGeometry,
+  shoulderHeight,
+  shoulderZ,
+  topHeight,
+} from './gt3Skin';
 import { QuadBuilder } from './trackMesh';
 
 /**
@@ -35,8 +49,6 @@ import { QuadBuilder } from './trackMesh';
 
 /** The driver sits on the left. */
 const D = -0.38;
-const FRONT_AXLE = 1.45;
-const REAR_AXLE = -1.25;
 const TRACK = 0.83;
 const GLASS = '#22303d';
 const SEAT = '#1d1e22';
@@ -57,116 +69,109 @@ export const GT3_COCKPIT: Cockpit = {
   display: [0.2, 0.97, D],
 };
 
+/** The parts that aren't painted shell: floor, skirts, diffuser, wheel wells, pillars, mirrors, roof scoop, lights. */
 function bodyGeometry(l: Livery): THREE.BufferGeometry {
   const q = new QuadBuilder();
-  const front = l.front ?? l.body;
-  const doors = l.pods ?? l.body;
+  const accent = accentOf(l);
   const dark = '#0b0b0d';
-  // Floor, sills and the diffuser under the tail with its strakes.
+  // Floor, side skirts with an accent line along their bottom edge.
   tbox(q, -2.1, 1.95, 1.84, 1.84, 0.07, 0.12, 0.07, 0.12, CARBON);
-  for (const side of [-1, 1]) tbox(q, -0.9, 0.62, 0.12, 0.12, 0.08, 0.22, 0.08, 0.22, CARBON, side * 0.93);
-  tbox(q, -2.38, -1.7, 1.5, 1.5, 0.08, 0.12, 0.08, 0.12, CARBON);
-  for (const z of [-0.5, -0.17, 0.17, 0.5]) tbox(q, -2.38, -1.8, 0.02, 0.02, 0.08, 0.3, 0.08, 0.12, CARBON, z);
-
-  // Nose: bumper, grille, headlights, red tow eye.
-  tbox(q, 1.95, 2.3, 1.98, 1.8, 0.12, 0.62, 0.14, 0.42, l.nose);
-  tbox(q, 2.29, 2.31, 1.2, 1.2, 0.18, 0.34, 0.18, 0.34, dark);
   for (const side of [-1, 1]) {
-    tbox(q, 1.98, 2.24, 0.36, 0.3, 0.5, 0.6, 0.42, 0.5, '#f6efcc', side * 0.6);
-    strut(q, [2.28, 0.28, side * 0.62], [2.4, 0.3, side * 0.62], 0.04, '#e3141c');
+    tbox(q, -0.82, 1.0, 0.08, 0.08, 0.08, 0.2, 0.08, 0.2, CARBON, side * 0.9);
+    tbox(q, -0.82, 1.0, 0.012, 0.012, 0.085, 0.1, 0.085, 0.1, accent, side * 0.941);
   }
-  // Bonnet between the front arches, with two vents over the radiator.
-  tbox(q, 0.62, 1.95, 1.2, 1.2, 0.12, 0.84, 0.12, 0.62, front);
-  for (const side of [-1, 1]) tbox(q, 1.05, 1.45, 0.42, 0.42, 0.741, 0.752, 0.672, 0.684, dark, side * 0.28);
-  for (const side of [-1, 1]) {
-    const z = side * 0.79;
-    // Front arch over the wheel (the wheel shows under it), its crown rising over the wheel so
-    // the driver sees both arches over the bonnet, and the panel behind it.
-    tbox(q, 0.62, 1.45, 0.44, 0.44, 0.7, 0.87, 0.7, 0.93, front, z);
-    tbox(q, 1.45, 1.95, 0.44, 0.42, 0.7, 0.93, 0.66, 0.73, front, z);
-    tbox(q, 0.62, 1.07, 0.44, 0.44, 0.12, 0.7, 0.12, 0.7, front, z);
-    // Louvres on top of the arch, letting the air out of the wheel well.
-    for (let i = 0; i < 4; i++) {
-      const x = 1.15 + i * 0.12;
-      const top = x < 1.45 ? 0.87 + ((x - 0.62) / 0.83) * 0.06 : 0.93 - ((x - 1.45) / 0.5) * 0.2;
-      tbox(q, x, x + 0.06, 0.3, 0.3, top, top + 0.012, top, top + 0.012, dark, z);
+  // A big diffuser out under the tail, tall strakes.
+  tbox(q, -2.47, -1.9, 1.62, 1.62, 0.07, 0.1, 0.07, 0.1, CARBON);
+  for (const z of [-0.62, -0.31, 0, 0.31, 0.62]) tbox(q, -2.47, -1.95, 0.02, 0.02, 0.08, 0.3, 0.08, 0.12, CARBON, z);
+  for (const side of [-1, 1]) tbox(q, -2.47, -1.95, 0.02, 0.02, 0.08, 0.34, 0.08, 0.16, CARBON, side * 0.8);
+  // Dark wheel wells inside the arches.
+  for (const c of [FRONT_AXLE, REAR_AXLE]) {
+    for (const side of [-1, 1]) {
+      const z0 = side * 0.5;
+      for (let k = 0; k < 10; k++) {
+        const a0 = (Math.PI * k) / 10;
+        const a1 = (Math.PI * (k + 1)) / 10;
+        const p0: [number, number] = [c + 0.45 * Math.cos(a0), 0.3 + 0.45 * Math.sin(a0)];
+        const p1: [number, number] = [c + 0.45 * Math.cos(a1), 0.3 + 0.45 * Math.sin(a1)];
+        const z1 = side * (Math.min(halfWidth(p0[0]), halfWidth(p1[0])) - 0.04);
+        q.quad([p0[0], p0[1], z0], [p1[0], p1[1], z0], [p1[0], p1[1], z1], [p0[0], p0[1], z1], '#08080a');
+      }
     }
-    // Rear arch, wider still, and the panel behind it.
-    tbox(q, -2.1, -0.88, 0.46, 0.46, 0.74, 0.9, 0.72, 0.9, l.body, side * 0.78);
-    tbox(q, -2.1, -1.62, 0.46, 0.46, 0.14, 0.74, 0.14, 0.74, l.body, side * 0.78);
-    // Doors: thin walls round the cabin, carbon inside.
-    tbox(q, -0.88, 0.62, 0.08, 0.08, 0.14, 0.88, 0.14, 0.88, doors, side * 0.9);
-    tbox(q, -0.88, 0.62, 0.012, 0.012, 0.14, 0.86, 0.14, 0.86, CARBON, side * 0.855);
-    // Door mirror on a stalk.
-    strut(q, [0.56, 0.9, side * 0.9], [0.5, 0.98, side * 1.0], 0.035, CARBON);
-    tbox(q, 0.42, 0.58, 0.16, 0.14, 0.93, 1.04, 0.94, 1.03, l.body, side * 1.04);
-    // A-pillar, and the sail panel from the roof down to the rear arch.
-    strut(q, [0.62, 0.87, side * 0.87], [-0.12, 1.28, side * 0.66], 0.08, l.body);
-    q.quad([-0.88, 0.88, side * 0.92], [-1.0, 1.28, side * 0.66], [-1.8, 0.92, side * 0.6], [-1.9, 0.9, side * 0.92], l.body);
-    strut(q, [-0.88, 0.88, side * 0.91], [-1.0, 1.28, side * 0.66], 0.05, CARBON);
-    // White number panel on the door (the number itself is a decal over it).
-    tbox(q, -0.62, 0.22, 0.012, 0.012, 0.36, 0.78, 0.36, 0.78, '#f2f2f2', side * 0.947);
   }
-  if (l.flash) for (const side of [-1, 1]) tbox(q, -1.95, 1.9, 0.012, 0.012, 0.2, 0.3, 0.2, 0.3, l.flash, side * 0.955);
-  if (l.stripe) {
-    tbox(q, 0.62, 1.95, 0.14, 0.14, 0.843, 0.848, 0.623, 0.628, l.stripe, -0.18);
-    tbox(q, 0.62, 1.95, 0.14, 0.14, 0.843, 0.848, 0.623, 0.628, l.stripe, 0.18);
-  }
-
-  // Rear deck, tail, lights, exhausts.
-  tbox(q, -2.1, -1.05, 1.16, 1.16, 0.14, 0.9, 0.14, 0.9, l.body);
-  tbox(q, -2.3, -2.1, 1.84, 1.98, 0.22, 0.84, 0.16, 0.9, l.body);
-  tbox(q, -2.316, -2.3, 1.7, 1.7, 0.73, 0.76, 0.73, 0.76, '#7a0c12');
-  for (const side of [-1, 1]) tbox(q, -2.322, -2.3, 0.36, 0.36, 0.62, 0.8, 0.62, 0.8, '#d4141e', side * 0.72);
-  tbox(q, -2.322, -2.3, 1.6, 1.6, 0.22, 0.4, 0.22, 0.4, '#141416');
-  tbox(q, -2.326, -2.3, 0.2, 0.2, 0.52, 0.62, 0.52, 0.62, '#ff2a2a');
   for (const side of [-1, 1]) {
-    tbox(q, -2.36, -2.28, 0.12, 0.12, 0.26, 0.38, 0.26, 0.38, '#3b3c40', side * 0.35);
-    tbox(q, -2.362, -2.35, 0.08, 0.08, 0.29, 0.35, 0.29, 0.35, '#050505', side * 0.35);
+    // Carbon inside the doors.
+    tbox(q, -0.88, 0.6, 0.012, 0.012, 0.14, 0.84, 0.14, 0.84, CARBON, side * 0.835);
+    // Door mirror on a stalk.
+    strut(q, [0.52, 0.86, side * 0.84], [0.47, 0.98, side * 0.98], 0.035, CARBON);
+    tbox(q, 0.4, 0.56, 0.16, 0.13, 0.93, 1.04, 0.94, 1.03, l.body, side * 1.04);
+    // Black A-pillar, and the sail panel from the roof down to the haunch.
+    strut(q, [0.62, 0.86, side * 0.84], [-0.12, 1.28, side * 0.64], 0.07, '#111114');
+    const backZ = 0.8;
+    const backY = topHeight(-1.85, backZ / shoulderZ(-1.85)) + 0.01;
+    q.quad([-0.92, shoulderHeight(-0.92) + 0.005, side * shoulderZ(-0.92)], [ROOF_REAR, GLASS_TOP + 0.01, side * ROOF_HALF], [-1.8, REAR_GLASS_Y, side * 0.6], [-1.85, backY, side * backZ], l.pods ?? l.body);
+    strut(q, [-0.92, 0.89, side * shoulderZ(-0.92)], [ROOF_REAR, GLASS_TOP, side * ROOF_HALF], 0.05, '#111114');
   }
-
-  // Roof with an intake, a number panel and the windscreen's sun strip.
-  tbox(q, -1.02, -0.12, 1.32, 1.32, 1.27, 1.32, 1.27, 1.32, l.body);
-  tbox(q, -0.75, -0.25, 0.32, 0.26, 1.32, 1.37, 1.32, 1.43, l.body);
-  tbox(q, -0.27, -0.245, 0.24, 0.24, 1.33, 1.42, 1.33, 1.42, dark);
-  tbox(q, -0.98, -0.42, 0.5, 0.5, 1.32, 1.324, 1.32, 1.324, '#f2f2f2');
-  q.quad([-0.01, 1.202, -0.67], [-0.01, 1.202, 0.67], [-0.12, 1.264, 0.64], [-0.12, 1.264, -0.64], l.wings);
-  // Wiper resting at the bottom of the windscreen.
+  // Tail: rain light, exhausts.
+  tbox(q, -2.345, -2.325, 0.2, 0.2, 0.52, 0.6, 0.52, 0.6, '#ff2a2a');
+  for (const side of [-1, 1]) {
+    tbox(q, -2.38, -2.3, 0.12, 0.12, 0.26, 0.38, 0.26, 0.38, '#3b3c40', side * 0.35);
+    tbox(q, -2.382, -2.37, 0.08, 0.08, 0.29, 0.35, 0.29, 0.35, '#050505', side * 0.35);
+  }
+  // Tow strap on the nose.
+  strut(q, [2.3, 0.27, 0.53], [2.42, 0.27, 0.53], 0.035, '#e3141c');
+  // Roof scoop.
+  tbox(q, -0.42, -0.14, 0.3, 0.26, 1.31, 1.35, 1.31, 1.42, l.body);
+  tbox(q, -0.16, -0.135, 0.22, 0.22, 1.32, 1.4, 1.32, 1.4, dark);
+  // Sun strip across the top of the windscreen, and the wiper.
+  q.quad([-0.01, 1.212, -0.67], [-0.01, 1.212, 0.67], [-0.12, 1.274, 0.64], [-0.12, 1.274, -0.64], l.wings);
   strut(q, [0.6, 0.885, 0.32], [0.5, 0.925, -0.48], 0.018, '#111111');
   return q.build();
 }
 
+/** Where the rear window meets the deck. */
+const REAR_GLASS_Y = topHeight(-1.8, 0.6 / shoulderZ(-1.8)) + 0.01;
+
 /** The glass: windscreen, side windows and the rear window (see-through). */
 function glassGeometry(): THREE.BufferGeometry {
   const q = new QuadBuilder();
-  q.quad([0.62, 0.86, -0.84], [0.62, 0.86, 0.84], [-0.12, 1.27, 0.64], [-0.12, 1.27, -0.64], GLASS);
-  for (const side of [-1, 1]) q.quad([0.6, 0.88, side * 0.9], [-0.88, 0.88, side * 0.9], [-1.0, 1.27, side * 0.66], [-0.12, 1.27, side * 0.66], GLASS);
-  q.quad([-1.02, 1.27, -0.64], [-1.02, 1.27, 0.64], [-1.8, 0.91, 0.6], [-1.8, 0.91, -0.6], GLASS);
+  q.quad([0.62, 0.86, -0.84], [0.62, 0.86, 0.84], [ROOF_FRONT, GLASS_TOP, ROOF_HALF], [ROOF_FRONT, GLASS_TOP, -ROOF_HALF], GLASS);
+  for (const side of [-1, 1]) {
+    q.quad([0.6, 0.88, side * shoulderZ(0.6)], [-0.92, 0.89, side * shoulderZ(-0.92)], [ROOF_REAR, GLASS_TOP, side * ROOF_HALF], [ROOF_FRONT, GLASS_TOP, side * ROOF_HALF], GLASS);
+  }
+  q.quad([ROOF_REAR, GLASS_TOP, -ROOF_HALF], [ROOF_REAR, GLASS_TOP, ROOF_HALF], [-1.8, REAR_GLASS_Y, 0.6], [-1.8, REAR_GLASS_Y, -0.6], GLASS);
   return q.build();
 }
 
-/** Splitter and dive planes on the nose (it can be knocked off, like an F1 front wing). */
-export function gt3SplitterGeometry(): THREE.BufferGeometry {
+/** Splitter with an accent lip, end fences and canards (it can be knocked off, like an F1 front wing). */
+export function gt3SplitterGeometry(accent = '#e10600'): THREE.BufferGeometry {
   const q = new QuadBuilder();
-  tbox(q, 1.85, 2.45, 1.94, 1.94, 0.07, 0.1, 0.07, 0.1, CARBON);
+  tbox(q, 1.9, 2.5, 1.9, 1.72, 0.065, 0.095, 0.065, 0.095, CARBON);
+  tbox(q, 2.47, 2.505, 1.72, 1.72, 0.093, 0.106, 0.093, 0.106, accent);
   for (const side of [-1, 1]) {
-    tbox(q, 2.05, 2.28, 0.22, 0.2, 0.3, 0.32, 0.35, 0.37, CARBON, side * 0.94);
-    tbox(q, 2.0, 2.2, 0.2, 0.18, 0.4, 0.42, 0.44, 0.46, CARBON, side * 0.9);
+    tbox(q, 2.0, 2.48, 0.02, 0.02, 0.095, 0.22, 0.095, 0.14, CARBON, side * 0.84);
+    // Canards on the bumper's corners, two a side, raked up towards the back.
+    tbox(q, 1.98, 2.26, 0.2, 0.15, 0.3, 0.316, 0.37, 0.386, CARBON, side * 0.93);
+    tbox(q, 1.96, 2.2, 0.17, 0.12, 0.41, 0.426, 0.47, 0.486, CARBON, side * 0.91);
   }
   return q.build();
 }
 
-/** Rear wing with endplates and a gurney flap, on swan-neck mounts (they come off with it). */
+/** Rear wing: two elements, big endplates, a gurney flap, on swan-neck mounts (they come off with it). */
 export function gt3RearWingGeometry(l: Livery): THREE.BufferGeometry {
   const q = new QuadBuilder();
+  const accent = accentOf(l);
   for (const side of [-1, 1]) {
-    strut(q, [-1.95, 0.9, side * 0.36], [-2.06, 1.22, side * 0.36], 0.05, CARBON);
-    strut(q, [-2.06, 1.22, side * 0.36], [-2.38, 1.43, side * 0.36], 0.05, CARBON);
-    tbox(q, -2.76, -2.14, 0.03, 0.03, 1.08, 1.56, 1.14, 1.46, l.endplates, side * 0.97);
+    const z = side * 0.4;
+    strut(q, [-1.98, 0.9, z], [-2.0, 1.18, z], 0.05, CARBON);
+    strut(q, [-2.0, 1.18, z], [-2.18, 1.42, z], 0.05, CARBON);
+    strut(q, [-2.18, 1.42, z], [-2.4, 1.5, z], 0.05, CARBON);
+    tbox(q, -2.9, -2.24, 0.025, 0.025, 1.3, 1.64, 1.33, 1.52, l.endplates, side * 0.99);
+    tbox(q, -2.9, -2.86, 0.03, 0.03, 1.31, 1.63, 1.31, 1.63, accent, side * 0.99);
   }
-  // Main plane, trailing edge higher than the leading edge.
-  tbox(q, -2.68, -2.22, 1.9, 1.9, 1.4, 1.445, 1.32, 1.365, l.wings);
-  tbox(q, -2.7, -2.67, 1.9, 1.9, 1.43, 1.49, 1.43, 1.49, CARBON);
+  // Main plane, trailing edge higher than the leading edge, and the flap over its back.
+  tbox(q, -2.75, -2.26, 1.96, 1.96, 1.44, 1.485, 1.37, 1.415, l.wings);
+  tbox(q, -2.86, -2.66, 1.96, 1.96, 1.53, 1.555, 1.48, 1.505, l.wings);
+  tbox(q, -2.875, -2.855, 1.96, 1.96, 1.54, 1.6, 1.54, 1.6, accent);
   return q.build();
 }
 
@@ -309,50 +314,11 @@ function netTexture(): THREE.CanvasTexture {
   return t;
 }
 
-const numberTextures = new Map<number, THREE.CanvasTexture>();
-
-/** A race number decal (black on the white panels), made once per number. */
-function numberTexture(n: number): THREE.CanvasTexture {
-  let t = numberTextures.get(n);
-  if (t) return t;
-  const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 96;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#0b0b0d';
-  ctx.font = 'italic 900 78px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(n), 64, 52, 120);
-  t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  numberTextures.set(n, t);
-  return t;
-}
-
 /** The car's number, the same for a livery every time (2-99). */
 export function raceNumber(l: Livery): number {
   let h = 0;
   for (const ch of `${l.body}${l.wings}${l.helmet}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return 2 + (h % 98);
-}
-
-/** Planes for the number on both doors and the roof panel. */
-function numberGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  for (const side of [-1, 1]) {
-    const g = new THREE.PlaneGeometry(0.7, 0.4);
-    // Facing out of the car; the left one turned round so the number reads the right way.
-    g.rotateY(side > 0 ? Math.PI : 0);
-    g.translate(-0.2, 0.57, side * 0.955);
-    parts.push(g);
-  }
-  const roof = new THREE.PlaneGeometry(0.5, 0.4);
-  roof.rotateX(-Math.PI / 2);
-  roof.rotateY(-Math.PI / 2);
-  roof.translate(-0.7, 1.327, 0);
-  parts.push(roof);
-  return mergeGeometries(parts);
 }
 
 type Scuff = { zone: keyof CarParts; at: V3; size: V3; from: number };
@@ -381,17 +347,18 @@ const shared = {
   nut: null as THREE.BufferGeometry | null,
   band: null as THREE.BufferGeometry | null,
   disc: null as THREE.BufferGeometry | null,
+  caliper: null as THREE.BufferGeometry | null,
   scuff: null as THREE.BufferGeometry | null,
   shadow: null as THREE.Mesh | null,
 };
 
-/** A centre-lock wheel's rim, six spokes and nut, facing out along +z. */
+/** A centre-lock wheel's rim, ten thin spokes and nut, facing out along +z. */
 function spokeGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [new THREE.TorusGeometry(0.235, 0.028, 4, 18)];
-  for (let i = 0; i < 6; i++) {
-    const g = new THREE.BoxGeometry(0.035, 0.2, 0.02);
+  for (let i = 0; i < 10; i++) {
+    const g = new THREE.BoxGeometry(0.024, 0.2, 0.024);
     g.translate(0, 0.11, 0);
-    g.rotateZ((i * Math.PI) / 3);
+    g.rotateZ((i * Math.PI) / 5);
     parts.push(g);
   }
   const nut = new THREE.CylinderGeometry(0.04, 0.04, 0.04, 6).rotateX(Math.PI / 2);
@@ -409,7 +376,11 @@ export class Gt3Model implements Car3d {
   private readonly splitterMount = new THREE.Group();
   private readonly rearWingMount = new THREE.Group();
   private readonly bodyGeo: THREE.BufferGeometry;
-  private readonly basePositions: Float32Array;
+  private readonly shellGeo: THREE.BufferGeometry;
+  /** Geometry that dents, with its undamaged positions. */
+  private readonly dentable: { geo: THREE.BufferGeometry; base: Float32Array }[] = [];
+  private readonly shellMat: THREE.MeshPhongMaterial | THREE.MeshLambertMaterial;
+  private readonly shellMap: THREE.Texture | null = null;
   private readonly scuffs: { mesh: THREE.Mesh; scuff: Scuff }[] = [];
   private readonly toe = [0, 0, 0, 0];
   private readonly driver = new THREE.Group();
@@ -450,12 +421,22 @@ export class Gt3Model implements Car3d {
     this.tyreMat = lambert({ color: TYRE });
     this.bandMat = lambert({ color: '#ffffff' });
     this.discMat = lambert({ color: DISC_DARK });
-    const rimMat = lambert({ color: '#2a2c31' });
+    const rimMat = lambert({ color: '#141518' });
+    const caliperMat = lambert({ color: accentOf(livery) });
     const nutMat = lambert({ color: livery.wings });
 
     this.bodyGeo = bodyGeometry(livery);
-    this.basePositions = (this.bodyGeo.getAttribute('position').array as Float32Array).slice();
     this.group.add(new THREE.Mesh(this.bodyGeo, this.bodyMat));
+    // The painted shell: glossy paint with the livery texture.
+    this.shellGeo = shellGeometry();
+    if (ghost) this.shellMat = lambert({});
+    else {
+      this.shellMap = liveryTexture(livery, raceNumber(livery));
+      this.shellMat = new THREE.MeshPhongMaterial({ map: this.shellMap, shininess: 60, specular: '#4a4a4a', side: THREE.DoubleSide });
+      this.mats.push(this.shellMat);
+    }
+    this.group.add(new THREE.Mesh(this.shellGeo, this.shellMat));
+    for (const geo of [this.bodyGeo, this.shellGeo]) this.dentable.push({ geo, base: (geo.getAttribute('position').array as Float32Array).slice() });
 
     // Glass: tinted, see-through from inside and out.
     const glassGeo = glassGeometry();
@@ -463,14 +444,6 @@ export class Gt3Model implements Car3d {
     const glassMat = ghost ? this.bodyMat : new THREE.MeshLambertMaterial({ color: '#2b3a48', transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide });
     if (!ghost) this.mats.push(glassMat);
     this.group.add(new THREE.Mesh(glassGeo, glassMat));
-
-    if (!ghost) {
-      const numGeo = numberGeometry();
-      this.owned.push(numGeo);
-      const numMat = new THREE.MeshBasicMaterial({ map: numberTexture(raceNumber(livery)), transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
-      this.mats.push(numMat);
-      this.group.add(new THREE.Mesh(numGeo, numMat));
-    }
 
     shared.scuff ??= new THREE.BoxGeometry(1, 1, 1);
     const carbon = lambert({ color: CARBON });
@@ -507,7 +480,7 @@ export class Gt3Model implements Car3d {
     this.group.add(this.miniWheel);
 
     // Splitter and rear wing hang from mounts, so damage can droop and twist them.
-    const splitterGeo = gt3SplitterGeometry();
+    const splitterGeo = gt3SplitterGeometry(accentOf(livery));
     const wingGeo = gt3RearWingGeometry(livery);
     this.owned.push(splitterGeo, wingGeo);
     this.splitter = new THREE.Mesh(splitterGeo, this.bodyMat);
@@ -520,13 +493,14 @@ export class Gt3Model implements Car3d {
     this.rearWingMount.add(this.rearWing);
     this.group.add(this.splitterMount, this.rearWingMount);
 
-    // Wheels: tyre, a thin band in the compound's colour, dark six-spoke rims, the brake disc.
+    // Wheels: tyre, a thin band in the compound's colour, black ten-spoke rims, the brake disc and caliper.
     shared.wheelFront ??= wheelGeometry(0.34, 0.3);
     shared.wheelRear ??= wheelGeometry(0.345, 0.33);
     shared.band ??= new THREE.TorusGeometry(0.3, 0.008, 3, 20);
     shared.spokes ??= spokeGeometry();
     shared.nut ??= new THREE.CylinderGeometry(0.045, 0.045, 0.03, 6).rotateX(Math.PI / 2);
     shared.disc ??= new THREE.CircleGeometry(0.19, 14);
+    shared.caliper ??= new THREE.BoxGeometry(0.1, 0.17, 0.05).rotateZ(-0.7).translate(0.1, 0.09, 0);
     const addWheel = (x: number, z: number, geo: THREE.BufferGeometry, width: number) => {
       const g = new THREE.Group();
       g.position.set(x, 0.34, z);
@@ -538,6 +512,7 @@ export class Gt3Model implements Car3d {
         g.add(mesh);
       };
       face(new THREE.Mesh(shared.disc!, this.discMat), 0.002);
+      face(new THREE.Mesh(shared.caliper!, caliperMat), -0.02);
       face(new THREE.Mesh(shared.spokes!, rimMat), 0.008);
       face(new THREE.Mesh(shared.band!, this.bandMat), 0.003);
       // The centre-lock nut in the car's wing colour.
@@ -606,18 +581,19 @@ export class Gt3Model implements Car3d {
     const key = `${parts.frontWing}|${parts.rearWing}|${parts.left}|${parts.right}`;
     if (key === this.damageKey) return;
     this.damageKey = key;
-    const pos = this.bodyGeo.getAttribute('position') as THREE.BufferAttribute;
-    const base = this.basePositions;
-    const arr = pos.array as Float32Array;
-    for (let i = 0; i < base.length; i += 3) {
-      const [dx, dy, dz] = dentAt(base[i], base[i + 1], base[i + 2], parts);
-      arr[i] = base[i] + dx;
-      arr[i + 1] = base[i + 1] + dy;
-      arr[i + 2] = base[i + 2] + dz;
+    for (const { geo, base } of this.dentable) {
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      const arr = pos.array as Float32Array;
+      for (let i = 0; i < base.length; i += 3) {
+        const [dx, dy, dz] = dentAt(base[i], base[i + 1], base[i + 2], parts);
+        arr[i] = base[i] + dx;
+        arr[i + 1] = base[i + 1] + dy;
+        arr[i + 2] = base[i + 2] + dz;
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+      geo.computeBoundingSphere();
     }
-    pos.needsUpdate = true;
-    this.bodyGeo.computeVertexNormals();
-    this.bodyGeo.computeBoundingSphere();
     for (const { mesh, scuff } of this.scuffs) {
       mesh.visible = parts[scuff.zone] >= scuff.from;
       if (!mesh.visible) continue;
@@ -647,6 +623,11 @@ export class Gt3Model implements Car3d {
     this.painted = color;
     body.color.set(color ?? '#ffffff');
     body.emissive.set(color ?? '#000000').multiplyScalar(color ? 0.45 : 0);
+    const shell = this.shellMat;
+    shell.map = color ? null : this.shellMap;
+    shell.needsUpdate = true;
+    shell.color.set(color ?? '#ffffff');
+    shell.emissive.set(color ?? '#000000').multiplyScalar(color ? 0.45 : 0);
   }
 
   setBrakeHeat(heat: number): void {
@@ -714,7 +695,7 @@ export class Gt3Model implements Car3d {
     // Window net in the driver's window.
     const net = netTexture();
     const netGeo = new THREE.PlaneGeometry(0.92, 0.36);
-    netGeo.translate(-0.4, 1.07, -0.865);
+    netGeo.translate(-0.4, 1.07, -0.8);
     this.owned.push(netGeo);
     const netMat = new THREE.MeshBasicMaterial({ map: net, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide });
     this.mats.push(netMat);
@@ -729,6 +710,7 @@ export class Gt3Model implements Car3d {
 
   dispose(): void {
     this.bodyGeo.dispose();
+    this.shellGeo.dispose();
     for (const g of this.owned) g.dispose();
     for (const m of this.mats) m.dispose();
     for (const t of this.ownedTextures) t.dispose();
