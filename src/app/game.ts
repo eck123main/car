@@ -418,13 +418,14 @@ export class GameScreen {
       list.replaceChildren();
       list.style.display = open ? 'flex' : 'none';
       if (!open || !this.view3d) return;
-      const { CAM3D_ORDER, CAM3D_NAMES } = await import('../render3d/view3d');
+      const { CAM3D_ORDER, camNames } = await import('../render3d/view3d');
+      const names = camNames(this.driver.world()?.racer(this.driver.meId)?.carClass);
       for (const c of CAM3D_ORDER) {
         const b = button(() => {
           this.setCam3d(c);
           list.style.display = 'none';
         });
-        b.textContent = CAM3D_NAMES[c];
+        b.textContent = names[c];
         b.style.textAlign = 'left';
         if (this.view3d?.mode === c) b.style.borderColor = '#ffd400';
         list.append(b);
@@ -468,8 +469,8 @@ export class GameScreen {
     this.view3d.mode = cam;
     this.view3d.snap();
     saveCam3d(cam);
-    void import('../render3d/view3d').then(({ CAM3D_NAMES }) =>
-      this.toasts.push({ text: `CAMERA: ${CAM3D_NAMES[cam]}`, color: '#ffffff', until: this.driver.now() + 2 }),
+    void import('../render3d/view3d').then(({ camNames }) =>
+      this.toasts.push({ text: `CAMERA: ${camNames(this.driver.world()?.racer(this.driver.meId)?.carClass)[cam]}`, color: '#ffffff', until: this.driver.now() + 2 }),
     );
   }
 
@@ -1098,6 +1099,7 @@ export class GameScreen {
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
+        body: r.carClass,
         trackIndex: r.car.trackIndex,
         lost: r.car.lost,
         parts: r.car.parts,
@@ -1146,9 +1148,10 @@ export class GameScreen {
       },
       world.time,
       dt,
+      (id) => world.racer(id)?.carClass ?? 'f1',
     );
     (this.driver.ghostCars?.() ?? []).forEach((g, i) =>
-      others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color }),
+      others.push({ id: `ghost:${i}`, x: g.x, y: g.y, heading: g.heading, steer: 0, drsOpen: false, compound: me.tyres.compound, livery: liveryFor(g.color), ghost: g.color, body: me.carClass }),
     );
     const items = this.driver.items?.() ?? null;
     view.render(

@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { Livery } from '../render/livery';
 import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
-import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type WheelInfo } from './carModel';
+import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
+import { GT3_EYE, Gt3Model } from './gt3Model';
+import type { CarClassId } from '../sim/carClass';
 import { Items3d, type ItemsFrame } from './items3d';
 import { Debris3d } from './debris3d';
 import type { Debris } from '../sim/debris';
@@ -62,6 +64,23 @@ export interface CamDef {
   chase?: boolean;
 }
 
+/** The cameras' names in a GT3, where some are bolted elsewhere (no halo, airbox or nose). */
+export const GT3_CAM_NAMES: Record<Cam3d, string> = {
+  cockpit: 'COCKPIT',
+  clear: 'COCKPIT (wide)',
+  tcam: 'ROOF CAM',
+  nose: 'BONNET CAM',
+  wing: 'BUMPER CAM',
+  tail: 'REAR WING CAM',
+  chase: 'CHASE CAM',
+  far: 'CHASE CAM (far)',
+};
+
+/** Camera names for a kind of car. */
+export function camNames(body: CarClassId = 'f1'): Record<Cam3d, string> {
+  return body === 'gt3' ? GT3_CAM_NAMES : CAM3D_NAMES;
+}
+
 /** Looking behind: from above the driver's head, over the airbox and rear wing. */
 export const LOOK_BACK: CamDef = { eye: [0.3, 1.45, 0], look: [-30, 0.4, 0], fov: 62 };
 
@@ -75,6 +94,27 @@ export const CAMS: Record<Cam3d, CamDef> = {
   chase: { eye: [-8.5, 2.7, 0], look: [6, 0.9, 0], fov: 58, chase: true },
   far: { eye: [-13, 4.2, 0], look: [8, 0.9, 0], fov: 55, chase: true },
 };
+/**
+ * A GT3's cameras: from the driver's seat (left-hand drive, looking a little down so the wheel
+ * and the dash display are in view), on the roof, the bonnet, the front bumper, the rear wing.
+ */
+export const GT3_CAMS: Record<Cam3d, CamDef> = {
+  cockpit: { eye: GT3_EYE, look: [30, -0.5, GT3_EYE[2]], fov: 68, inside: true },
+  clear: { eye: [GT3_EYE[0] - 0.08, GT3_EYE[1] + 0.04, GT3_EYE[2]], look: [30, -0.6, GT3_EYE[2]], fov: 76, inside: true },
+  tcam: { eye: [-0.45, 1.58, 0], look: [30, 0.2, 0], fov: 60 },
+  nose: { eye: [1.15, 0.98, 0], look: [30, 0.3, 0], fov: 66 },
+  wing: { eye: [2.33, 0.36, -0.36], look: [30, 0.25, -0.36], fov: 68 },
+  tail: { eye: [-2.45, 1.55, 0], look: [30, 0.3, 0], fov: 64 },
+  chase: CAMS.chase,
+  far: CAMS.far,
+};
+const GT3_LOOK_BACK: CamDef = { eye: [0.2, 1.7, 0], look: [-30, 0.4, 0], fov: 62 };
+
+/** The cameras for a kind of car. */
+export function camsFor(body: CarClassId = 'f1'): Record<Cam3d, CamDef> {
+  return body === 'gt3' ? GT3_CAMS : CAMS;
+}
+
 /** Wider view at top speed (deg), for a sense of speed. */
 const FOV_SPEED = 8;
 /** Rendering never goes above this many device pixels per CSS pixel. */
@@ -95,6 +135,8 @@ export interface CarView {
   livery: Livery;
   /** See-through replay car in this colour (time trial ghost). */
   ghost?: string;
+  /** What kind of car (default F1). */
+  body?: CarClassId;
   /** How see-through a ghost is (default 0.35). */
   ghostOpacity?: number;
   /** Which stretch of track it's on (Car.trackIndex), for the height of the road there. */
@@ -177,7 +219,7 @@ export class View3D {
   private readonly camera = new THREE.PerspectiveCamera(60, 1, 0.5, 2600);
   private readonly nearCamera = new THREE.PerspectiveCamera(60, 1, 0.02, 40);
   private readonly sky: THREE.Mesh;
-  private readonly cars = new Map<string, { model: CarModel; key: string; heat: number; upset: number }>();
+  private readonly cars = new Map<string, { model: Car3d; key: string; heat: number; upset: number }>();
   private readonly disposables: { dispose(): void }[] = [];
   private chaseHeading: number | null = null;
   private readonly headMotion = new HeadMotion();
@@ -374,13 +416,13 @@ export class View3D {
   }
 
   /** Parts knocked off cars, lying on the track (call before render). */
-  showDebris(debris: readonly Debris[], liveryOf: (owner: string) => Livery, time: number, dt: number): void {
+  showDebris(debris: readonly Debris[], liveryOf: (owner: string) => Livery, time: number, dt: number, bodyOf?: (owner: string) => CarClassId): void {
     if (!this.debris) {
       if (debris.length === 0) return;
       this.debris = new Debris3d((x, y, i) => this.heightAt(x, y, i));
       this.scene.add(this.debris.group);
     }
-    this.debris.update(debris, liveryOf, time, dt);
+    this.debris.update(debris, liveryOf, time, dt, bodyOf);
   }
 
   render(own: OwnCarView, others: CarView[], dt: number, safetyCar: SafetyCarView | null = null, items: ItemsFrame | null = null, pit: PitScene | null = null): void {
@@ -402,7 +444,7 @@ export class View3D {
     for (const car of [own, ...others]) {
       seen.add(car.id);
       const onboard = car === own && !this.cinema;
-      const key = `${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}`;
+      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}`;
       let entry = this.cars.get(car.id);
       if (entry && entry.key !== key) {
         entry.model.group.removeFromParent();
@@ -410,7 +452,8 @@ export class View3D {
         entry = undefined;
       }
       if (!entry) {
-        const model = new CarModel(car.livery, { ghost: car.ghost, opacity: car.ghostOpacity });
+        const opts = { ghost: car.ghost, opacity: car.ghostOpacity };
+        const model: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : new CarModel(car.livery, opts);
         if (onboard) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);
@@ -451,7 +494,7 @@ export class View3D {
       this.cars.delete(id);
     }
     const mine = this.cars.get(own.id)!.model;
-    const def = this.cinema ? CAMS.chase : CAMS[this.mode];
+    const def = this.cinema ? CAMS.chase : camsFor(own.body)[this.mode];
     mine.driverVisible = !def.inside || this.lookBack;
     mine.haloVisible = !def.noHalo;
     // Head movement, camera shake and the wheel's vibration are one setting, off by default.
@@ -560,7 +603,7 @@ export class View3D {
       return;
     }
     const lift = this.heightAt(own.x, own.y, own.trackIndex);
-    const cam = this.lookBack ? LOOK_BACK : CAMS[this.mode];
+    const cam = this.lookBack ? (own.body === 'gt3' ? GT3_LOOK_BACK : LOOK_BACK) : camsFor(own.body)[this.mode];
     let heading = own.heading;
     if (cam.chase) {
       // The chase camera swings round behind the car a little late.

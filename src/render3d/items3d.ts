@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { rainbowColor } from '../render/items';
 import { HOOK_TIME, ITEM_INFO, MINE_RADIUS, SMOKE_RADIUS, ZAP_TIME, placeItemBoxes, type DropKind, type ItemState, type ItemView, type MissileKind } from '../sim/items';
 import type { Track } from '../track/track';
-import type { CarModel } from './carModel';
+import type { Car3d } from './carModel';
 
 /**
  * Party mode in 3D: glowing item boxes that spin, bob and pop back in, rockets and blue shells
@@ -521,7 +521,7 @@ export class Items3d {
     for (const geo of Object.values(g)) this.disposables.push(geo);
   }
 
-  update(frame: ItemsFrame, camera: THREE.Camera, dt: number, model: (id: string) => CarModel | undefined, ownId: string): void {
+  update(frame: ItemsFrame, camera: THREE.Camera, dt: number, model: (id: string) => Car3d | undefined, ownId: string): void {
     this.time += dt;
     const lifts = new Map(frame.cars.map((c) => [c.id, this.heightAt(c.x, c.y, c.trackIndex)]));
     this.updateBoxes(frame.view, camera);
@@ -800,7 +800,7 @@ export class Items3d {
     return { root, flame, shield, magnet, swirl, painted: false, zapPrev: 0, strikeUntil: 0, frozenPrev: false, froze: null, last: null };
   }
 
-  private updateCars(frame: ItemsFrame, lifts: Map<string, number>, dt: number, model: (id: string) => CarModel | undefined, ownId: string): void {
+  private updateCars(frame: ItemsFrame, lifts: Map<string, number>, dt: number, model: (id: string) => Car3d | undefined, ownId: string): void {
     const t = this.time;
     const byId = new Map(frame.cars.map((c) => [c.id, c]));
     const seen = new Set<string>();

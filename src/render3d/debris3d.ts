@@ -3,6 +3,8 @@ import type { Livery } from '../render/livery';
 import { debrisOpacity, type Debris } from '../sim/debris';
 import { COMPOUNDS } from '../sim/tyres';
 import { frontWingGeometry, rearWingGeometry } from './carModel';
+import { gt3RearWingGeometry, gt3SplitterGeometry } from './gt3Model';
+import type { CarClassId } from '../sim/carClass';
 
 const CARBON = '#1c1d20';
 const TYRE = '#161616';
@@ -10,6 +12,10 @@ const TYRE = '#161616';
 const FRONT_WING_X = 2.5;
 const REAR_WING_X = -2.57;
 const REAR_WING_Y = 0.66;
+/** The same for a GT3's splitter and rear wing (with its swan-neck mounts). */
+const GT3_SPLITTER_X = 2.15;
+const GT3_WING_X = -2.4;
+const GT3_WING_Y = 0.9;
 const WHEEL_RADIUS = 0.35;
 
 interface Piece {
@@ -40,13 +46,13 @@ export class Debris3d {
 
   constructor(private readonly heightAt: (x: number, y: number, index: number | null) => number) {}
 
-  update(debris: readonly Debris[], liveryOf: (owner: string) => Livery, time: number, dt: number): void {
+  update(debris: readonly Debris[], liveryOf: (owner: string) => Livery, time: number, dt: number, bodyOf: (owner: string) => CarClassId = () => 'f1'): void {
     const seen = new Set<number>();
     for (const p of debris) {
       seen.add(p.id);
       let piece = this.pieces.get(p.id);
       if (!piece) {
-        piece = this.make(p, liveryOf(p.owner));
+        piece = this.make(p, liveryOf(p.owner), bodyOf(p.owner));
         this.pieces.set(p.id, piece);
         this.group.add(piece.object);
       }
@@ -59,13 +65,17 @@ export class Debris3d {
     }
   }
 
-  private make(p: Debris, livery: Livery): Piece {
+  private make(p: Debris, livery: Livery, body: CarClassId): Piece {
     const object = new THREE.Group();
     if (p.kind === 'frontWing' || p.kind === 'rearWing') {
-      const key = `${p.kind}|${livery.wings}|${livery.endplates}`;
+      const key = `${body}|${p.kind}|${livery.wings}|${livery.endplates}`;
       let geo = this.geos.get(key);
       if (!geo) {
-        geo = p.kind === 'frontWing' ? frontWingGeometry(livery).translate(-FRONT_WING_X, 0, 0) : rearWingGeometry(livery).translate(-REAR_WING_X, -REAR_WING_Y, 0);
+        if (body === 'gt3') {
+          geo = p.kind === 'frontWing' ? gt3SplitterGeometry().translate(-GT3_SPLITTER_X, 0, 0) : gt3RearWingGeometry(livery).translate(-GT3_WING_X, -GT3_WING_Y, 0);
+        } else {
+          geo = p.kind === 'frontWing' ? frontWingGeometry(livery).translate(-FRONT_WING_X, 0, 0) : rearWingGeometry(livery).translate(-REAR_WING_X, -REAR_WING_Y, 0);
+        }
         this.geos.set(key, geo);
       }
       object.add(new THREE.Mesh(geo, this.body));
