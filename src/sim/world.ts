@@ -1,7 +1,7 @@
 import { LapTimer, type TimingEvent } from '../game/lapTimer';
 import { Car, type DriverInput } from '../physics/car';
-import { F1_CAR } from '../physics/carParams';
 import type { Track } from '../track/track';
+import { CAR_CLASSES, type CarClassId } from './carClass';
 import { resolveCollisions } from './collisions';
 import { collideCarDebris, debrisAlive, MAX_DEBRIS, moveDebris, spawnDebris, type Debris, type DebrisKind } from './debris';
 import { applyItemEffects, newItemState, type ItemState } from './items';
@@ -73,6 +73,8 @@ export interface Racer {
   color: string;
   /** Paint from the garage (`src/cosmetics/skins.ts`); none = the colour's team livery. */
   skin?: string;
+  /** What kind of car (F1, GT3): its physics, and whether it has DRS and ERS. */
+  carClass: CarClassId;
   car: Car;
   timer: LapTimer;
   tyres: Tyres;
@@ -172,12 +174,13 @@ export class RaceWorld {
     this.detections = track.drsZones.map(() => ({ time: -Infinity, id: '' }));
   }
 
-  addRacer(id: string, name: string, color: string, compound: Compound = 'medium'): Racer {
+  addRacer(id: string, name: string, color: string, compound: Compound = 'medium', carClass: CarClassId = 'f1'): Racer {
     const racer: Racer = {
       id,
       name,
       color,
-      car: new Car(F1_CAR, color),
+      carClass,
+      car: new Car(CAR_CLASSES[carClass].params, color),
       timer: new LapTimer(this.track),
       tyres: new Tyres(compound),
       input: { ...IDLE_INPUT, nextTyre: compound },
@@ -322,7 +325,7 @@ export class RaceWorld {
     const input = pitInput;
 
     // ERS: deploy on the throttle while the button is held; harvest under braking.
-    r.ersActive = input.ers && r.ers > 0 && car.throttle > 0.5 && !car.retired;
+    r.ersActive = CAR_CLASSES[r.carClass].ers && input.ers && r.ers > 0 && car.throttle > 0.5 && !car.retired;
     if (r.ersActive) r.ers = Math.max(0, r.ers - dt / ERS_DEPLOY_TIME);
     else r.ers = Math.min(1, r.ers + dt * (0.25 * car.brake + 0.01));
 
@@ -357,6 +360,12 @@ export class RaceWorld {
   }
 
   private updateDrs(r: Racer, prevS: number | null): void {
+    if (!CAR_CLASSES[r.carClass].drs) {
+      // No flap to open (GT3); it doesn't set the gap at detection lines either.
+      r.drsOpen = r.drsEligible = false;
+      r.drsHint = '';
+      return;
+    }
     const s = r.timer.lapDistance;
     const zones = this.track.drsZones;
     const eligible = r.drsZoneEligible;
