@@ -143,6 +143,13 @@ alone: DRS free in every zone, ERS, no other cars.
   the Hard bot's GT3/F1 lap ratio, 1.27-1.39x; `npx tsx scripts/class-medals.ts gt3`; compare with
   `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
   F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
+  **3D** (`src/render3d/gt3Model.ts`, `Gt3Model implements Car3d` like `CarModel`): closed body with
+  splitter, swan-neck wing, arches, race numbers; inside (own car only) a left-hand-drive race cockpit:
+  roll cage with padding, window net, bucket seat with head wings and a six-point harness, door foam,
+  switch panel, fire extinguisher, interior mirror, GT wheel with the display on the dash
+  (`SteeringWheel(livery, GT3_COCKPIT)`; the arms' IK takes a `Cockpit` layout). Its own cameras
+  (`camsFor` / `camNames`: roof, bonnet, bumper cams) and debris (splitter, wing). ~59 draw calls in
+  the cockpit.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,
