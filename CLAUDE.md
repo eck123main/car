@@ -143,8 +143,15 @@ alone: DRS free in every zone, ERS, no other cars.
   the Hard bot's GT3/F1 lap ratio, 1.27-1.39x; `npx tsx scripts/class-medals.ts gt3`; compare with
   `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
   F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
-  **3D** (`src/render3d/gt3Model.ts`, `Gt3Model implements Car3d` like `CarModel`): closed body with
-  splitter, swan-neck wing, arches, race numbers; inside (own car only) a left-hand-drive race cockpit:
+  **3D** (`src/render3d/gt3Model.ts`, `Gt3Model implements Car3d` like `CarModel`): the painted body
+  is one smooth shell (`src/render3d/gt3Skin.ts`: bonnet, fender humps you see from the seat, wide
+  rear haunches, ducktail; shape from `halfWidth` / `topHeight`) with glossy paint and the livery on a
+  canvas texture wrapped round it (`paintLivery`: an unwrap of the shell plus front and rear faces;
+  chevron colour splits with accent lines, stripes, carbon sills with a pinstripe, vents and louvres,
+  LED headlights, light bar, hexagon number plates; accent colour `accentOf` in `livery.ts`, also
+  the splitter lip, gurney flap and brake calipers). Splitter with canards, side skirts, diffuser,
+  two-element swan-neck wing, black ten-spoke wheels. The top-down car (`drawGt3.ts`) follows the
+  same design. Inside (own car only) a left-hand-drive race cockpit:
   roll cage with padding, window net, bucket seat with head wings and a six-point harness, door foam,
   switch panel, fire extinguisher, interior mirror, GT wheel with the display on the dash
   (`SteeringWheel(livery, GT3_COCKPIT)`; the arms' IK takes a `Cockpit` layout). Its own cameras
