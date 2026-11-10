@@ -1302,7 +1302,7 @@ export class GameScreen {
     );
     const recoverAt = spectating ? null : this.driver.recoverAt();
     drawHud(ctx, me.car, world.track.name, w, h, spectating ? '' : this.driver.resetHint, recoverAt !== null ? recoverAt - now : null);
-    drawDamage(ctx, me.car, w);
+    drawDamage(ctx, me.car, w, me.carClass);
     const session2 = this.driver.session();
     const advice = adviceFor(world, me, session2);
     drawRacerStatus(ctx, me, w, h, advice);

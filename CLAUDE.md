@@ -135,6 +135,14 @@ alone: DRS free in every zone, ERS, no other cars.
   chase a time it shouldn't move. Note: good players are ~20% faster than the Hard bot (they carry
   far more corner speed), so bot laps alone are not a pace reference.
 
+- **Car classes** (`src/sim/carClass.ts`): **F1** and **GT3** (`GT3_CAR` in `carParams.ts`: 1300 kg,
+  440 kW, half the downforce, tougher; no DRS, no ERS, flags on the class). Picked at the top of the
+  time trial menu (remembered, `f1td.tt.class`); **time trial only** for now. Each class is its own
+  category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
+  `track@gt3`, no database change), and GT3 medals are in `src/tracks/medals-gt3.json` (F1 author x
+  the Hard bot's GT3/F1 lap ratio, 1.27-1.39x; `npx tsx scripts/class-medals.ts gt3`; compare with
+  `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
+  F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,
