@@ -136,13 +136,22 @@ alone: DRS free in every zone, ERS, no other cars.
   far more corner speed), so bot laps alone are not a pace reference.
 
 - **Car classes** (`src/sim/carClass.ts`): **F1** and **GT3** (`GT3_CAR` in `carParams.ts`: 1300 kg,
-  440 kW, half the downforce, tougher; no DRS, no ERS, flags on the class). Picked at the top of the
+  365 kW at the wheels, ~600 kg of downforce at 250 km/h, tougher; no DRS, no ERS, flags on the class). Picked at the top of the
   time trial menu (remembered, `f1td.tt.class`); **time trial only** for now. Each class is its own
   category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
   `track@gt3`, no database change), and GT3 medals are in `src/tracks/medals-gt3.json` (F1 author x
-  the Hard bot's GT3/F1 lap ratio, 1.27-1.39x; `npx tsx scripts/class-medals.ts gt3`; compare with
+  the Hard bot's GT3/F1 lap ratio, 1.37-1.63x, above the real ~1.35x as the game's F1 has far more grip than a real one; `npx tsx scripts/class-medals.ts gt3`; compare with
   `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
   F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
+  **GT3 driving** (`CarParams.dynamics`, `Car.tyreStep`; F1 keeps the simple grip model): a real two-axle
+  tyre model with slip angles, a tyre curve that peaks then falls off, weight transfer, load sensitivity,
+  slip-based ABS and traction control, a six-speed gearbox with a power curve (`Car.gear`, `Car.revs`, used
+  by the HUD, wheel display, shift lights and sound). Measured with `npx tsx scripts/gt3-bench.ts` against
+  the real cars (`gt3Physics.test.ts`): 0-100 3.7 s, 0-200 9 s, 294 km/h, 200-0 in 94 m, 1.5 g slow and
+  ~1.9 g at 250 km/h. Keyboard aids, as a slip-angle model was once too hard on keys: full steering asks
+  for the limit of the tyres (speed-sensitive, `steerSlip`), caster turns the front wheels into a slide
+  (`selfAlign`), the rear's ABS backs off first. A test drives a lap on simulated on/off keys. Steer still
+  means a share of the max yaw, so `BotDriver` and `LineDriver` work unchanged; they plan with `planGrip`.
   **3D** (`src/render3d/gt3Model.ts`, `Gt3Model implements Car3d` like `CarModel`): the painted body
   is one smooth shell (`src/render3d/gt3Skin.ts`: bonnet, fender humps you see from the seat, wide
   rear haunches, ducktail; shape from `halfWidth` / `topHeight`) with glossy paint and the livery on a
@@ -156,7 +165,10 @@ alone: DRS free in every zone, ERS, no other cars.
   switch panel, fire extinguisher, interior mirror, GT wheel with the display on the dash
   (`SteeringWheel(livery, GT3_COCKPIT)`; the arms' IK takes a `Cockpit` layout). Its own cameras
   (`camsFor` / `camNames`: roof, bonnet, bumper cams) and debris (splitter, wing). ~59 draw calls in
-  the cockpit.
+  the cockpit. Paint and glass reflect a small painted sky per day/dusk/night (`paintReflections`, no extra
+  draw calls; the paint with a Fresnel falloff, the glass off from inside). Vents stand proud of the paint
+  (`addVents`), race fittings in `addFittings` (bonnet pins, tow straps, quick-fill, air jack), slicks with
+  rolled shoulders and sidewall lettering tinted by compound. Total length ~4.9 m with splitter and wing.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,
