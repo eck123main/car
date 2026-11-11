@@ -4,10 +4,12 @@ import type { Livery } from '../../render/livery';
 import type { SurfaceType } from '../../track/types';
 import { type Biome, type TimeOfDay } from '../../sim/openRoad/biomes';
 import type { Land } from '../../sim/openRoad/land';
-import { brakeHeat, CarModel, mirrorUv, type WheelInfo } from '../carModel';
+import type { CarClassId } from '../../sim/carClass';
+import { brakeHeat, CarModel, mirrorUv, type Car3d, type WheelInfo } from '../carModel';
+import { Gt3Model } from '../gt3Model';
 import { noiseTexture } from '../trackMesh';
 import { TyreFx3d, type TyreCar } from '../tyreFx3d';
-import { CAM3D_NAMES, CAM3D_ORDER, CAMS, LOOK_BACK, type Cam3d, EYE_POINT } from '../view3d';
+import { CAM3D_NAMES, CAM3D_ORDER, camsFor, lookBackFor, type Cam3d, EYE_POINT } from '../view3d';
 import { Motes, Sky, SKIES, Water, type SkyLook } from './atmosphere';
 import { Flora } from './flora';
 import { RoadMeshes } from './roadMesh';
@@ -128,7 +130,7 @@ export class OpenRoadView {
   private time: TimeOfDay;
   private timeOverride = false;
   private readonly sunDir = new THREE.Vector3(0, 1, 0);
-  private model: CarModel | null = null;
+  private model: Car3d | null = null;
   private liveryKey = '';
   private readonly mirrorTarget = new THREE.WebGLRenderTarget(MIRROR_SIZE[0], MIRROR_SIZE[1]);
   private readonly mirrorCamera = new THREE.PerspectiveCamera(MIRROR_FOV, MIRROR_SIZE[0] / MIRROR_SIZE[1], 1, MIRROR_FAR);
@@ -146,7 +148,10 @@ export class OpenRoadView {
   private moteBiome = '';
   private snapLook = true;
 
-  constructor(private readonly land: Land) {
+  constructor(
+    private readonly land: Land,
+    private readonly body: CarClassId = 'f1',
+  ) {
     this.canvas = document.createElement('canvas');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
@@ -276,12 +281,12 @@ export class OpenRoadView {
     }
   }
 
-  private updateCar(car: RoadCarView, dt: number): CarModel {
+  private updateCar(car: RoadCarView, dt: number): Car3d {
     const key = `${car.livery.body}|${car.livery.wings}`;
     if (!this.model || key !== this.liveryKey) {
       this.model?.group.removeFromParent();
       this.model?.dispose();
-      this.model = new CarModel(car.livery);
+      this.model = this.body === 'gt3' ? new Gt3Model(car.livery, { sky: 'day' }) : new CarModel(car.livery);
       this.model.addSteeringWheel();
       this.model.addMirrorGlass(this.mirrorTarget.texture);
       this.near.add(this.model.group);
@@ -297,7 +302,7 @@ export class OpenRoadView {
     this.pitch += (pitchTarget - this.pitch) * Math.min(1, dt * 8);
     m.group.position.y = car.z;
     m.group.rotation.z = this.pitch;
-    const def = this.lookBack ? LOOK_BACK : CAMS[this.mode];
+    const def = this.lookBack ? lookBackFor(this.body) : camsFor(this.body)[this.mode];
     m.driverVisible = !def.inside || this.lookBack;
     m.haloVisible = !def.noHalo;
     m.wheel?.drive(car.steer, car.speed, car.yawRate, car.wheel, dt, 0, car.slip, 0);
@@ -307,7 +312,7 @@ export class OpenRoadView {
   }
 
   private placeCamera(car: RoadCarView, dt: number): void {
-    const cam = this.lookBack ? LOOK_BACK : CAMS[this.mode];
+    const cam = this.lookBack ? lookBackFor(this.body) : camsFor(this.body)[this.mode];
     let heading = car.heading;
     if (cam.chase) {
       if (this.chaseHeading === null) this.chaseHeading = heading;
@@ -368,7 +373,7 @@ export class OpenRoadView {
     u.time.value = this.clock;
     u.pixels.value = this.pixelScale();
 
-    const def = this.lookBack ? LOOK_BACK : CAMS[this.mode];
+    const def = this.lookBack ? lookBackFor(this.body) : camsFor(this.body)[this.mode];
     if (this.mirror && this.mirrorFrame++ % 3 === 0) this.drawMirror(car);
 
     this.sky.mesh.position.copy(this.camera.position);

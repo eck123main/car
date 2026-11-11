@@ -1,3 +1,4 @@
+import type { TyreState } from '../physics/car';
 import type { TimerState } from '../game/lapTimer';
 import type { SafetyCarPhase, SafetyCarSnap } from '../sim/safetyCar';
 import type { Difficulty } from '../sim/ai/botDriver';
@@ -9,7 +10,7 @@ import type { Penalty, DrsHint } from '../sim/world';
 import type { TrackDef } from '../track/types';
 
 /** Bump when messages change, so mismatched builds refuse to connect. */
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 export const MAX_PLAYERS = 10;
 
 export interface LobbyPlayer extends PlayerInfo {
@@ -72,6 +73,8 @@ export interface CarSnap {
   next: Compound;
   /** Last input sequence number from this car's player that the host has applied. */
   ack: number;
+  /** Cars with the tyre model: what it remembers (`Car.tyreState`). */
+  ty?: TyreState;
   /** Party mode, only sent while there is something: item held, effects left (boost, rainbow, hooked; s), who hooked us, push (N). */
   it?: ItemKind | null;
   /** boost, rainbow, hooked, slip, shield, zap, magnet, ghost (s left). */

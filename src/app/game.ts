@@ -1,3 +1,4 @@
+import type { CarClassId } from '../sim/carClass';
 import { gameAudio, loudestSurface } from '../audio/sound';
 import { Keyboard, LocalControls, type Mouse } from '../game/input';
 import type { ClientGame, Pose } from '../net/client';
@@ -123,9 +124,10 @@ export class PracticeDriver implements GameDriver {
   constructor(
     private readonly track: Track,
     name: string,
+    carClass: CarClassId = 'f1',
   ) {
     this.w = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
-    this.w.addRacer(this.meId, name, '#e10600', 'medium');
+    this.w.addRacer(this.meId, name, '#e10600', 'medium', carClass);
     this.reset(true);
   }
 
@@ -850,6 +852,8 @@ export class GameScreen {
           lost: r.car.lost,
           trackIndex: r.car.trackIndex,
           upset: r.car.upset,
+          gear: r.car.gear,
+          revs: r.car.revs,
         },
       ];
     });
@@ -926,6 +930,7 @@ export class GameScreen {
         drsOpen: c.drs,
         compound: racer.tyres.compound,
         livery: skinLivery(racer.skin) ?? liveryFor(racer.color),
+        body: racer.carClass,
         trackIndex: c.trackIndex,
         lost: c.lost,
         speed: c.speed,
@@ -953,7 +958,7 @@ export class GameScreen {
             ...toView(main, c),
             speed: c.speed,
             yawRate: c.yawRate,
-            wheel: { speedKmh: c.speed * 3.6, drsOpen: c.drs, drsAvailable: false, ers: c.ers, ersActive: c.ersOn, limiter: false, throttle: c.throttle, tyre: COMPOUNDS[main.tyres.compound].name[0], wear: main.tyres.wear },
+            wheel: { speedKmh: c.speed * 3.6, gear: c.gear, revs: c.revs, drsOpen: c.drs, drsAvailable: false, ers: c.ers, ersActive: c.ersOn, limiter: false, throttle: c.throttle, tyre: COMPOUNDS[main.tyres.compound].name[0], wear: main.tyres.wear },
           },
           others,
           step,

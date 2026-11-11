@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Track } from '../track/track';
 import { TRACKS } from '../tracks';
-import { laneCentre, PIT_SPEED_LIMIT } from './pit';
+import { Car } from '../physics/car';
+import { GT3_CAR } from '../physics/carParams';
+import { fastLane, laneCentre, newPitState, PIT_SPEED_LIMIT, updatePit } from './pit';
 import { IDLE_INPUT, penaltyTime, RaceWorld, type PlayerInput, type Racer, type WorldEvent } from './world';
 
 const DT = 1 / 120;
@@ -165,3 +167,63 @@ for (const id of ['silverstone', 'test'] as const) {
     });
   });
 }
+
+describe('Pit lane traffic', () => {
+  it('two cars stopped side by side and angled in never wait for each other', () => {
+    const track = new Track(TRACKS.silverstone);
+    const lane = track.pit!;
+    const i = Math.floor((lane.entry + 30) / 2);
+    const [a, b] = [track.samples[i], track.samples[i + 1]];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const [tx, ty] = [(b.x - a.x) / len, (b.y - a.y) / len];
+    const heading = Math.atan2(ty, tx);
+    const place = (along: number, across: number, turn: number) => {
+      const car = new Car(GT3_CAR, 'red');
+      const off = fastLane(track, a.halfWidth) + across;
+      car.x = a.x + a.nx * off + tx * along;
+      car.y = a.y + a.ny * off + ty * along;
+      car.heading = heading + turn;
+      return car;
+    };
+    // Each points across the other's nose, so by heading alone each is "behind" the other.
+    const side = Math.sign(tx * a.ny - ty * a.nx);
+    const front = place(0.2, 0.6, -0.3 * side);
+    const back = place(0, -0.6, 0.3 * side);
+    const inputs = [[front, back], [back, front]].map(([me, other]) => {
+      const pit = newPitState(lane.boxes.length - 1);
+      pit.phase = 'in';
+      return updatePit(track, pit, me, IDLE_INPUT, 0, 'x', [], [other]);
+    }) as PlayerInput[];
+    expect(inputs[0].throttle).toBe(1);
+    expect(inputs[1].throttle).toBe(0);
+  });
+
+  for (const id of ['silverstone', 'fuji', 'dijon']) {
+    it(`${id}: a GT3 diving into the lane far too fast still ends up in its box`, () => {
+      const track = new Track(TRACKS[id]);
+      const lane = track.pit!;
+      const world = new RaceWorld(track, { drsRule: 'free', wetness: 0 });
+      const r = world.addRacer('a', 'A', 'red', 'medium', 'gt3');
+      const t = track.samples[Math.floor((lane.wallStart + 4) / 2) % track.samples.length];
+      const off = fastLane(track, t.halfWidth);
+      const h = Math.atan2(t.ty, t.tx);
+      r.car.place(t.x + t.nx * off, t.y + t.ny * off, h);
+      r.car.vx = Math.cos(h) * 45;
+      r.car.vy = Math.sin(h) * 45;
+      for (let s = 0; s < 45 && r.pit.phase !== 'stopped'; s += DT) world.step(DT, new Map([['a', { ...IDLE_INPUT, throttle: 1 }]]));
+      expect(r.pit.phase).toBe('stopped');
+    });
+  }
+
+  it('a car spun back onto the track side of the pit wall is let go', () => {
+    const track = new Track(TRACKS.silverstone);
+    const lane = track.pit!;
+    const t = track.samples[Math.floor((lane.wallStart + 20) / 2) % track.samples.length];
+    const car = new Car(GT3_CAR, 'red');
+    car.place(t.x, t.y, Math.atan2(t.ty, t.tx));
+    const pit = newPitState(0);
+    pit.phase = 'in';
+    expect(updatePit(track, pit, car, IDLE_INPUT, 0, 'x', [])).toEqual(IDLE_INPUT);
+    expect(pit.phase).toBe('out');
+  });
+});

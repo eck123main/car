@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Track } from '../../track/track';
 import { REAL_TRACK_IDS, TRACKS } from '../../tracks';
-import { DEFAULT_SETTINGS, Session, type SessionEvent } from '../session';
+import { CAR_CLASSES, type CarClassId } from '../carClass';
+import { DEFAULT_SETTINGS, Session, type GameMode, type SessionEvent } from '../session';
 import { RaceWorld, type PlayerInput } from '../world';
 import { BotDriver, DIFFICULTIES, type Difficulty } from './botDriver';
 import { racingLine } from './racingLine';
@@ -104,11 +105,11 @@ describe('Bot racecraft', () => {
   });
 });
 
-function race(id: string, grid: Difficulty[], laps: number, qualifying: boolean) {
+function race(id: string, grid: Difficulty[], laps: number, qualifying: boolean, carClass: CarClassId = 'f1', mode: GameMode = 'classic') {
   const track = new Track(TRACKS[id]);
   const players = grid.map((d, i) => ({ id: `b${i}`, name: `${d} ${i}`, color: 'red' }));
-  const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: id, laps, qualifying }, players);
-  const bots = grid.map((d, i) => new BotDriver(track, `b${i}`, d));
+  const session = new Session(track, { ...DEFAULT_SETTINGS, trackId: id, laps, qualifying, carClass, mode }, players);
+  const bots = grid.map((d, i) => new BotDriver(track, `b${i}`, d, CAR_CLASSES[carClass].params));
   const events: SessionEvent[] = [];
   for (let t = 0; t < 1500 && session.phase !== 'finished'; t += DT) {
     const ctx = { phase: session.phase, raceStart: session.raceStart, laps, mandatoryStop: true };
@@ -120,6 +121,24 @@ function race(id: string, grid: Difficulty[], laps: number, qualifying: boolean)
 }
 
 describe('Bot races', () => {
+  for (const id of ['silverstone', 'monaco', 'spa', 'suzuka']) {
+    it(`a GT3 grid races a full weekend at ${id}, every car a GT3, stops and all`, () => {
+      const grid: Difficulty[] = ['hard', 'medium', 'easy', 'hard', 'medium', 'easy'];
+      const { session, events } = race(id, grid, 4, true, 'gt3');
+      expect(session.phase).toBe('finished');
+      expect(session.world.racers.every((r) => r.carClass === 'gt3')).toBe(true);
+      expect(session.standings().filter((s) => s.status === 'dnf')).toHaveLength(0);
+      expect(session.world.racers.every((r) => r.pit.stops >= 1)).toBe(true);
+      expect(session.world.racers.some((r) => r.drsOpen || r.ersActive)).toBe(false);
+      expect(events.filter((e) => e.kind === 'contact' && e.verdict === 'yourFault').length).toBeLessThanOrEqual(6);
+    }, 120_000);
+  }
+
+  it('a GT3 party race finishes', () => {
+    const { session } = race('silverstone', ['hard', 'medium', 'easy', 'hard'], 3, false, 'gt3', 'party');
+    expect(session.phase).toBe('finished');
+  }, 120_000);
+
   it('a mixed grid races a full weekend without crashing out', () => {
     const grid: Difficulty[] = ['hard', 'medium', 'easy', 'hard', 'medium', 'easy', 'medium', 'hard'];
     const { session, events } = race('silverstone', grid, 4, true);

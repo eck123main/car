@@ -132,6 +132,38 @@ describe('Online race', () => {
     expect(c.session?.phase).toBe('race');
   });
 
+  it('a GT3 race: every car is a GT3 on host and client, and prediction stays close', () => {
+    const { host, join, tick } = setup(0.05);
+    const c = join('Alice');
+    for (let i = 0; i < 20; i++) tick();
+    host.updateSettings({ trackId: 'test', qualifying: false, laps: 2, carClass: 'gt3' });
+    expect(host.addBot('medium')).toBe(true);
+    for (let i = 0; i < 20; i++) tick();
+    expect(c.lobby?.settings.carClass).toBe('gt3');
+    host.start();
+    for (let i = 0; i < 20; i++) tick();
+    expect(host.session!.world.racers.every((r) => r.carClass === 'gt3')).toBe(true);
+    expect(c.world?.racers.every((r) => r.carClass === 'gt3')).toBe(true);
+    expect(c.me?.car.params.mass).toBe(host.session!.world.racers[0].car.params.mass);
+
+    let maxCorrection = 0;
+    for (let t = 0; t < 25; t += DT) {
+      const session = host.session!;
+      const waiting = session.phase === 'grid' || session.phase === 'lights';
+      host.step(DT, { ...botInput(session.track, session.world.racer(HostGame.HOST_ID)!, { hold: waiting }), ready: true });
+      const me = c.me;
+      c.step(DT, me && c.track ? { ...botInput(c.track, me, { hold: c.session?.phase !== 'race', offset: 3 }), ready: true } : READY);
+      c.flush();
+      tick();
+      if (session.phase === 'race' && session.world.time - session.raceStart > 2) maxCorrection = Math.max(maxCorrection, c.lastCorrection);
+    }
+    expect(host.session!.progress(host.session!.world.racer(c.id!)!)).toBeGreaterThan(150);
+    expect(maxCorrection).toBeGreaterThan(0);
+    expect(maxCorrection).toBeLessThan(1);
+    // The gearbox reaches clients, for the display and the sound of cars they watch.
+    expect(c.world!.racer(HostGame.HOST_ID)!.car.gear).toBeGreaterThan(0);
+  });
+
   it("a client's DRS works: the host opens it, and the client sees it and drives with it", () => {
     const { host, join, tick } = setup(0.05);
     const c = join('Alice');

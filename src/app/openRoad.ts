@@ -1,3 +1,4 @@
+import { CAR_CLASSES, type CarClassId } from '../sim/carClass';
 import { Ambient } from '../audio/ambient';
 import { gameAudio, gearFor, loudestSurface } from '../audio/sound';
 import { skinLivery } from '../cosmetics/skins';
@@ -77,11 +78,12 @@ export class OpenRoadScreen {
     mapId: string,
     seed: number,
     private readonly skin: string | null | undefined,
+    private readonly carClass: CarClassId = 'f1',
   ) {
     this.ctx = canvas.getContext('2d')!;
     this.controls = new LocalControls(keyboard, mouse);
-    this.drive = new OpenRoadDrive(mapId, seed);
-    this.pilot = new RoadPilot(this.drive.road);
+    this.drive = new OpenRoadDrive(mapId, seed, carClass);
+    this.pilot = new RoadPilot(this.drive.road, carClass);
     this.savedKm = Number(read(KM_KEY)) || 0;
     this.ambient.musicOn = read(MUSIC_KEY) === 'on';
   }
@@ -101,7 +103,7 @@ export class OpenRoadScreen {
     import('../render3d/openRoad/view')
       .then(({ OpenRoadView, CAM3D_ORDER }) => {
         if (!this.running) return;
-        const view = new OpenRoadView(this.drive.land);
+        const view = new OpenRoadView(this.drive.land, this.carClass);
         const found = CAM3D_ORDER.find((c) => c === read(CAMERA_KEY));
         if (found) view.mode = found;
         Object.assign(view.canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh' });
@@ -345,7 +347,7 @@ export class OpenRoadScreen {
         front: car.surfaceFront,
         rear: car.surfaceRear,
         livery: skinLivery(this.skin ?? undefined) ?? liveryFor(car.color),
-        wheel: { speedKmh, drsOpen: drive.drsOpen, drsAvailable: car.speed > 40 && !drive.drsOpen, ers: drive.ers, ersActive: drive.ersActive, limiter: false, throttle: car.throttle, tyre: 'M', wear: 0 },
+        wheel: { speedKmh, gear: car.gear, revs: car.revs, drsOpen: drive.drsOpen, drsAvailable: car.speed > 40 && !drive.drsOpen, ers: drive.ers, ersActive: drive.ersActive, limiter: false, throttle: car.throttle, tyre: 'M', wear: 0 },
       },
       dt,
     );
@@ -374,6 +376,8 @@ export class OpenRoadScreen {
         limiter: false,
         stopped: false,
         lights: 0,
+        gear: car.gear,
+        revs: car.revs,
       },
       dt,
     );
@@ -412,13 +416,15 @@ export class OpenRoadScreen {
     ctx.font = '700 44px system-ui, sans-serif';
     ctx.fillText(String(Math.round(speedKmh)), 18, h - 44);
     ctx.font = '500 13px system-ui, sans-serif';
-    ctx.fillText(`km/h · gear ${gearFor(speedKmh)}${this.autopilot ? ' · AUTOPILOT' : ''}${drive.drsOpen ? ' · DRS' : ''}`, 18, h - 24);
+    ctx.fillText(`km/h · gear ${drive.car.gear || gearFor(speedKmh)}${this.autopilot ? ' · AUTOPILOT' : ''}${drive.drsOpen ? ' · DRS' : ''}`, 18, h - 24);
     // ERS, under the speed.
     ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(18, h - 15, 120, 4);
-    ctx.fillStyle = drive.ersActive ? '#ffd400' : '#7fd8ff';
-    ctx.fillRect(18, h - 15, 120 * drive.ers, 4);
+    if (CAR_CLASSES[this.carClass].ers) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(18, h - 15, 120, 4);
+      ctx.fillStyle = drive.ersActive ? '#ffd400' : '#7fd8ff';
+      ctx.fillRect(18, h - 15, 120 * drive.ers, 4);
+    }
     ctx.shadowBlur = 6;
     ctx.fillStyle = '#ffffff';
     ctx.font = '600 15px system-ui, sans-serif';

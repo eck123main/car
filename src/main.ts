@@ -5,7 +5,7 @@ import { OPEN_ROAD_MAPS } from './sim/openRoad/biomes';
 import { showGarage } from './app/garage';
 import { equippedSkin } from './net/wallet';
 import { boardKey, isCarClassId, type CarClassId } from './sim/carClass';
-import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showOpenRoadMenu, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
+import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showOpenRoadMenu, showPracticeMenu, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
 import { accounts } from './net/accounts';
 import { gameAudio } from './audio/sound';
@@ -190,12 +190,40 @@ function openTyrePicker(g: GameScreen, driver: GameDriver): () => void {
   );
 }
 
+// ---------- The car, for everything but time trial (which remembers its own)
+
+const CLASS_KEY = 'f1td.class';
+
+function savedClass(): CarClassId {
+  try {
+    const saved = localStorage.getItem(CLASS_KEY);
+    if (isCarClassId(saved)) return saved;
+  } catch {
+    // Remembering it is a convenience only.
+  }
+  return 'f1';
+}
+
+function saveClass(cls: CarClassId): void {
+  try {
+    localStorage.setItem(CLASS_KEY, cls);
+  } catch {
+    // Remembering it is a convenience only.
+  }
+}
+
 // ---------- Practice
 
 function practice(name: string): void {
+  stopGame();
+  showPracticeMenu(savedClass(), (cls) => drivePractice(name, cls), home);
+}
+
+function drivePractice(name: string, cls: CarClassId): void {
+  saveClass(cls);
   const id = params.get('track') ?? DEFAULT_TRACK;
   const def = trackDef(id) ?? TRACKS[DEFAULT_TRACK];
-  const driver = new PracticeDriver(new Track(def), name);
+  const driver = new PracticeDriver(new Track(def), name, cls);
   driver.world().racers[0].skin = equippedSkin();
   runGame(driver, { menuNote: 'Practice: R puts you back on track.' });
 }
@@ -204,14 +232,23 @@ function practice(name: string): void {
 
 function openRoad(): void {
   stopGame();
-  showOpenRoadMenu(OPEN_ROAD_MAPS, driveOpenRoad, home);
+  showOpenRoadMenu(
+    OPEN_ROAD_MAPS,
+    savedClass(),
+    (cls) => {
+      saveClass(cls);
+      openRoad();
+    },
+    driveOpenRoad,
+    home,
+  );
 }
 
 /** A new road every time. */
 function driveOpenRoad(mapId: string): void {
   stopGame();
   clearUi();
-  const screen = new OpenRoadScreen(canvas, keyboard, mouse, mapId, Math.floor(Math.random() * 2 ** 31), equippedSkin());
+  const screen = new OpenRoadScreen(canvas, keyboard, mouse, mapId, Math.floor(Math.random() * 2 ** 31), equippedSkin(), savedClass());
   road = screen;
   screen.onMenu = () => {
     screen.setPaused(true);
@@ -284,7 +321,7 @@ async function host(name: string, offline: boolean, mode: GameMode = 'classic'):
   try {
     const transport = offline ? new OfflineTransport() : await createHost();
     hostGame = new HostGame(transport, name, trackDef, undefined, equippedSkin());
-    if (mode !== 'classic') hostGame.updateSettings({ mode });
+    hostGame.updateSettings({ mode, carClass: savedClass() });
     // A bots race starts with a few opponents ready to go.
     if (offline) for (const d of ['hard', 'medium', 'medium', 'easy', 'easy'] as const) hostGame.addBot(d);
     // Dev server only: the race is reachable from the browser console, for testing.
@@ -329,7 +366,10 @@ async function host(name: string, offline: boolean, mode: GameMode = 'classic'):
       isHost: true,
       inviteLink: invite,
       tracks: trackList(),
-      onSettings: (c) => hostGame.updateSettings(c),
+      onSettings: (c) => {
+        if (c.carClass) saveClass(c.carClass);
+        hostGame.updateSettings(c);
+      },
       onAddBot: (d) => hostGame.addBot(d),
       onRemoveBot: (id) => hostGame.removeBot(id),
       onStart: () => {

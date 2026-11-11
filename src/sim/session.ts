@@ -1,5 +1,6 @@
 import type { Track } from '../track/track';
 import { HIT_NAMES, ItemSystem, KNOCKOUT_WAIT, newItemState, type ItemHit } from './items';
+import { CAR_CLASSES, type CarClassId } from './carClass';
 import { HELD_UP_GRACE, holdingUp, SafetyCar, safetyCarProfile, SC_LEAD } from './safetyCar';
 import { DRY_COMPOUNDS } from './tyres';
 import { penaltyTime, raceProgress, RaceWorld, type PlayerInput, type Racer, type WorldEvent } from './world';
@@ -11,6 +12,8 @@ export type GameMode = 'classic' | 'party';
 /** Chosen by the lobby host. */
 export interface RaceSettings {
   mode: GameMode;
+  /** The kind of car everyone drives: one class per race, never mixed. */
+  carClass: CarClassId;
   trackId: string;
   laps: number;
   qualifying: boolean;
@@ -29,6 +32,7 @@ export interface RaceSettings {
 
 export const DEFAULT_SETTINGS: RaceSettings = {
   mode: 'classic',
+  carClass: 'f1',
   trackId: 'silverstone',
   laps: 5,
   qualifying: true,
@@ -173,7 +177,7 @@ export class Session {
   ) {
     this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false, collisions: false });
     this.items = settings.mode === 'party' ? new ItemSystem(track) : null;
-    for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium').skin = p.skin;
+    for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium', settings.carClass).skin = p.skin;
     this.world.options.wetness = this.wetnessAt(0);
     this.phase = settings.qualifying ? 'qualifying' : 'grid';
     if (settings.qualifying) this.startQualifying();
@@ -503,7 +507,7 @@ export class Session {
     const sc = this.safetyCar;
     if (!sc) {
       if (newWreck && leader && this.canDeploySafetyCar(leader)) {
-        this.safetyCar = new SafetyCar(this.track, this.progress(leader) + SC_LEAD, now);
+        this.safetyCar = new SafetyCar(this.track, this.progress(leader) + SC_LEAD, now, CAR_CLASSES[this.settings.carClass].params);
         this.safetyCars++;
         this.restartPending = false;
         this.pairOrder.clear();
@@ -604,7 +608,7 @@ export class Session {
         now - (this.lastInPits.get(r.id) ?? -Infinity) > PIT_REJOIN_GRACE,
     );
     const ids = new Set(bound.map((r) => r.id));
-    const profile = safetyCarProfile(this.track);
+    const profile = safetyCarProfile(this.track, CAR_CLASSES[this.settings.carClass].params);
     for (const r of this.world.racers) {
       const planned = r.car.trackIndex === null ? Infinity : profile[r.car.trackIndex];
       const pace = Math.min(planned, this.safetyCar?.speed ?? Infinity);

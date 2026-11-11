@@ -20,6 +20,9 @@ export interface ReplayCar {
   /** Which stretch of track it's on (for the road height where two cross). */
   trackIndex?: number | null;
   upset?: number;
+  /** A car with its own gearbox: gear (0 = none) and revs (0-1). */
+  gear?: number;
+  revs?: number;
 }
 
 /** A moment worth seeing again. */
@@ -29,7 +32,7 @@ export interface Moment {
   score: number;
 }
 
-const FIELDS = 15;
+const FIELDS = 17;
 const RATE = 20;
 const SECONDS = 150;
 /** A moment's clip starts this long before it (s). */
@@ -39,7 +42,7 @@ export const MOMENT_AFTER = 2.5;
 export const MOMENT_SPEED = 0.4;
 
 function pack(c: ReplayCar): number[] {
-  return [c.x, c.y, c.heading, c.steer, c.speed, c.brake, c.throttle, c.slip, c.yawRate, c.drs ? 1 : 0, c.ers, c.ersOn ? 1 : 0, c.lost, c.trackIndex ?? -1, c.upset ?? 0];
+  return [c.x, c.y, c.heading, c.steer, c.speed, c.brake, c.throttle, c.slip, c.yawRate, c.drs ? 1 : 0, c.ers, c.ersOn ? 1 : 0, c.lost, c.trackIndex ?? -1, c.upset ?? 0, c.gear ?? 0, c.revs ?? 0];
 }
 
 export class ReplayRecorder {
@@ -164,6 +167,8 @@ export class ReplayRecorder {
       lost: ring[ia + 12],
       trackIndex: ring[ia + 13] < 0 ? null : ring[ia + 13],
       upset: ring[ia + 14],
+      gear: ring[ia + 15],
+      revs: mix(16),
     };
   }
 }

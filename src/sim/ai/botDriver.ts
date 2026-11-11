@@ -85,6 +85,12 @@ const DEBRIS_CLEARANCE = 2.6;
  * speed for each corner, avoids and overtakes cars ahead, uses DRS/ERS, pits when the race
  * engineer says so, and gets itself unstuck. Runs only on the host.
  */
+/** Cars with the tyre model start slowing for the pit entry from this far out (m), at this rate (m/s²). */
+const PIT_BRAKING_RANGE = 220;
+const PIT_BRAKING = 9;
+/** ...and start moving over to the pit side from this far out (m). */
+const PIT_LINE_UP = 170;
+
 export class BotDriver {
   private readonly skill: Skill;
   private readonly line: RacingLine;
@@ -121,7 +127,7 @@ export class BotDriver {
     this.skill = SKILL[difficulty];
     this.line = racingLine(track);
     this.profile = speedProfile(track, this.line, params, this.skill.pace);
-    this.scProfile = safetyCarProfile(track);
+    this.scProfile = safetyCarProfile(track, params);
     const [lo, hi] = this.skill.reaction;
     this.reaction = lo + (hi - lo) * hash01(id);
   }
@@ -157,7 +163,7 @@ export class BotDriver {
       this.reverseUntil = world.time + 1.2;
     }
     // Still going nowhere after several tries (e.g. wedged in a barrier): press R, like a player.
-    if (ctx.phase === 'race' && me.pit.phase === 'out') {
+    if (ctx.phase === 'race' && me.pit.phase === 'out' && !me.frozen) {
       // The clock starts at lights out (or when we last got going again).
       if (this.progressMark.t < ctx.raceStart) this.progressMark = { s: q.s, t: world.time };
       if (this.track.forwardDistance(this.progressMark.s, q.s) > 10 && this.track.forwardDistance(this.progressMark.s, q.s) < 100) {
@@ -208,6 +214,15 @@ export class BotDriver {
         // of a corner that comes just before the pit entry).
         wanted = lane.side * (q.sample.halfWidth - 2.5);
         speedCap = Math.min(speedCap, 16 + toEntry * 0.4);
+      }
+      // A car with real tyres and brakes needs longer: to slow to pit entry speed, and to move
+      // across gently, as a late swerve at speed spins it.
+      if (!inLane && car.params.dynamics && toEntry < PIT_BRAKING_RANGE) {
+        speedCap = Math.min(speedCap, Math.sqrt(16 * 16 + 2 * PIT_BRAKING * toEntry));
+        if (toEntry >= 60 && toEntry < PIT_LINE_UP) {
+          const share = (PIT_LINE_UP - toEntry) / (PIT_LINE_UP - 60);
+          wanted += (lane.side * (q.sample.halfWidth - 2.5) - wanted) * share;
+        }
       }
     }
     const collisionsOn = world.options.collisions !== false;
