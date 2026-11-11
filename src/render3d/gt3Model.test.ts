@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { armJoints, raisedHand } from './carModel';
-import { GT3_COCKPIT, GT3_EYE, raceNumber } from './gt3Model';
+import { GT3_COCKPIT, GT3_EYE, gt3RearWingGeometry, gt3SplitterGeometry, raceNumber } from './gt3Model';
 import { FRONT_AXLE, halfWidth, REAR_AXLE, shellGeometry, sideBottom, topHeight } from './gt3Skin';
 import { GT3_CAMS, camNames } from './view3d';
 
@@ -83,5 +83,22 @@ describe('GT3 body shell', () => {
       const c = [0, 1, 2].map((k) => [0, 1, 2].reduce((sum, v) => sum + pos[idx[t + v] * 3 + k], 0) / 3);
       if (c[0] > -0.9 && c[0] < 0.55 && Math.abs(c[2]) < 0.7) expect(c[1] < 0.2 || c[1] > 1.26).toBe(true);
     }
+  });
+});
+
+describe('GT3 proportions', () => {
+  const box = (g: THREE.BufferGeometry) => new THREE.Box3().setFromBufferAttribute(g.getAttribute('position') as THREE.BufferAttribute);
+  const livery = { body: '#d40000', nose: '#d40000', wings: '#1a1a1a', endplates: '#d40000', helmet: '#ffd400' };
+
+  it('is about as long as the real cars with the splitter and wing on', () => {
+    const length = box(gt3SplitterGeometry()).max.x - box(gt3RearWingGeometry(livery)).min.x;
+    expect(length).toBeGreaterThan(4.6);
+    expect(length).toBeLessThan(4.95);
+  });
+
+  it('carries the wing about level with the roof', () => {
+    const wing = box(gt3RearWingGeometry(livery));
+    expect(wing.max.y).toBeLessThan(1.45);
+    expect(wing.max.y).toBeGreaterThan(1.3);
   });
 });

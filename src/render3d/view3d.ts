@@ -104,7 +104,7 @@ export const GT3_CAMS: Record<Cam3d, CamDef> = {
   tcam: { eye: [-0.45, 1.58, 0], look: [30, 0.2, 0], fov: 60 },
   nose: { eye: [1.15, 0.98, 0], look: [30, 0.3, 0], fov: 66 },
   wing: { eye: [2.33, 0.36, -0.36], look: [30, 0.25, -0.36], fov: 68 },
-  tail: { eye: [-2.45, 1.55, 0], look: [30, 0.3, 0], fov: 64 },
+  tail: { eye: [-2.2, 1.5, 0], look: [30, 0.3, 0], fov: 64 },
   chase: CAMS.chase,
   far: CAMS.far,
 };
@@ -452,7 +452,7 @@ export class View3D {
         entry = undefined;
       }
       if (!entry) {
-        const opts = { ghost: car.ghost, opacity: car.ghostOpacity };
+        const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
         const model: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : new CarModel(car.livery, opts);
         if (onboard) {
           model.addSteeringWheel();
