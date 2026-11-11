@@ -663,7 +663,10 @@ export function showLobby(v: LobbyView): void {
     const ghost = el('input', { type: 'checkbox', checked: s.noContact, onchange: () => v.onSettings({ noContact: ghost.checked }) });
     const gap = el('select', { onchange: () => v.onSettings({ releaseGap: Number(gap.value) }) });
     for (const g of [10, 15]) gap.add(new Option(`${g} s`, String(g), false, g === s.releaseGap));
+    const cars = el('select', { onchange: () => v.onSettings({ carClass: cars.value as CarClassId }) });
+    for (const id of CAR_CLASS_ORDER) cars.add(new Option(CAR_CLASSES[id].name, id, false, id === s.carClass));
     row('Mode', mode);
+    row('Cars (everyone drives the same)', cars);
     row('Track', track);
     row('Laps', laps);
     row('Weather', weather);
@@ -675,6 +678,7 @@ export function showLobby(v: LobbyView): void {
     row('No contact (cars pass through)', ghost);
   } else {
     row('Mode', MODES[s.mode] ?? MODES.classic);
+    row('Cars', CAR_CLASSES[s.carClass]?.name ?? CAR_CLASSES.f1.name);
     row('Track', trackName);
     row('Laps', String(s.laps));
     row('Weather', WEATHER[s.weather]);
@@ -950,7 +954,7 @@ export function markTrackDriven(track: string): void {
 }
 
 /** Open road: pick a landscape. A little painted card for each, from its colours. */
-export function showOpenRoadMenu(maps: readonly OpenRoadMap[], onDrive: (id: string) => void, onBack: () => void): void {
+export function showOpenRoadMenu(maps: readonly OpenRoadMap[], carClass: CarClassId, onClass: (cls: CarClassId) => void, onDrive: (id: string) => void, onBack: () => void): void {
   const card = (m: OpenRoadMap) => {
     const [sky, far, near, road] = m.card;
     const art = `<svg viewBox="0 0 160 80" preserveAspectRatio="none" style="display:block;width:100%;height:72px;border-radius:8px 8px 0 0"><rect width="160" height="80" fill="${sky}"/><path d="M0 46 28 26 52 42 82 18 112 40 136 28 160 44V80H0Z" fill="${far}"/><path d="M0 52C40 44 110 60 160 50V80H0Z" fill="${near}"/><path d="M74 50h12L126 80H34Z" fill="${road}"/><path d="M80 53v5M80 62v7M80 73v7" stroke="#eee" stroke-width="1.2"/></svg>`;
@@ -971,7 +975,8 @@ export function showOpenRoadMenu(maps: readonly OpenRoadMap[], onDrive: (id: str
         'div',
         { class: 'card wide' },
         el('h1', {}, 'Open road'),
-        el('p', { class: 'sub' }, 'No track, no timer. The same car on a road that never ends. Pick where to go.'),
+        el('p', { class: 'sub' }, 'No track, no timer. A race car on a road that never ends. Pick your car and where to go.'),
+        carChoices(carClass, (id) => id !== carClass && onClass(id)),
         el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:12px 0' }, ...maps.map(card)),
         el('div', { class: 'buttons' }, el('button', { onclick: onBack }, 'Back')),
       ),
@@ -1001,6 +1006,41 @@ function carIcon(cls: CarClassId): HTMLCanvasElement {
   return canvas;
 }
 
+/** The car cards: one per class, the chosen one marked. */
+function carChoices(selected: CarClassId | null, onPick: (id: CarClassId) => void): HTMLElement {
+  return el(
+    'div',
+    { class: 'car-picker' },
+    ...CAR_CLASS_ORDER.map((id) =>
+      el(
+        'button',
+        { class: `car-choice${id === selected ? ' selected' : ''}`, onclick: () => onPick(id) },
+        carIcon(id),
+        el('b', {}, CAR_CLASSES[id].name),
+        el('small', { class: 'muted' }, CAR_CLASSES[id].blurb),
+      ),
+    ),
+  );
+}
+
+/** Practice: pick a car and go. */
+export function showPracticeMenu(selected: CarClassId, onDrive: (cls: CarClassId) => void, onBack: () => void): void {
+  show(
+    el(
+      'div',
+      { class: 'screen' },
+      el(
+        'div',
+        { class: 'card wide' },
+        el('h1', {}, 'Practice'),
+        el('p', { class: 'sub' }, 'Alone on track, no pressure. Pick your car.'),
+        carChoices(selected, onDrive),
+        el('div', { class: 'buttons' }, el('button', { onclick: onBack }, 'Back')),
+      ),
+    ),
+  );
+}
+
 /** Time trial: pick a track, see its leaderboard, drive. */
 export function showTimeTrialMenu(m: TimeTrialMenu): void {
   // The track list: a stand-in for a <select> (`select.value`), which can't show badges.
@@ -1008,19 +1048,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   /** Where this car's laps on a track are kept. */
   const key = (track: string) => boardKey(track, m.carClass);
   const cls = CAR_CLASSES[m.carClass];
-  const carPicker = el(
-    'div',
-    { class: 'car-picker' },
-    ...CAR_CLASS_ORDER.map((id) =>
-      el(
-        'button',
-        { class: `car-choice${id === m.carClass ? ' selected' : ''}`, onclick: () => id !== m.carClass && m.onClass(id, select.value) },
-        carIcon(id),
-        el('b', {}, CAR_CLASSES[id].name),
-        el('small', { class: 'muted' }, CAR_CLASSES[id].blurb),
-      ),
-    ),
-  );
+  const carPicker = carChoices(m.carClass, (id) => id !== m.carClass && m.onClass(id, select.value));
   const driven = drivenTracks();
   const search = el('input', { type: 'text', placeholder: 'Search tracks', style: 'flex:1;min-width:0' });
   let filter: 'all' | 'new' | 'driven' = 'all';
