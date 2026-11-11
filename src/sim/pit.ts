@@ -54,6 +54,8 @@ export function boxLane(track: Track, halfWidth: number): number {
 const BOX_TURN_IN = 7;
 /** How far ahead the autopilot aims (m). */
 const AIM = 6;
+/** Steering limit for cars with real tyres: this over the speed in m/s, so full lock only at a crawl. */
+const REAL_CAR_STEER = 16;
 
 /**
  * Advance a car's pit state. Returns the input to use this step (the autopilot's while
@@ -90,7 +92,8 @@ export function updatePit(
       }
       return input;
     case 'in':
-      if (!hit.sample.pit) {
+      // Spun back out onto the track side of the pit wall: the box can't be reached from there.
+      if (!hit.sample.pit || (!inLane && track.inRange(hit.s, lane.wallStart, lane.wallEnd))) {
         pit.phase = 'out';
         return input;
       }
@@ -135,10 +138,13 @@ function autopilot(
   }
 
   const n = track.samples.length;
-  const aimS = s + Math.min(AIM, Math.max(toBox, 4));
+  // A car with real tyres spins if it's steered hard under braking: it looks further and steers less at speed.
+  const real = car.params.dynamics !== undefined;
+  const aimAhead = Math.max(Math.min(AIM, Math.max(toBox, 4)), real ? car.speed * 0.7 : 0);
+  const aimS = s + aimAhead;
   const aim = track.samples[Math.floor(aimS / 2) % n];
   // Fast lane until close to the box, then over into the box lane.
-  const toBoxFromAim = toBox - Math.min(AIM, Math.max(toBox, 4));
+  const toBoxFromAim = toBox - aimAhead;
   const blend = Math.max(0, Math.min(1, 1 - toBoxFromAim / BOX_TURN_IN));
   const offset = fastLane(track, aim.halfWidth) + (boxLane(track, aim.halfWidth) - fastLane(track, aim.halfWidth)) * blend;
   const ax = aim.x + aim.nx * offset;
@@ -152,17 +158,25 @@ function autopilot(
   for (const o of others) {
     const dx = o.x - car.x;
     const dy = o.y - car.y;
-    const ahead = dx * fx + dy * fy;
     const side = Math.abs(-dx * fy + dy * fx);
-    if (ahead <= 0 || ahead > 40 || side > 2.6) continue;
+    if (dx * dx + dy * dy > 45 * 45 || side > 2.6) continue;
+    // Who is ahead goes by distance along the lane, never by where each car points: two cars
+    // stopped side by side and angled in would each see the other ahead and wait for ever.
+    const other = track.query(o.x, o.y, o.trackIndex);
+    if (!other) continue;
+    const ahead = track.forwardDistance(s, other.s);
+    if (ahead <= 0 || ahead > 40) continue;
     const safe = 7 + car.speed * 0.3;
     target = Math.min(target, Math.max(0, o.speed + (ahead - safe) * 0.5));
   }
+  // Rolling backwards after a spin: brake means reverse, so stop it with the throttle.
+  const backwards = car.forwardSpeed < -0.5;
+  const maxSteer = real ? Math.min(1, REAL_CAR_STEER / Math.max(car.speed, 1)) : 1;
   return {
     ...input,
-    throttle: car.speed < target - 0.3 ? 1 : 0,
-    brake: car.speed > target + 0.3 ? 1 : 0,
-    steer: Math.max(-1, Math.min(1, err * 3)),
+    throttle: backwards || car.speed < target - 0.3 ? 1 : 0,
+    brake: !backwards && car.speed > target + 0.3 ? 1 : 0,
+    steer: Math.max(-maxSteer, Math.min(maxSteer, err * 3)),
     limiter: true,
     drs: false,
     ers: false,
