@@ -1171,6 +1171,8 @@ export class GameScreen {
         },
         wheel: {
           speedKmh: me.car.speed * 3.6,
+          gear: me.car.gear,
+          revs: me.car.revs,
           drsOpen: me.drsOpen,
           drsAvailable: me.drsHint === 'press',
           ers: me.ers,
@@ -1328,6 +1330,8 @@ export class GameScreen {
         limiter: me.input.limiter,
         stopped: me.car.retired || me.frozen,
         lights: session?.phase === 'lights' || session?.phase === 'grid' ? session.lights : 0,
+        gear: me.car.gear,
+        revs: me.car.revs,
       },
       dt,
     );
