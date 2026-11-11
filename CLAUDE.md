@@ -36,7 +36,7 @@ braking late, defending the inside, timing overtakes. Races are short, "mini rac
 
 1. **Welcome → lobby**: opening an invite link shows a welcome screen; the player enters a
    name, gets a colour assigned automatically and joins the lobby. The lobby owner (host)
-   picks track, laps, weather, qualifying on/off + release gap, mandatory stop, safety car,
+   picks cars (F1 or GT3, everyone the same), track, laps, weather, qualifying on/off + release gap, mandatory stop, safety car,
    tyre wear, no contact, then starts.
 2. **Qualifying**: each player gets **one timed flying lap**. Fastest time takes pole.
    - All players are on track together but **ghosted (no car-to-car collisions)**.
@@ -137,8 +137,14 @@ alone: DRS free in every zone, ERS, no other cars.
 
 - **Car classes** (`src/sim/carClass.ts`): **F1** and **GT3** (`GT3_CAR` in `carParams.ts`: 1300 kg,
   365 kW at the wheels, ~600 kg of downforce at 250 km/h, tougher; no DRS, no ERS, flags on the class). Picked at the top of the
-  time trial menu (remembered, `f1td.tt.class`); **time trial only** for now. Each class is its own
-  category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
+  time trial menu (remembered, `f1td.tt.class`). **In every other mode too, never mixed**: a race is all
+  one class (`RaceSettings.carClass`, lobby setting "Cars", so races vs bots, online and party; last
+  choice in `f1td.class`, also used by the Practice and Open road pickers). Bots plan with the class's
+  params, the safety car's pace follows it, clients get the gearbox and tyre state in `CarSnap.ty`
+  (`Car.tyreState`, for prediction), and the pit crew has per-class wheels and spots (`wheelsOf`,
+  `crewSpots`). Cars with the tyre model need gentler pit handling: bots move over and brake from
+  further out, the autopilot looks further and steers less at speed (`pit.ts`). Each class is its own
+  time trial category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
   `track@gt3`, no database change), and GT3 medals are in `src/tracks/medals-gt3.json` (F1 author x
   the Hard bot's GT3/F1 lap ratio, 1.37-1.63x, above the real ~1.35x as the game's F1 has far more grip than a real one; `npx tsx scripts/class-medals.ts gt3`; compare with
   `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
@@ -178,8 +184,8 @@ alone: DRS free in every zone, ERS, no other cars.
 ## Open road mode
 
 "Open road" on the welcome screen (`src/app/openRoad.ts`, world and driving in `src/sim/openRoad/`,
-drawing in `src/render3d/openRoad/`, wind and music in `src/audio/ambient.ts`): a calm drive with the
-same F1 car through endless natural scenery. No track, timer or rivals; trees, rocks, buildings and fences are solid. 3D only, solo, offline.
+drawing in `src/render3d/openRoad/`, wind and music in `src/audio/ambient.ts`): a calm drive with an
+F1 or GT3 (picked in the menu; GT3 has its own calm steering and autopilot pace) through endless natural scenery. No track, timer or rivals; trees, rocks, buildings and fences are solid. 3D only, solo, offline.
 Separate from `GameScreen` / `RaceWorld` / `Track`; it shares the real `Car` through `CarWorld`.
 - **Maps** (`biomes.ts`, all data): Green Hills, Alpine Pass, Frozen North, Red Canyon, Autumn
   Woods, Sunset Coast, and The Long Way (each landscape fades into the next, `LEG_LENGTH` 9 km).
