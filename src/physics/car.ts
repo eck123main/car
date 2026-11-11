@@ -97,6 +97,9 @@ export function enginePower(revs: number): number {
 }
 
 /** What the rest of `Car.step` has worked out, for the tyre model. */
+/** Gear, shift cut, weight transfer, longitudinal g, front and rear slip. */
+export type TyreState = [number, number, number, number, number, number];
+
 interface TyreInputs {
   vx: number;
   vy: number;
@@ -333,7 +336,7 @@ export class Car {
     }
     if (speed > 1e-3) {
       const drag = p.dragCoef * this.dragFactor * (1 + 0.35 * sides + 0.1 * dmg.frontWing) * v2;
-      const surfaceDrag = surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed;
+      const surfaceDrag = (surfF.drag + surfR.drag + (surfF.dragPerSpeed + surfR.dragPerSpeed) * speed) * (p.dynamics?.surfaceDrag ?? 1);
       const rolling = p.rollingResistance * m * G + (m * surfaceDrag) / 2;
       const resist = Math.min(drag + rolling, (m * speed) / dt);
       fxTotal -= (resist * vx) / speed;
@@ -368,6 +371,17 @@ export class Car {
    * pulling the wheel through a driver's hands. Below walking pace slip angles mean nothing,
    * so it fades to plain geometry.
    */
+  /** What the tyre model remembers between steps, for a client predicting this car. */
+  tyreState(): TyreState {
+    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR];
+  }
+
+  restoreTyreState(s: TyreState): void {
+    [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR] = s;
+    const gears = this.params.dynamics?.gears;
+    if (gears && this.gear > 0) this.revs = Math.abs(this.vx) / gears[Math.min(this.gear, gears.length) - 1];
+  }
+
   private tyreStep(d: TyreDynamics, input: DriverInput, t: TyreInputs, dt: number): [number, number] {
     const p = this.params;
     const { vx, vy, speed, upset } = t;
@@ -417,7 +431,8 @@ export class Car {
         const power = (p.power * (1 - 0.12 * dmg.rearWing) + this.extraPower) * enginePower(revs);
         // Traction control watches how much the rear tyres are slipping sideways, not the force
         // they make: more power means less sideways force, which would let in still more power.
-        const turning = capR * tyreCurve(this.lastSlipR, d.slideGrip);
+        // At walking pace slip angles mean nothing (the car is on plain geometry), so it has no say.
+        const turning = Math.min(1, Math.max(0, (vx - 3) / 4)) * capR * tyreCurve(this.lastSlipR, d.slideGrip);
         const traction = Math.max(0.12 * capR, Math.sqrt(Math.max(0, capR * capR - turning * turning))) * 0.97;
         driveR = Math.min(traction, p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
       }

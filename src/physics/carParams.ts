@@ -24,6 +24,8 @@ export interface TyreDynamics {
   selfAlign: number;
   /** Share of `mu` the front axle really gives in a steady corner: what bots and the ideal line plan with. */
   planGrip: number;
+  /** Grass and gravel's drag on this car, against the F1's (it has far less traction to pull through them). */
+  surfaceDrag: number;
   /** Road speed at the rev limit in each gear (m/s). */
   gears: number[];
   /** Upshift: seconds with no drive. */
@@ -188,6 +190,7 @@ export const GT3_CAR: CarParams = {
     steerSlip: 0.45,
     selfAlign: 0.85,
     planGrip: 0.97,
+    surfaceDrag: 0.55,
     // A six-speed sequential: 100 / 140 / 180 / 220 / 260 / 310 km/h at the limiter.
     gears: [27.8, 38.9, 50, 61.1, 72.2, 86.1],
     shiftTime: 0.05,

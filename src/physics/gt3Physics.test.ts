@@ -6,6 +6,7 @@ import { Track } from '../track/track';
 import { TRACKS } from '../tracks';
 import { Car, enginePower, slipForShare, tyreCurve, type CarWorld, type DriverInput } from './car';
 import { GT3_CAR } from './carParams';
+import { SURFACES } from '../track/types';
 
 const DT = 1 / 120;
 const G = 9.81;
@@ -177,6 +178,19 @@ describe('GT3 handling', () => {
       worst = Math.max(worst, Math.abs(slide(car)));
     }
     expect(worst).toBeGreaterThan(0.2);
+  });
+
+  it('pulls away briskly from a standstill even at full lock', () => {
+    const car = new Car(GT3_CAR, 'red');
+    drive(car, { ...none, throttle: 1, steer: 1 }, 1.5);
+    expect(car.speed * 3.6).toBeGreaterThan(25);
+  });
+
+  it('can always drive out of the gravel', () => {
+    const gravel = { surfaceAt: () => SURFACES.gravel, wallContact: () => null } as unknown as CarWorld;
+    const car = new Car(GT3_CAR, 'red');
+    drive(car, { ...none, throttle: 1 }, 8, gravel);
+    expect(car.speed * 3.6).toBeGreaterThan(25);
   });
 
   it('holds a straight line flat out with no wobble', () => {
