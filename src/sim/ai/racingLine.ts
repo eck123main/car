@@ -98,7 +98,7 @@ export function lineFromOffsets(track: Track, offset: number[]): RacingLine {
  */
 export function speedProfile(track: Track, line: RacingLine, p: CarParams, pace: number, brakeShare = 0.8 * pace): number[] {
   const n = line.curvature.length;
-  const mu = p.mu * pace;
+  const mu = p.mu * pace * (p.dynamics?.planGrip ?? 1);
   const c = p.downforceCoef / p.mass;
   const top = 100;
   // Hills (one sample per point of the line): a crest makes the car lighter, a dip heavier.

@@ -38,6 +38,16 @@ export function engineRpm(kmh: number, throttle: number): number {
   return Math.min(LIMITER_RPM, g === 1 ? Math.max(fromSpeed, revving) : fromSpeed);
 }
 
+/** A car with its own gearbox (the GT3): a big engine revving far lower than an F1 V6. */
+const GT_LIMITER_RPM = 8000;
+const GT_IDLE_RPM = 2200;
+
+/** Revs from the gearbox (0-1 of the limiter). Pulling away, the clutch lets the engine rev. */
+export function gearboxRpm(revs: number, throttle: number): number {
+  const clutch = Math.max(0, 1 - revs / 0.35);
+  return Math.min(GT_LIMITER_RPM, Math.max(GT_IDLE_RPM + throttle * 3800 * clutch, revs * GT_LIMITER_RPM));
+}
+
 /** What the sound needs to know about the followed car, once per frame. */
 export interface SoundFrame {
   /** Which car this is (switching cars doesn't beep for the new car's state). */
@@ -60,6 +70,9 @@ export interface SoundFrame {
   stopped: boolean;
   /** Red start lights showing (0-5). */
   lights: number;
+  /** A car with its own gearbox: the gear (0 = none, gears follow from the speed) and revs (0-1). */
+  gear?: number;
+  revs?: number;
 }
 
 interface Loop<S extends AudioScheduledSourceNode = AudioBufferSourceNode> {
@@ -381,12 +394,13 @@ export class GameAudio {
     const kmh = f.speed * 3.6;
 
     // Engine revs: quick to drop (gear changes), a little slower to climb.
-    let target = f.stopped ? 0 : engineRpm(kmh, f.throttle);
+    let target = f.stopped ? 0 : f.gear ? gearboxRpm(f.revs ?? 0, f.throttle) : engineRpm(kmh, f.throttle);
     // On the pit limiter the revs bounce off the cut.
     if (f.limiter && f.throttle > 0.5 && !f.stopped) target *= 1 + 0.04 * Math.sin(this.time * 2 * Math.PI * 9);
     const rate = target < this.rpm ? 30 : 9;
     this.rpm += (target - this.rpm) * (1 - Math.exp(-rate * dt));
-    const fire = Math.max(30, this.rpm / 20);
+    // Firing rate: a V6 fires three times a revolution, a V8 four.
+    const fire = Math.max(30, this.rpm / (f.gear ? 15 : 20));
     const ratios = [1, 0.5, 2, 1.5];
     this.oscs.forEach((o, i) => set(o.frequency, fire * ratios[i], 0.015));
     const on = f.stopped ? 0 : 1;
@@ -398,7 +412,7 @@ export class GameAudio {
     set(this.turbo.src.frequency, 2200 + this.rpm * 0.25);
     set(this.turbo.gain.gain, synth * f.throttle * (this.rpm / SHIFT_RPM) ** 2 * 0.012);
     // Upshifts: the ignition cut is a short dip in the sound.
-    const gear = gearFor(kmh);
+    const gear = f.gear || gearFor(kmh);
     const upshift = prev !== null && gear > this.lastGear && f.throttle > 0.5 && !f.stopped;
     if (upshift) {
       this.play('shift', 0.8);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { engineMix, engineRpm, GEAR_SPEEDS_KMH } from './sound';
+import { engineMix, engineRpm, GEAR_SPEEDS_KMH, gearboxRpm } from './sound';
 
 describe('Engine sound revs', () => {
   it('climb through each gear and drop at every upshift', () => {
@@ -23,5 +23,14 @@ describe('Recorded engine loops', () => {
     expect(mid[0]).toBeCloseTo(mid[1]);
     expect(mid[2]).toBe(0);
     expect(engineMix([9000], 5000)).toEqual([1]);
+  });
+});
+
+describe('a car with its own gearbox', () => {
+  it('follows the gearbox, and the clutch lets it rev pulling away', () => {
+    expect(gearboxRpm(0.9, 1)).toBeCloseTo(7200);
+    expect(gearboxRpm(0.5, 0)).toBeCloseTo(4000);
+    expect(gearboxRpm(0, 1)).toBeGreaterThan(gearboxRpm(0, 0) + 3000);
+    expect(gearboxRpm(1.2, 1)).toBe(8000);
   });
 });

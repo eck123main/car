@@ -129,7 +129,7 @@ export function idealSpeeds(track: Track, line: RacingLine, p: CarParams, corner
   const ss = track.samples;
   const n = ss.length;
   const c = p.downforceCoef / p.mass;
-  const mu = p.mu * corner;
+  const mu = p.mu * corner * (p.dynamics?.planGrip ?? 1);
   const top = 100;
   const weight = (i: number, v: number) => Math.max(0.3, Math.min(1.8, 1 + (v * v * ss[i].vcurv) / G));
   const v = line.curvature.map((k, i) => {

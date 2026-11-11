@@ -22,7 +22,7 @@ export function drawHud(
   recovering: number | null = null,
 ): void {
   const kmh = car.speed * 3.6;
-  const gear = car.forwardSpeed < -0.5 ? 'R' : String(gearFor(kmh));
+  const gear = car.forwardSpeed < -0.5 ? 'R' : String(car.gear || gearFor(kmh));
 
   // Speed / gear panel.
   const px = 20;

@@ -275,6 +275,94 @@ export function liveryTexture(l: Livery, num: number): THREE.CanvasTexture {
   return t;
 }
 
+export type Sky = 'day' | 'dusk' | 'night';
+
+const reflections = new Map<Sky, THREE.CanvasTexture>();
+
+/**
+ * What the paint and glass reflect: a little picture of a sky over a line of trees and stands
+ * and a grey road. One small texture per sky, so reflections cost no extra draw calls.
+ */
+export function paintReflections(sky: Sky): THREE.CanvasTexture {
+  let t = reflections.get(sky);
+  if (t) return t;
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 256;
+  const g = c.getContext('2d')!;
+  const colors = {
+    day: { zenith: '#3f78c4', horizon: '#eef4fb', land: '#39443a', road: '#5b5e63', cloud: '#ffffff' },
+    dusk: { zenith: '#3b4a86', horizon: '#ffb46e', land: '#2a2528', road: '#3f3b3e', cloud: '#ffd9b0' },
+    night: { zenith: '#05070e', horizon: '#1a2238', land: '#0a0b10', road: '#17181d', cloud: '#2a3148' },
+  }[sky];
+  const up = g.createLinearGradient(0, 0, 0, 128);
+  up.addColorStop(0, colors.zenith);
+  up.addColorStop(1, colors.horizon);
+  g.fillStyle = up;
+  g.fillRect(0, 0, 512, 128);
+  g.fillStyle = colors.road;
+  g.fillRect(0, 128, 512, 128);
+  // Long soft clouds: the bright streaks that run along a car's shoulders.
+  g.fillStyle = colors.cloud;
+  g.globalAlpha = 0.75;
+  let seed = 7;
+  const next = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 14; i++) {
+    g.beginPath();
+    g.ellipse(next() * 512, 30 + next() * 70, 30 + next() * 50, 4 + next() * 7, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  // The dark line of trees and stands round the horizon.
+  g.fillStyle = colors.land;
+  for (let x = 0; x < 512; x += 8) g.fillRect(x, 128 - (5 + next() * 13), 8, 22);
+  if (sky === 'night') {
+    g.fillStyle = '#ffffff';
+    for (let x = 12; x < 512; x += 42) g.fillRect(x, 92, 14, 5);
+  }
+  t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  reflections.set(sky, t);
+  return t;
+}
+
+let sidewall: THREE.CanvasTexture | null = null;
+
+/** Lettering round a slick's sidewall, tinted by the compound (white text on nothing). */
+export function sidewallTexture(): THREE.CanvasTexture {
+  if (sidewall) return sidewall;
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const g = c.getContext('2d')!;
+  g.translate(256, 256);
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = 5;
+  g.beginPath();
+  g.arc(0, 0, 212, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = '#ffffff';
+  g.font = '900 26px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const write = (text: string, centre: number) => {
+    [...text].forEach((ch, i) => {
+      g.save();
+      g.rotate(centre + (i - (text.length - 1) / 2) * 0.092);
+      g.translate(0, -236);
+      g.fillText(ch, 0, 0);
+      g.restore();
+    });
+  };
+  write('RACING SLICK', 0);
+  write('30/65 R18', Math.PI);
+  sidewall = new THREE.CanvasTexture(c);
+  sidewall.colorSpace = THREE.SRGBColorSpace;
+  sidewall.anisotropy = 4;
+  return sidewall;
+}
+
 const DARK = '#0d0d10';
 const CARBON_PAINT = '#16171b';
 const LIGHT = '#f4f7ff';
@@ -385,6 +473,8 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
       poly([at(x, 0.3), at(x + 0.045, 0.3), at(x + 0.1, 0.72), at(x + 0.055, 0.72)], DARK, 0.92);
     }
   }
+  // Openings behind the rear wheels.
+  for (const at of sides) poly([at(-1.82, 0.28), at(-2.18, 0.32), at(-2.18, 0.78), at(-1.82, 0.74)], DARK, 0.92);
   // Carbon along the bottom of the sides, an accent pinstripe on top of it.
   for (const at of sides) {
     poly([at(-3, -0.1), at(3, -0.1), at(3, 0.13), at(-3, 0.13)], CARBON_PAINT);

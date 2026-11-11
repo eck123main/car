@@ -680,6 +680,9 @@ export interface WheelInfo {
   limiter: boolean;
   /** For the revs on the shift lights (0-1). */
   throttle?: number;
+  /** A car with its own gearbox: the gear (0 = none, gears follow from the speed) and revs (0-1). */
+  gear?: number;
+  revs?: number;
   /** Tyres: compound letter and wear (0-1). */
   tyre?: string;
   wear?: number;
@@ -697,6 +700,11 @@ export type LedFlag = 'yellow' | 'green' | null;
 
 /** Shift lights: how many of the 15 LEDs are lit at these revs, or 16 = all flashing (shift now). */
 export const SHIFT_LEDS = 15;
+/** Shift lights for a car with its own gearbox: they start at 78% of the limiter, flash at 97%. */
+export function gearboxLights(revs: number): number {
+  if (revs >= 0.97) return SHIFT_LEDS + 1;
+  return Math.max(0, Math.min(SHIFT_LEDS, Math.ceil(((revs - 0.78) / (0.97 - 0.78)) * SHIFT_LEDS)));
+}
 export function shiftLights(rpm: number): number {
   if (rpm >= 11650) return SHIFT_LEDS + 1;
   return Math.max(0, Math.min(SHIFT_LEDS, Math.ceil(((rpm - 9300) / (11650 - 9300)) * SHIFT_LEDS)));
@@ -965,7 +973,7 @@ export class SteeringWheel {
     this.lift += ((info.celebrate ? 1 : 0) - this.lift) * Math.min(1, dt * 6);
 
     const [left, right] = this.hands;
-    const gear = gearFor(info.speedKmh);
+    const gear = info.gear || gearFor(info.speedKmh);
     if (gear > this.gear) right.flick = FLICK;
     else if (gear < this.gear) left.flick = FLICK;
     this.gear = gear;
@@ -1018,10 +1026,11 @@ export class SteeringWheel {
   }
 
   show(info: WheelInfo): void {
-    this.showLeds(shiftLights(engineRpm(info.speedKmh, info.throttle ?? 0)), info.flag ?? null, info.drsAvailable);
+    const gear = info.gear || gearFor(info.speedKmh);
+    this.showLeds(info.gear ? gearboxLights(info.revs ?? 0) : shiftLights(engineRpm(info.speedKmh, info.throttle ?? 0)), info.flag ?? null, info.drsAvailable);
     const delta = info.delta == null ? null : Math.round(info.delta * 10) / 10;
     const wear = Math.round((info.wear ?? 0) * 100);
-    const key = `${gearFor(info.speedKmh)}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}|${info.tyre}|${wear}|${delta}|${info.message?.text}`;
+    const key = `${gear}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}|${info.tyre}|${wear}|${delta}|${info.message?.text}`;
     if (key === this.last) return;
     this.last = key;
     const c = this.ctx;
@@ -1032,7 +1041,7 @@ export class SteeringWheel {
     c.textBaseline = 'middle';
     c.fillStyle = '#ffffff';
     c.font = 'bold 34px system-ui, sans-serif';
-    c.fillText(String(gearFor(info.speedKmh)), 64, 22);
+    c.fillText(String(gear), 64, 22);
     c.fillStyle = info.limiter ? '#4dd2ff' : '#d8dade';
     c.font = 'bold 16px system-ui, sans-serif';
     c.fillText(String(Math.round(info.speedKmh)), 104, 18);

@@ -16,7 +16,6 @@ import {
   tbox,
   TYRE,
   WORN_TYRE,
-  wheelGeometry,
   type Car3d,
   type Cockpit,
   type V3,
@@ -26,14 +25,18 @@ import {
   GLASS_TOP,
   halfWidth,
   liveryTexture,
+  paintReflections,
   REAR_AXLE,
   ROOF_FRONT,
   ROOF_HALF,
   ROOF_REAR,
   shellGeometry,
   shoulderHeight,
+  sideBottom,
   shoulderZ,
+  sidewallTexture,
   topHeight,
+  type Sky,
 } from './gt3Skin';
 import { QuadBuilder } from './trackMesh';
 
@@ -81,9 +84,9 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
     tbox(q, -0.82, 1.0, 0.012, 0.012, 0.085, 0.1, 0.085, 0.1, accent, side * 0.941);
   }
   // A big diffuser out under the tail, tall strakes.
-  tbox(q, -2.47, -1.9, 1.62, 1.62, 0.07, 0.1, 0.07, 0.1, CARBON);
-  for (const z of [-0.62, -0.31, 0, 0.31, 0.62]) tbox(q, -2.47, -1.95, 0.02, 0.02, 0.08, 0.3, 0.08, 0.12, CARBON, z);
-  for (const side of [-1, 1]) tbox(q, -2.47, -1.95, 0.02, 0.02, 0.08, 0.34, 0.08, 0.16, CARBON, side * 0.8);
+  tbox(q, -2.44, -1.9, 1.62, 1.62, 0.07, 0.1, 0.07, 0.1, CARBON);
+  for (const z of [-0.62, -0.31, 0, 0.31, 0.62]) tbox(q, -2.44, -1.95, 0.02, 0.02, 0.08, 0.23, 0.08, 0.12, CARBON, z);
+  for (const side of [-1, 1]) tbox(q, -2.44, -1.95, 0.02, 0.02, 0.08, 0.26, 0.08, 0.16, CARBON, side * 0.8);
   // Dark wheel wells inside the arches.
   for (const c of [FRONT_AXLE, REAR_AXLE]) {
     for (const side of [-1, 1]) {
@@ -103,7 +106,8 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
     tbox(q, -0.88, 0.6, 0.012, 0.012, 0.14, 0.84, 0.14, 0.84, CARBON, side * 0.835);
     // Door mirror on a stalk.
     strut(q, [0.52, 0.86, side * 0.84], [0.47, 0.98, side * 0.98], 0.035, CARBON);
-    tbox(q, 0.4, 0.56, 0.16, 0.13, 0.93, 1.04, 0.94, 1.03, l.body, side * 1.04);
+    tbox(q, 0.4, 0.46, 0.17, 0.16, 0.925, 1.045, 0.93, 1.04, l.body, side * 1.04);
+    tbox(q, 0.46, 0.6, 0.16, 0.05, 0.93, 1.04, 0.965, 1.0, l.body, side * 1.03);
     // Black A-pillar, and the sail panel from the roof down to the haunch.
     strut(q, [0.62, 0.86, side * 0.84], [-0.12, 1.28, side * 0.64], 0.07, '#111114');
     const backZ = 0.8;
@@ -114,11 +118,12 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
   // Tail: rain light, exhausts.
   tbox(q, -2.345, -2.325, 0.2, 0.2, 0.52, 0.6, 0.52, 0.6, '#ff2a2a');
   for (const side of [-1, 1]) {
-    tbox(q, -2.38, -2.3, 0.12, 0.12, 0.26, 0.38, 0.26, 0.38, '#3b3c40', side * 0.35);
-    tbox(q, -2.382, -2.37, 0.08, 0.08, 0.29, 0.35, 0.29, 0.35, '#050505', side * 0.35);
+    disc(q, [-2.38, 0.32, side * 0.35], 0.07, 'x', '#6d6f75');
+    disc(q, [-2.385, 0.32, side * 0.35], 0.052, 'x', '#050505');
+    strut(q, [-2.38, 0.32, side * 0.35], [-2.3, 0.32, side * 0.35], 0.12, '#3b3c40');
   }
-  // Tow strap on the nose.
-  strut(q, [2.3, 0.27, 0.53], [2.42, 0.27, 0.53], 0.035, '#e3141c');
+  addVents(q);
+  addFittings(q);
   // Roof scoop.
   tbox(q, -0.42, -0.14, 0.3, 0.26, 1.31, 1.35, 1.31, 1.42, l.body);
   tbox(q, -0.16, -0.135, 0.22, 0.22, 1.32, 1.4, 1.32, 1.4, dark);
@@ -126,6 +131,102 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
   q.quad([-0.01, 1.212, -0.67], [-0.01, 1.212, 0.67], [-0.12, 1.274, 0.64], [-0.12, 1.274, -0.64], l.wings);
   strut(q, [0.6, 0.885, 0.32], [0.5, 0.925, -0.48], 0.018, '#111111');
   return q.build();
+}
+
+/** A flat round plate facing along an axis. */
+function disc(q: QuadBuilder, c: V3, r: number, axis: 'x' | 'y' | 'z', color: string): void {
+  const n = 10;
+  const at = (k: number): V3 => {
+    const u = r * Math.cos((2 * Math.PI * k) / n);
+    const v = r * Math.sin((2 * Math.PI * k) / n);
+    if (axis === 'x') return [c[0], c[1] + u, c[2] + v];
+    if (axis === 'y') return [c[0] + u, c[1], c[2] + v];
+    return [c[0] + u, c[1] + v, c[2]];
+  };
+  for (let k = 0; k < n; k++) q.quad(c, at(k), at(k + 1), at(k + 1), color);
+}
+
+/** A point on the top surface (`s` across it, as in the livery's unwrap), `lift` above it. */
+const onTop = (x: number, s: number, lift = 0): V3 => [x, topHeight(x, s) + lift, s * shoulderZ(x)];
+/** A point on a side, `f` from sill to shoulder, `out` proud of it. */
+function onSide(x: number, f: number, side: number, out = 0): V3 {
+  const bottom = sideBottom(x);
+  return [x, bottom + (shoulderHeight(x) - bottom) * f, side * (halfWidth(x) + out)];
+}
+
+/** One louvre: flush at its front edge, standing open at the back so the air can leave. */
+function slat(q: QuadBuilder, x: number, chord: number, s0: number, s1: number, open: number): void {
+  // In short pieces, so it follows the curve of the panel underneath.
+  const pieces = 6;
+  for (let i = 0; i < pieces; i++) {
+    const a = s0 + ((s1 - s0) * i) / pieces;
+    const b = s0 + ((s1 - s0) * (i + 1)) / pieces;
+    q.quad(onTop(x + chord, a, 0.003), onTop(x + chord, b, 0.003), onTop(x, b, open), onTop(x, a, open), CARBON);
+    q.quad(onTop(x, a, open), onTop(x, b, open), onTop(x, b, 0.002), onTop(x, a, 0.002), '#040405');
+  }
+}
+
+/** The real openings, standing proud of the paint: louvres, grille fins, side and arch vents. */
+function addVents(q: QuadBuilder): void {
+  for (const s of [-1, 1]) {
+    for (let k = 0; k < 6; k++) slat(q, 1.1 + k * 0.11, 0.06, s * 0.7, s * 0.92, 0.014);
+    // Side vents behind the front wheels, a fin on each one's back edge.
+    for (let k = 0; k < 3; k++) {
+      const x = 0.74 + k * 0.08;
+      strut(q, onSide(x, 0.3, s, 0.004), onSide(x + 0.055, 0.72, s, 0.004), 0.018, CARBON);
+    }
+    // Vents behind the rear wheels, where the air leaves the arches.
+    for (let k = 0; k < 3; k++) {
+      strut(q, onSide(-1.84, 0.34 + k * 0.17, s, 0.006), onSide(-2.14, 0.38 + k * 0.17, s, 0.002), 0.03, CARBON);
+    }
+  }
+  for (let k = 0; k < 5; k++) slat(q, 1.0 + k * 0.11, 0.065, -0.3, 0.3, 0.016);
+  for (let k = 0; k < 5; k++) slat(q, -2.22 + k * 0.07, 0.05, -0.42, 0.42, 0.016);
+  // Grille: fins and a bar across the big centre intake, and bars over the two beside it.
+  for (let z = -0.28; z <= 0.281; z += 0.08) tbox(q, 2.32, 2.345, 0.012, 0.012, 0.19, 0.37, 0.19, 0.37, '#1c1d21', z);
+  tbox(q, 2.32, 2.348, 0.76, 0.76, 0.275, 0.29, 0.275, 0.29, '#1c1d21');
+  for (const s of [-1, 1]) {
+    tbox(q, 2.3, 2.34, 0.26, 0.26, 0.255, 0.268, 0.255, 0.268, '#1c1d21', s * 0.59);
+    // Air duct to the brakes, a round mouth in the bumper's corner.
+    disc(q, [2.335, 0.28, s * 0.52], 0.045, 'x', '#050506');
+  }
+}
+
+/** The small things a race car has that a road car doesn't. */
+function addFittings(q: QuadBuilder): void {
+  const steel = '#c4c7cc';
+  // Bonnet pins.
+  for (const [x, s] of [[0.78, 0.58], [2.02, 0.5]] as const) {
+    for (const side of [-1, 1]) {
+      const c = onTop(x, side * s, 0.012);
+      disc(q, c, 0.03, 'y', steel);
+      disc(q, [c[0], c[1] + 0.001, c[2]], 0.012, 'y', '#2b2c30');
+    }
+  }
+  for (const side of [-1, 1]) {
+    // Door handle: a short pull strap in a recess.
+    tbox(q, -0.82, -0.66, 0.012, 0.012, 0.74, 0.78, 0.74, 0.78, '#0c0c0e', side * (halfWidth(-0.74) - 0.012));
+    tbox(q, -0.79, -0.69, 0.014, 0.014, 0.752, 0.768, 0.752, 0.768, '#e3141c', side * (halfWidth(-0.74) - 0.008));
+  }
+  // Tow straps: a red loop on the nose, a yellow one on the tail.
+  const loop = (x: number, dir: number, y: number, z: number, color: string) => {
+    strut(q, [x, y + 0.05, z], [x + dir * 0.11, y, z], 0.028, color);
+    strut(q, [x + dir * 0.11, y, z], [x, y - 0.05, z], 0.028, color);
+  };
+  loop(2.31, 1, 0.26, 0.42, '#e3141c');
+  loop(-2.33, -1, 0.5, -0.56, '#f2c312');
+  // Fuel: the quick-fill coupling on the right rear quarter, in a yellow ring.
+  const fill = onSide(-1.08, 0.86, 1, 0.006);
+  disc(q, fill, 0.065, 'z', '#f2c312');
+  disc(q, [fill[0], fill[1], fill[2] + 0.002], 0.044, 'z', steel);
+  disc(q, [fill[0], fill[1], fill[2] + 0.004], 0.02, 'z', '#1b1c20');
+  // Air jack: the lance socket on the rear deck.
+  const jack = onTop(-1.93, -0.45, 0.012);
+  disc(q, jack, 0.05, 'y', steel);
+  disc(q, [jack[0], jack[1] + 0.001, jack[2]], 0.026, 'y', '#e3141c');
+  // Timing transponder and antenna on the roof, behind the scoop.
+  tbox(q, -0.8, -0.72, 0.05, 0.05, 1.32, 1.335, 1.32, 1.335, '#111114', 0.3);
+  strut(q, [-0.78, 1.32, -0.3], [-0.84, 1.46, -0.3], 0.008, '#111114');
 }
 
 /** Where the rear window meets the deck. */
@@ -145,10 +246,10 @@ function glassGeometry(): THREE.BufferGeometry {
 /** Splitter with an accent lip, end fences and canards (it can be knocked off, like an F1 front wing). */
 export function gt3SplitterGeometry(accent = '#e10600'): THREE.BufferGeometry {
   const q = new QuadBuilder();
-  tbox(q, 1.9, 2.5, 1.9, 1.72, 0.065, 0.095, 0.065, 0.095, CARBON);
-  tbox(q, 2.47, 2.505, 1.72, 1.72, 0.093, 0.106, 0.093, 0.106, accent);
+  tbox(q, 1.9, 2.42, 1.9, 1.72, 0.065, 0.095, 0.065, 0.095, CARBON);
+  tbox(q, 2.395, 2.425, 1.72, 1.72, 0.093, 0.106, 0.093, 0.106, accent);
   for (const side of [-1, 1]) {
-    tbox(q, 2.0, 2.48, 0.02, 0.02, 0.095, 0.22, 0.095, 0.14, CARBON, side * 0.84);
+    tbox(q, 2.0, 2.41, 0.02, 0.02, 0.095, 0.22, 0.095, 0.14, CARBON, side * 0.84);
     // Canards on the bumper's corners, two a side, raked up towards the back.
     tbox(q, 1.98, 2.26, 0.2, 0.15, 0.3, 0.316, 0.37, 0.386, CARBON, side * 0.93);
     tbox(q, 1.96, 2.2, 0.17, 0.12, 0.41, 0.426, 0.47, 0.486, CARBON, side * 0.91);
@@ -162,16 +263,16 @@ export function gt3RearWingGeometry(l: Livery): THREE.BufferGeometry {
   const accent = accentOf(l);
   for (const side of [-1, 1]) {
     const z = side * 0.4;
-    strut(q, [-1.98, 0.9, z], [-2.0, 1.18, z], 0.05, CARBON);
-    strut(q, [-2.0, 1.18, z], [-2.18, 1.42, z], 0.05, CARBON);
-    strut(q, [-2.18, 1.42, z], [-2.4, 1.5, z], 0.05, CARBON);
-    tbox(q, -2.9, -2.24, 0.025, 0.025, 1.3, 1.64, 1.33, 1.52, l.endplates, side * 0.99);
-    tbox(q, -2.9, -2.86, 0.03, 0.03, 1.31, 1.63, 1.31, 1.63, accent, side * 0.99);
+    strut(q, [-1.86, 0.93, z], [-1.92, 1.2, z], 0.05, CARBON);
+    strut(q, [-1.92, 1.2, z], [-2.0, 1.33, z], 0.05, CARBON);
+    strut(q, [-2.0, 1.33, z], [-2.16, 1.3, z], 0.05, CARBON);
+    tbox(q, -2.48, -1.96, 0.025, 0.025, 1.17, 1.41, 1.15, 1.29, l.endplates, side * 0.97);
+    tbox(q, -2.48, -2.45, 0.03, 0.03, 1.175, 1.405, 1.175, 1.405, accent, side * 0.97);
   }
   // Main plane, trailing edge higher than the leading edge, and the flap over its back.
-  tbox(q, -2.75, -2.26, 1.96, 1.96, 1.44, 1.485, 1.37, 1.415, l.wings);
-  tbox(q, -2.86, -2.66, 1.96, 1.96, 1.53, 1.555, 1.48, 1.505, l.wings);
-  tbox(q, -2.875, -2.855, 1.96, 1.96, 1.54, 1.6, 1.54, 1.6, accent);
+  tbox(q, -2.38, -1.98, 1.92, 1.92, 1.27, 1.31, 1.2, 1.24, l.wings);
+  tbox(q, -2.46, -2.33, 1.92, 1.92, 1.345, 1.365, 1.305, 1.325, l.wings);
+  tbox(q, -2.47, -2.455, 1.92, 1.92, 1.355, 1.4, 1.355, 1.4, accent);
   return q.build();
 }
 
@@ -204,6 +305,24 @@ function cockpitGeometry(l: Livery): THREE.BufferGeometry {
       tbox(q, x, x + 0.05, 0.05, 0.05, top, top + 0.02, top, top + 0.02, lit[(i + j * 2) % lit.length], 0.02 + (j - 1) * 0.09);
     }
   }
+  // Traction control, ABS and brake bias: three rotary knobs with white pointers.
+  for (const z of [-0.08, 0.02, 0.12]) {
+    tbox(q, 0.33, 0.39, 0.05, 0.05, 0.79, 0.825, 0.8, 0.835, '#26272b', z);
+    tbox(q, 0.355, 0.39, 0.008, 0.008, 0.826, 0.83, 0.836, 0.84, '#f2f2f2', z);
+  }
+  // Brake bias lever on the tunnel, by the driver's right hand.
+  strut(q, [-0.1, 0.62, -0.12], [-0.06, 0.74, -0.12], 0.018, '#c9ccd1');
+  tbox(q, -0.09, -0.03, 0.035, 0.035, 0.74, 0.78, 0.74, 0.78, '#e8262b', -0.12);
+  // Electronics on the bare passenger side: ECU and power box on a tray, orange wiring loom.
+  tbox(q, -0.72, -0.1, 0.42, 0.42, 0.14, 0.18, 0.14, 0.18, CARBON, 0.46);
+  tbox(q, -0.68, -0.38, 0.22, 0.22, 0.18, 0.3, 0.18, 0.3, '#3a3d44', 0.36);
+  tbox(q, -0.34, -0.14, 0.16, 0.16, 0.18, 0.27, 0.18, 0.27, '#b5b8bd', 0.34);
+  strut(q, [-0.38, 0.27, 0.3], [-0.1, 0.5, 0.2], 0.022, '#e0701a');
+  strut(q, [-0.1, 0.5, 0.2], [0.2, 0.6, 0.2], 0.022, '#e0701a');
+  strut(q, [-0.5, 0.3, 0.46], [-1.02, 0.5, 0.74], 0.018, '#e0701a');
+  // Drinks: a bag behind the seat, its tube running up to the helmet.
+  tbox(q, -1.03, -0.97, 0.16, 0.16, 0.5, 0.74, 0.5, 0.74, '#d7dade', D + 0.32);
+  strut(q, [-1.0, 0.74, D + 0.32], [-0.82, 1.0, D + 0.17], 0.012, '#e9edf2');
   // Energy-absorbing foam on the inside of both doors (FIA side impact protection).
   for (const side of [-1, 1]) tbox(q, -0.78, 0.3, 0.13, 0.13, 0.2, 0.64, 0.2, 0.64, FOAM, side * 0.79);
   // Bucket seat: shell, cushion, side bolsters and the wings round the head.
@@ -352,6 +471,31 @@ const shared = {
   shadow: null as THREE.Mesh | null,
 };
 
+/** A slick: flat across the tread, the shoulders rolled into the sidewalls. */
+function tyreGeometry(radius: number, width: number): THREE.BufferGeometry {
+  const h = width / 2;
+  const profile = [[0, -h], [radius - 0.03, -h], [radius - 0.01, -h + 0.018], [radius, -h + 0.05], [radius, h - 0.05], [radius - 0.01, h - 0.018], [radius - 0.03, h], [0, h]];
+  return new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), 24).rotateX(Math.PI / 2);
+}
+
+const PAINT_REFLECT = 0.6;
+const GLASS_REFLECT = 0.55;
+
+/** Material settings for a surface that reflects the sky and the land round it. */
+function reflective(sky: Sky = 'day', amount: number): THREE.MeshPhongMaterialParameters {
+  return { envMap: paintReflections(sky), combine: THREE.MixOperation, reflectivity: amount };
+}
+
+/** Like real paint: little reflection looking straight at it, a lot along it. */
+function withFresnel(m: THREE.MeshPhongMaterial): void {
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <envmap_fragment>',
+      'specularStrength *= 0.16 + 0.84 * pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 3.0);\n#include <envmap_fragment>',
+    );
+  };
+}
+
 /** A centre-lock wheel's rim, ten thin spokes and nut, facing out along +z. */
 function spokeGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [new THREE.TorusGeometry(0.235, 0.028, 4, 18)];
@@ -380,6 +524,7 @@ export class Gt3Model implements Car3d {
   /** Geometry that dents, with its undamaged positions. */
   private readonly dentable: { geo: THREE.BufferGeometry; base: Float32Array }[] = [];
   private readonly shellMat: THREE.MeshPhongMaterial | THREE.MeshLambertMaterial;
+  private readonly glassMat: THREE.Material;
   private readonly shellMap: THREE.Texture | null = null;
   private readonly scuffs: { mesh: THREE.Mesh; scuff: Scuff }[] = [];
   private readonly toe = [0, 0, 0, 0];
@@ -406,7 +551,7 @@ export class Gt3Model implements Car3d {
 
   constructor(
     private readonly livery: Livery,
-    opts: { ghost?: string; opacity?: number } = {},
+    opts: { ghost?: string; opacity?: number; sky?: Sky } = {},
   ) {
     const ghost = opts.ghost;
     this.ghost = !!ghost;
@@ -419,7 +564,7 @@ export class Gt3Model implements Car3d {
     const lambert = this.lambert;
     this.bodyMat = lambert({ vertexColors: true });
     this.tyreMat = lambert({ color: TYRE });
-    this.bandMat = lambert({ color: '#ffffff' });
+    this.bandMat = lambert({ color: '#ffffff', map: sidewallTexture(), transparent: true, alphaTest: 0.25, depthWrite: false });
     this.discMat = lambert({ color: DISC_DARK });
     const rimMat = lambert({ color: '#141518' });
     const caliperMat = lambert({ color: accentOf(livery) });
@@ -432,7 +577,8 @@ export class Gt3Model implements Car3d {
     if (ghost) this.shellMat = lambert({});
     else {
       this.shellMap = liveryTexture(livery, raceNumber(livery));
-      this.shellMat = new THREE.MeshPhongMaterial({ map: this.shellMap, shininess: 60, specular: '#4a4a4a', side: THREE.DoubleSide });
+      this.shellMat = new THREE.MeshPhongMaterial({ map: this.shellMap, shininess: 90, specular: '#555555', side: THREE.DoubleSide, ...reflective(opts.sky, PAINT_REFLECT) });
+      withFresnel(this.shellMat);
       this.mats.push(this.shellMat);
     }
     this.group.add(new THREE.Mesh(this.shellGeo, this.shellMat));
@@ -441,8 +587,9 @@ export class Gt3Model implements Car3d {
     // Glass: tinted, see-through from inside and out.
     const glassGeo = glassGeometry();
     this.owned.push(glassGeo);
-    const glassMat = ghost ? this.bodyMat : new THREE.MeshLambertMaterial({ color: '#2b3a48', transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide });
+    const glassMat = ghost ? this.bodyMat : new THREE.MeshPhongMaterial({ color: '#2b3a48', transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, shininess: 120, specular: '#777777', ...reflective(opts.sky, GLASS_REFLECT) });
     if (!ghost) this.mats.push(glassMat);
+    this.glassMat = glassMat;
     this.group.add(new THREE.Mesh(glassGeo, glassMat));
 
     shared.scuff ??= new THREE.BoxGeometry(1, 1, 1);
@@ -458,9 +605,10 @@ export class Gt3Model implements Car3d {
     // The driver, seen through the windows from outside: helmet, suit, HANS collar.
     const helmetGeo = new THREE.SphereGeometry(0.14, 12, 8);
     const visorGeo = new THREE.BoxGeometry(0.06, 0.06, 0.19);
-    const torsoGeo = new THREE.BoxGeometry(0.28, 0.5, 0.42);
+    const torsoGeo = new THREE.CapsuleGeometry(0.17, 0.26, 3, 10);
+    const seatGeo = new THREE.BoxGeometry(0.1, 0.86, 0.54);
     const hansGeo = new THREE.BoxGeometry(0.12, 0.06, 0.3);
-    this.owned.push(helmetGeo, visorGeo, torsoGeo, hansGeo);
+    this.owned.push(helmetGeo, visorGeo, torsoGeo, hansGeo, seatGeo);
     const visor = new THREE.Mesh(visorGeo, lambert({ color: '#0b0c10' }));
     visor.position.set(0.105, 0.02, 0);
     this.head.add(new THREE.Mesh(helmetGeo, lambert({ color: livery.helmet })), visor);
@@ -470,7 +618,11 @@ export class Gt3Model implements Car3d {
     torso.rotation.z = -0.18;
     const hans = new THREE.Mesh(hansGeo, carbon);
     hans.position.set(-0.68, 0.88, D);
-    this.driver.add(this.head, torso, hans);
+    // The seat behind them, only drawn from outside (inside there is the cockpit's own).
+    const seat = new THREE.Mesh(seatGeo, lambert({ color: SEAT }));
+    seat.position.set(-0.98, 0.7, D);
+    seat.rotation.z = 0.12;
+    this.driver.add(this.head, torso, hans, seat);
     this.group.add(this.driver);
     const miniGeo = new THREE.BoxGeometry(0.03, 0.26, 0.26);
     this.owned.push(miniGeo);
@@ -494,9 +646,9 @@ export class Gt3Model implements Car3d {
     this.group.add(this.splitterMount, this.rearWingMount);
 
     // Wheels: tyre, a thin band in the compound's colour, black ten-spoke rims, the brake disc and caliper.
-    shared.wheelFront ??= wheelGeometry(0.34, 0.3);
-    shared.wheelRear ??= wheelGeometry(0.345, 0.33);
-    shared.band ??= new THREE.TorusGeometry(0.3, 0.008, 3, 20);
+    shared.wheelFront ??= tyreGeometry(0.34, 0.3);
+    shared.wheelRear ??= tyreGeometry(0.345, 0.33);
+    shared.band ??= new THREE.RingGeometry(0.262, 0.336, 40);
     shared.spokes ??= spokeGeometry();
     shared.nut ??= new THREE.CylinderGeometry(0.045, 0.045, 0.03, 6).rotateX(Math.PI / 2);
     shared.disc ??= new THREE.CircleGeometry(0.19, 14);
@@ -641,6 +793,8 @@ export class Gt3Model implements Car3d {
   /** Inside the car: the driver's own helmet and body would fill the view. */
   set driverVisible(on: boolean) {
     this.driver.visible = on;
+    // From inside, the windscreen is for seeing through.
+    if (this.glassMat instanceof THREE.MeshPhongMaterial) this.glassMat.reflectivity = on ? GLASS_REFLECT : 0;
   }
 
   /** A GT car has no halo. */
