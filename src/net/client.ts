@@ -1,3 +1,4 @@
+import { isCarClassId } from '../sim/carClass';
 import { isSkinId } from '../cosmetics/skins';
 import { placeItemBoxes, type ItemView } from '../sim/items';
 import { debrisAlive, moveDebris } from '../sim/debris';
@@ -165,7 +166,7 @@ export class ClientGame {
         this.track = new Track(parseTrackDef(msg.track));
         this.world = new RaceWorld(this.track, { drsRule: 'race', wetness: 0 });
         for (const p of msg.players) {
-          const r = this.world.addRacer(p.id, p.name, p.color);
+          const r = this.world.addRacer(p.id, p.name, p.color, 'medium', isCarClassId(msg.settings.carClass) ? msg.settings.carClass : 'f1');
           r.skin = isSkinId(p.skin) ? p.skin : undefined;
           // Only the host makes debris; we get it in each snapshot.
           r.car.onShed = undefined;

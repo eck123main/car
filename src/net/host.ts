@@ -1,3 +1,4 @@
+import { CAR_CLASSES } from '../sim/carClass';
 import { isSkinId } from '../cosmetics/skins';
 import { botContext, BotDriver, type Difficulty } from '../sim/ai/botDriver';
 import { DEFAULT_SETTINGS, Session, type PlayerInfo, type RaceSettings, type SessionEvent } from '../sim/session';
@@ -163,7 +164,7 @@ export class HostGame {
     const players = this.lobby.players.map(({ id, name, color, skin }) => ({ id, name, color, skin }));
     this.session = new Session(this.track, this.settings, players);
     this.running = { def, players };
-    for (const b of this.bots.values()) b.driver = new BotDriver(this.track, b.player.id, b.player.bot!);
+    for (const b of this.bots.values()) b.driver = new BotDriver(this.track, b.player.id, b.player.bot!, CAR_CLASSES[this.settings.carClass].params);
     this.steps = 0;
     for (const r of this.remotes.values()) {
       r.queue = [];

@@ -1,3 +1,4 @@
+import type { TyreState } from '../physics/car';
 import { GRID_MAX_TIME, type Session } from '../sim/session';
 import { Tyres, type Compound } from '../sim/tyres';
 import type { PlayerInput, Racer } from '../sim/world';
@@ -31,6 +32,7 @@ export function carSnap(r: Racer, ack: number): CarSnap {
     ret: c.retired,
     ...(c.lost ? { lost: c.lost } : {}),
     ...(c.upset > 0 ? { up: round(c.upset) } : {}),
+    ...(c.params.dynamics ? { ty: c.tyreState().map((v) => round(v, 4)) as TyreState } : {}),
     frozen: r.frozen,
     grip: round(c.gripFactor, 4),
     drag: round(c.dragFactor, 4),
@@ -157,6 +159,7 @@ export function applyCarPhysics(r: Racer, s: CarSnap): void {
   c.speedLimit = s.limit;
   c.allowReverse = s.reverse;
   c.push = s.push ?? 0;
+  if (s.ty) c.restoreTyreState(s.ty);
 }
 
 /** Copy everything else the HUD shows. */
