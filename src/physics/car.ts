@@ -1,6 +1,6 @@
 import type { Surface, SurfaceType } from '../track/types';
 import type { Slope, WallContact } from '../track/track';
-import type { CarParams } from './carParams';
+import type { CarParams, TyreDynamics } from './carParams';
 
 export interface DriverInput {
   throttle: number;
@@ -80,6 +80,34 @@ const UPSET_RANGE = 15;
 /** Upset fades this much per second (gone ~0.8 s after the biggest hit). */
 const UPSET_DECAY = 1.25;
 
+/** A tyre's force (share of its peak) at a slip angle, as a multiple of the peak slip. */
+export function tyreCurve(x: number, slideGrip: number): number {
+  return x <= 1 ? (2 * x) / (1 + x * x) : Math.max(slideGrip, 1 - ((1 - slideGrip) * (x - 1)) / 1.5);
+}
+
+/** The inverse below the peak: the slip (multiple of the peak) that gives this share of the force. */
+export function slipForShare(u: number): number {
+  return u <= 0 ? 0 : u >= 1 ? 1 : (1 - Math.sqrt(1 - u * u)) / u;
+}
+
+/** The engine's power (share of its peak) at this share of the rev limit: peak at 92%, like a big atmospheric engine. */
+export function enginePower(revs: number): number {
+  const d = revs - 0.92;
+  return Math.max(0.3, 1 - (d > 0 ? 6 : 1.6) * d * d);
+}
+
+/** What the rest of `Car.step` has worked out, for the tyre model. */
+interface TyreInputs {
+  vx: number;
+  vy: number;
+  speed: number;
+  loadF: number;
+  loadR: number;
+  gripF: number;
+  gripR: number;
+  upset: number;
+}
+
 /**
  * Top-down car: grip from weight + downforce, shared between braking/accelerating and
  * cornering. Steering sets a turn rate capped by that grip, so the car runs wide
@@ -125,6 +153,15 @@ export class Car {
   push = 0;
   /** Holding the brake at a standstill reverses the car, except on the grid. */
   allowReverse = true;
+
+  /** Tyre model only: the gear (0 = pick one from the speed), revs (share of the limit). */
+  gear = 0;
+  revs = 0;
+  private shiftCut = 0;
+  private longAcc = 0;
+  /** Last step's slip angles, as multiples of the tyres' peak (for ABS and traction control). */
+  private lastSlipF = 0;
+  private lastSlipR = 0;
 
   /** Share of grip in use (0..1) and whether the tyres are sliding: drives tyre wear. */
   tyreLoad = 0;
@@ -175,6 +212,8 @@ export class Car {
     this.heading = this.prevHeading = heading;
     this.vx = this.vy = this.yawRate = 0;
     this.steer = this.throttle = this.brake = 0;
+    this.gear = 0;
+    this.shiftCut = this.longAcc = this.lastSlipF = this.lastSlipR = 0;
   }
 
   repair(): void {
@@ -235,9 +274,13 @@ export class Car {
     this.upset = Math.max(0, upset - UPSET_DECAY * dt);
     const grip = p.mu * gripMul * (surfF.grip * loadF + surfR.grip * loadR);
 
+    let fx = 0;
+    let fy = 0;
+    if (p.dynamics) {
+      [fx, fy] = this.tyreStep(p.dynamics, input, { vx, vy, speed, loadF, loadR, gripF: surfF.grip * gripMul, gripR: surfR.grip * gripMul, upset }, dt);
+    } else {
     // --- Longitudinal: engine, brakes, reverse. Limited by grip (no wheelspin or lockups).
     const reversing = this.allowReverse && input.brake > 0 && input.throttle === 0 && vx < 1.5 && !this.retired;
-    let fx = 0;
     if (reversing) {
       if (vx > -p.maxReverseSpeed) fx -= p.reverseForce;
     } else {
@@ -259,7 +302,7 @@ export class Car {
     const longUse = fx / grip;
     const lateralGrip = grip * Math.sqrt(Math.max(0, 1 - p.combinedGripPenalty * longUse * longUse)) * (1 - 0.65 * upset);
     const wantedFy = (-m * vy) / dt;
-    const fy = clampAbs(wantedFy, lateralGrip);
+    fy = clampAbs(wantedFy, lateralGrip);
     // How hard the tyres are working, for tyre wear: share of grip used, and whether they
     // are sliding (asked for more than they can give: locking up, spinning, skidding wide).
     this.tyreLoad = Math.hypot(fx, fy) / Math.max(grip, 1);
@@ -275,6 +318,7 @@ export class Car {
     const steerIn = Math.max(-1, Math.min(1, this.steer + pull));
     const targetYaw = steerIn * Math.min(geometricLimit, gripLimit) * Math.sign(vx);
     this.yawRate += (targetYaw - this.yawRate) * Math.min(1, p.yawResponse * (1 - 0.9 * upset) * dt);
+    }
 
     // --- Resistance: aero drag, rolling resistance and surface drag.
     let fxTotal = fx;
@@ -310,6 +354,130 @@ export class Car {
 
     this.collideWalls(world);
     this.trackIndex = world.locate?.(this.x, this.y, this.trackIndex) ?? null;
+  }
+
+  /**
+   * The full tyre model: each axle's tyres make force from their slip angle, up to what their
+   * load allows, shared with braking and accelerating. Returns the force on the car (body
+   * frame) and turns it. Weight moves forward under braking (the rear goes light, the car
+   * rotates) and back under power. ABS and traction control hold each axle at its limit, as the
+   * real cars' do; they can't stop a car being driven past what the tyres can hold.
+   *
+   * Steering on a keyboard is on/off, so full lock is scaled with speed to the most the front
+   * tyres can use, and the wheels follow a slide by themselves, like the caster on a real car
+   * pulling the wheel through a driver's hands. Below walking pace slip angles mean nothing,
+   * so it fades to plain geometry.
+   */
+  private tyreStep(d: TyreDynamics, input: DriverInput, t: TyreInputs, dt: number): [number, number] {
+    const p = this.params;
+    const { vx, vy, speed, upset } = t;
+    const m = p.mass;
+    const a = p.cgToFront;
+    const b = p.cgToRear;
+    const L = a + b;
+    const dmg = this.parts;
+
+    // Weight transfer, following the car's acceleration with the suspension's lag.
+    this.longAcc += (this.longG * G - this.longAcc) * Math.min(1, 12 * dt);
+    const transfer = (m * this.longAcc * d.cgHeight) / L;
+    const fzF = Math.max(t.loadF * 0.25, t.loadF - transfer);
+    const fzR = Math.max(t.loadR * 0.25, t.loadR + transfer);
+    const nominal = (m * G) / 2;
+    const capacity = (fz: number) => p.mu * fz * Math.max(0.7, 1 - d.loadSensitivity * (fz / nominal - 1));
+    const capF = capacity(fzF) * t.gripF;
+    const capR = capacity(fzR) * t.gripR * d.rearGrip;
+
+    // Gearbox: changes up at the limiter, down as the revs fall. An upshift cuts the drive briefly.
+    const top = d.gears;
+    if (this.gear === 0) {
+      this.gear = 1;
+      while (this.gear < top.length && vx > top[this.gear - 1] * 0.95) this.gear++;
+    }
+    this.shiftCut = Math.max(0, this.shiftCut - dt);
+    if (this.gear < top.length && vx > top[this.gear - 1] * 0.985 && this.throttle > 0.1) {
+      this.gear++;
+      this.shiftCut = d.shiftTime;
+    } else if (this.gear > 1 && vx < top[this.gear - 2] * 0.9) {
+      this.gear--;
+    }
+    this.revs = Math.abs(vx) / top[this.gear - 1];
+
+    // Longitudinal forces per axle. ABS holds each axle under its limit, easing off for
+    // whatever the tyres are using to turn; traction control does the same for the power.
+    const reversing = this.allowReverse && input.brake > 0 && input.throttle === 0 && vx < 1.5 && !this.retired;
+    let driveR = 0;
+    let brakeF = 0;
+    let brakeR = 0;
+    if (reversing) {
+      if (vx > -p.maxReverseSpeed) driveR = -p.reverseForce;
+    } else {
+      const limited = this.speedLimit !== null && vx > this.speedLimit - 0.3;
+      if (!limited && this.shiftCut <= 0) {
+        const revs = Math.max(0.35, Math.min(1, this.revs));
+        const power = (p.power * (1 - 0.12 * dmg.rearWing) + this.extraPower) * enginePower(revs);
+        // Traction control watches how much the rear tyres are slipping sideways, not the force
+        // they make: more power means less sideways force, which would let in still more power.
+        const turning = capR * tyreCurve(this.lastSlipR, d.slideGrip);
+        const traction = Math.max(0.12 * capR, Math.sqrt(Math.max(0, capR * capR - turning * turning))) * 0.97;
+        driveR = Math.min(traction, p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
+      }
+      if (this.speedLimit !== null && vx > this.speedLimit + 1) brakeR += m * 4;
+      // The rear gets priority for turning: its ABS backs off first, which keeps the car straight.
+      const abs = (cap: number, fy: number, share: number, keep: number) => Math.min(share * cap, Math.sqrt(Math.max(0, cap * cap - keep * fy * fy)));
+      brakeF += this.brake * abs(capF, capF * tyreCurve(this.lastSlipF, d.slideGrip), p.brakeGrip, 0.36);
+      brakeR += this.brake * abs(capR, capR * tyreCurve(this.lastSlipR, d.slideGrip), d.rearBrake, 1);
+      // Off the throttle the engine holds the rear back: part of why a lift rotates the car.
+      if (this.throttle < 0.05 && vx > 5) brakeR += d.engineBrake * Math.min(1, this.revs);
+      const stop = (m * Math.abs(vx)) / dt;
+      const total = brakeF + brakeR;
+      if (total > stop) {
+        brakeF *= stop / total;
+        brakeR *= stop / total;
+      }
+    }
+    const dir = Math.sign(vx);
+    const fxF = clampAbs(-dir * brakeF, capF);
+    const fxR = clampAbs(driveR - dir * brakeR, capR);
+
+    // What's left of each axle's grip for turning.
+    const latF = Math.sqrt(Math.max(capF * capF - fxF * fxF, 0.0625 * capF * capF)) * (1 - 0.65 * upset) * (1 - 0.4 * dmg.frontWing);
+    const latR = Math.sqrt(Math.max(capR * capR - fxR * fxR, 0.0625 * capR * capR)) * (1 - 0.65 * upset);
+
+    // Steering: the input asks for a share of the tightest turn the tyres can hold.
+    const forward = Math.abs(vx);
+    const pull = 0.12 * (dmg.right - dmg.left) * Math.min(1, forward / 20);
+    const steerIn = Math.max(-1, Math.min(1, this.steer + pull));
+    const curve = Math.min(1 / p.minTurnRadius, (capF + capR) / m / Math.max(speed * speed, 1));
+    const slideAngle = Math.atan2(vy, Math.max(forward, 1));
+    // Caster turns the front wheels into a slide, which is what catches it.
+    const delta = clampAbs(steerIn * L * curve + Math.sign(steerIn) * d.steerSlip * d.peakSlip * slipForShare(Math.abs(steerIn)) + d.selfAlign * slideAngle, d.maxSteer);
+
+    // Slip angles and the tyres' sideways force.
+    const slipF = delta - Math.atan2(vy + a * this.yawRate, Math.max(forward, 1));
+    const slipR = -Math.atan2(vy - b * this.yawRate, Math.max(forward, 1));
+    const lateral = (slip: number, limit: number) => Math.sign(slip) * limit * tyreCurve(Math.abs(slip) / d.peakSlip, d.slideGrip);
+    const fyF = lateral(slipF, latF);
+    const fyR = lateral(slipR, latR);
+    this.lastSlipF = Math.abs(slipF) / d.peakSlip;
+    this.lastSlipR = Math.abs(slipR) / d.peakSlip;
+    const cosD = Math.cos(delta);
+    const sinD = Math.sin(delta);
+    const sideF = fxF * sinD + fyF * cosD;
+    const slipFx = fxF * cosD - fyF * sinD + fxR;
+    const slipFy = sideF + fyR;
+    const moment = a * sideF - b * fyR;
+
+    // Fading to plain geometry at walking pace and backwards.
+    const w = Math.min(1, Math.max(0, (vx - 3) / 4));
+    const plainFy = clampAbs((-m * vy) / dt, (latF + latR) * 0.98);
+    const plainYaw = steerIn * Math.min(forward / p.minTurnRadius, (latF + latR) / m / Math.max(forward, 1)) * dir;
+    this.yawRate += w * (moment / p.inertia) * dt + (1 - w) * (plainYaw - this.yawRate) * Math.min(1, p.yawResponse * dt);
+
+    const fx = w * slipFx + (1 - w) * (fxF + fxR);
+    const fy = w * slipFy + (1 - w) * plainFy;
+    this.tyreLoad = Math.hypot(fx, fy) / Math.max(capF + capR, 1);
+    this.sliding = speed > 3 && (Math.abs(slipF) > d.peakSlip * 1.4 || Math.abs(slipR) > d.peakSlip * 1.4);
+    return [fx, fy];
   }
 
   private collideWalls(world: CarWorld): void {

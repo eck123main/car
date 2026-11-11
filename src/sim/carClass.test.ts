@@ -72,13 +72,13 @@ describe('Car classes', () => {
     expect(gt.drsHint).toBe('');
   });
 
-  it('is slower in a GT3, by about as much as real GT3 cars are (~1.3x)', () => {
+  it('is clearly slower in a GT3 (more than the real ~1.35x: the game F1 has far more grip than a real one)', () => {
     for (const id of ['silverstone', 'monaco']) {
       const f1 = botLap(id, 'f1')!;
       const gt = botLap(id, 'gt3')!;
       expect(gt).not.toBeNull();
-      expect(gt / f1).toBeGreaterThan(1.2);
-      expect(gt / f1).toBeLessThan(1.45);
+      expect(gt / f1).toBeGreaterThan(1.3);
+      expect(gt / f1).toBeLessThan(1.65);
     }
   });
 
