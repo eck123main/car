@@ -1,3 +1,4 @@
+import { CAR_CLASS_ORDER, CAR_CLASSES, type CarClassId } from '../sim/carClass';
 import { boxLane } from '../sim/pit';
 import { pitTyre, type Compound } from '../sim/tyres';
 import type { RaceWorld, Racer } from '../sim/world';
@@ -59,6 +60,8 @@ export interface PitScene {
   lift: Map<string, number>;
   /** New tyres already on a car still in its box, by racer id. */
   fitted: Map<string, Compound>;
+  /** The kind of car each of those is, for where its wheels are. */
+  fittedTo: Map<string, CarClassId>;
 }
 
 /** What one car's crew is doing, followed frame to frame. */
@@ -85,24 +88,35 @@ const RUBBER_TIME = 5;
 /** Where the crew stand before walking out: this far out on the garage side (m). */
 const GARAGE = 6.5;
 
-export const WHEEL_X = { front: 1.95, rear: -1.65 };
-export const WHEEL_Y = 0.75;
+/** Where a car's wheels are (along, and half the track), and how far its jacks reach under it. */
+export function wheelsOf(cls: CarClassId): { front: number; rear: number; y: number; jackFront: number; jackRear: number } {
+  const p = CAR_CLASSES[cls].params;
+  return { front: p.cgToFront, rear: -p.cgToRear, y: cls === 'gt3' ? 0.83 : 0.75, jackFront: p.length / 2 + 0.4, jackRear: -p.length / 2 - 0.05 };
+}
 
 type Role = 'gun' | 'carry' | 'jack' | 'hold';
-/** Crew spots round the car: along (+ = nose), across (+ = garage side). */
-const CREW: { a: number; o: number; role: Role; wheel: number }[] = [];
-(['front', 'rear'] as const).forEach((end, e) =>
-  [-1, 1].forEach((side, s) => {
-    const wheel = e * 2 + s;
-    CREW.push({ a: WHEEL_X[end], o: side * 1.75, role: 'gun', wheel });
-    CREW.push({ a: WHEEL_X[end] + (end === 'front' ? 0.75 : -0.75), o: side * 1.6, role: 'carry', wheel });
-  }),
-);
-// Jack men stand at the end of their jack's handle.
-CREW.push({ a: 4.55, o: 0, role: 'jack', wheel: 0 }, { a: -4.2, o: 0, role: 'jack', wheel: 0 }, { a: 0.3, o: 1.6, role: 'hold', wheel: 0 }, { a: 0.3, o: -1.6, role: 'hold', wheel: 0 });
+type CrewSpot = { a: number; o: number; role: Role; wheel: number };
+
+/** Crew spots round a car: along (+ = nose), across (+ = garage side). */
+function crewSpots(cls: CarClassId): CrewSpot[] {
+  const w = wheelsOf(cls);
+  const crew: CrewSpot[] = [];
+  (['front', 'rear'] as const).forEach((end, e) =>
+    [-1, 1].forEach((side, s) => {
+      const wheel = e * 2 + s;
+      crew.push({ a: w[end], o: side * (w.y + 1), role: 'gun', wheel });
+      crew.push({ a: w[end] + (end === 'front' ? 0.75 : -0.75), o: side * (w.y + 0.85), role: 'carry', wheel });
+    }),
+  );
+  // Jack men stand at the end of their jack's handle.
+  crew.push({ a: w.jackFront + 1.35, o: 0, role: 'jack', wheel: 0 }, { a: w.jackRear - 1.35, o: 0, role: 'jack', wheel: 0 }, { a: 0.3, o: w.y + 0.85, role: 'hold', wheel: 0 }, { a: 0.3, o: -w.y - 0.85, role: 'hold', wheel: 0 });
+  return crew;
+}
+
+const CREWS = Object.fromEntries(CAR_CLASS_ORDER.map((c) => [c, crewSpots(c)])) as Record<CarClassId, CrewSpot[]>;
 
 /** Most crew a scene can hold (10 cars). */
-export const MAX_CREW = CREW.length * 10;
+export const MAX_CREW = CREWS.f1.length * 10;
 
 export class PitStops {
   private readonly crews = new Map<string, CrewState>();
@@ -134,7 +148,7 @@ export class PitStops {
 
   /** Everything to draw this frame. `poses`: where each car is drawn. */
   scene(world: RaceWorld, poses: ReadonlyMap<string, Pose>): PitScene {
-    const out: PitScene = { boxes: [], crew: [], sparks: [], jacks: [], lights: [], smoke: [], rubber: [], lift: new Map(), fitted: new Map() };
+    const out: PitScene = { boxes: [], crew: [], sparks: [], jacks: [], lights: [], smoke: [], rubber: [], lift: new Map(), fitted: new Map(), fittedTo: new Map() };
     const lane = world.track.pit;
     if (!lane) return out;
     const ss = world.track.samples;
@@ -171,8 +185,9 @@ export class PitStops {
         const fx = Math.cos(h);
         const fy = Math.sin(h);
         for (const side of [-1, 1]) {
-          const bx = x - fx * 1.65 - fy * side * 0.75;
-          const by = y - fy * 1.65 + fx * side * 0.75;
+          const w = wheelsOf(r.carClass);
+          const bx = x + fx * w.rear - fy * side * w.y;
+          const by = y + fy * w.rear + fx * side * w.y;
           out.rubber.push({ x0: bx, y0: by, x1: bx + fx * 3.2, y1: by + fy * 3.2, alpha: 1 - released / RUBBER_TIME });
         }
       }
@@ -207,7 +222,8 @@ export class PitStops {
       return [at.x + cos * a - sin * y, at.y + sin * a + cos * y];
     };
     const ease = walk * walk * (3 - 2 * walk);
-    CREW.forEach((m, i) => {
+    const wheels = wheelsOf(r.carClass);
+    CREWS[r.carClass].forEach((m, i) => {
       // From the garage (well out on the garage side) to the spot round the car.
       let o = m.o + (1 - ease) * (GARAGE - m.o);
       // Carriers wait holding the new tyres, then take the old ones off, stepping back with them.
@@ -229,14 +245,17 @@ export class PitStops {
       else action = stopped ? 'hold' : 'idle';
       out.crew.push({ x, y, heading: facing, color: r.color, tyre, action, busy: spinning || (m.role === 'jack' && stopped), seed: i });
       if (spinning && Math.floor(now * 30 + m.wheel) % 2) {
-        const [wx, wy] = place(m.a, Math.sign(m.o) * WHEEL_Y);
+        const [wx, wy] = place(m.a, Math.sign(m.o) * wheels.y);
         out.sparks.push({ x: wx, y: wy });
       }
     });
     if (stopped) {
-      if (swap >= 0.5) out.fitted.set(r.id, c.newTyre);
+      if (swap >= 0.5) {
+        out.fitted.set(r.id, c.newTyre);
+        out.fittedTo.set(r.id, r.carClass);
+      }
       // Each jack's handle points away from the car, towards its jack man.
-      for (const a of [3.2, -2.85]) {
+      for (const a of [wheels.jackFront, wheels.jackRear]) {
         const [x, y] = place(a, 0);
         out.jacks.push({ x, y, heading: at.heading + (a > 0 ? 0 : Math.PI) });
       }

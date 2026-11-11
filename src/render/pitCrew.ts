@@ -1,5 +1,5 @@
 import { COMPOUNDS, type Compound } from '../sim/tyres';
-import { WHEEL_X, WHEEL_Y, type PitScene } from './pitStops';
+import { wheelsOf, type PitScene } from './pitStops';
 
 /** Pit stops from above (see pitStops.ts), drawn in world metres. */
 
@@ -37,7 +37,8 @@ export function drawPitOver(ctx: CanvasRenderingContext2D, scene: PitScene, pose
     const p = poses.get(id);
     if (!p) continue;
     // New tyres on: their sidewalls show the new compound before the car even leaves.
-    for (const [a, o] of [[WHEEL_X.front, -WHEEL_Y], [WHEEL_X.front, WHEEL_Y], [WHEEL_X.rear, -WHEEL_Y], [WHEEL_X.rear, WHEEL_Y]]) {
+    const w = wheelsOf(scene.fittedTo.get(id) ?? 'f1');
+    for (const [a, o] of [[w.front, -w.y], [w.front, w.y], [w.rear, -w.y], [w.rear, w.y]]) {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.heading);
