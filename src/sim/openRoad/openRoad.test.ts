@@ -169,6 +169,25 @@ describe('driving it', () => {
     });
   }
 
+  for (const map of OPEN_ROAD_MAPS) {
+    it(`${map.id}: the pilot takes a GT3 8 km down the road`, () => {
+      const drive = new OpenRoadDrive(map.id, 42, 'gt3');
+      const pilot = new RoadPilot(drive.road, 'gt3');
+      pilot.cruise = 65;
+      pilot.lane = 0;
+      let worst = 0;
+      for (let t = 0; drive.distance < 8000 && t < 120 * 500; t++) {
+        drive.step(DT, { ...IDLE_INPUT, ...pilot.drive(drive.car), drs: true, ers: true });
+        if (drive.distance > 50) worst = Math.max(worst, Math.abs(drive.roadOffset()));
+        expect(drive.drsOpen || drive.ersActive).toBe(false);
+      }
+      expect(drive.distance).toBeGreaterThanOrEqual(8000);
+      expect(worst).toBeLessThan(ROAD_HALF);
+      expect(drive.crashes).toBe(0);
+      expect(drive.car.gear).toBeGreaterThan(0);
+    });
+  }
+
   /** On/off keys only, looked at 8 times a second, as a person on a keyboard drives. */
   const keyboardDrive = (mapId: string, cruise: number, metres: number) => {
     const drive = new OpenRoadDrive(mapId, 2024);

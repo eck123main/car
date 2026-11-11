@@ -110,6 +110,11 @@ export const GT3_CAMS: Record<Cam3d, CamDef> = {
 };
 const GT3_LOOK_BACK: CamDef = { eye: [0.2, 1.7, 0], look: [-30, 0.4, 0], fov: 62 };
 
+/** Looking back from a kind of car. */
+export function lookBackFor(body: CarClassId = 'f1'): CamDef {
+  return body === 'gt3' ? GT3_LOOK_BACK : LOOK_BACK;
+}
+
 /** The cameras for a kind of car. */
 export function camsFor(body: CarClassId = 'f1'): Record<Cam3d, CamDef> {
   return body === 'gt3' ? GT3_CAMS : CAMS;

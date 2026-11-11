@@ -1,5 +1,5 @@
 import { Car, type CarWorld, type DriverInput } from '../../physics/car';
-import { F1_CAR } from '../../physics/carParams';
+import { CAR_CLASSES, type CarClassId } from '../carClass';
 import type { Slope, WallContact } from '../../track/track';
 import { SURFACES, type Surface } from '../../track/types';
 import type { PlayerInput } from '../world';
@@ -46,6 +46,8 @@ const BUMP_BOUNCE = 0.3;
  */
 const CALM_STEER_RATE = 10;
 const CALM_STEER_SHARE = 0.2;
+/** A GT3 has far less grip to soften: much the same turn at full lock as the F1 at top speed. */
+const GT_CALM_STEER_SHARE = 0.85;
 const CALM_FROM = 25;
 const CALM_TO = 85;
 
@@ -58,7 +60,7 @@ function calmShare(v: number): number {
  * alone on an endless road with no timing. Trees, rocks, buildings and fences are solid.
  */
 export class OpenRoadDrive implements CarWorld {
-  readonly car = new Car(F1_CAR, '#e10600');
+  readonly car: Car;
   readonly land: Land;
   readonly road: EndlessRoad;
   readonly map: OpenRoadMap;
@@ -88,7 +90,12 @@ export class OpenRoadDrive implements CarWorld {
   /** Nothing solid stands closer to the road's edge than this on this map (m). */
   private readonly clearFrom: number;
 
-  constructor(mapId: string, seed: number) {
+  constructor(
+    mapId: string,
+    seed: number,
+    readonly carClass: CarClassId = 'f1',
+  ) {
+    this.car = new Car(CAR_CLASSES[carClass].params, '#e10600');
     this.map = openRoadMap(mapId);
     this.land = new Land(seed, this.map);
     this.road = this.land.road;
@@ -234,7 +241,7 @@ export class OpenRoadDrive implements CarWorld {
     const k = calmShare(this.car.speed);
     const d = (12 + (CALM_STEER_RATE - 12) * k) * dt;
     this.steerIn += Math.max(-d, Math.min(d, steer - this.steerIn));
-    return this.steerIn * (1 + (CALM_STEER_SHARE - 1) * k);
+    return this.steerIn * (1 + ((this.carClass === 'gt3' ? GT_CALM_STEER_SHARE : CALM_STEER_SHARE) - 1) * k);
   }
 
   step(dt: number, input: PlayerInput): void {
@@ -264,10 +271,10 @@ export class OpenRoadDrive implements CarWorld {
       }
     } else this.underWater = 0;
 
-    this.ersActive = input.ers && this.ers > 0 && car.throttle > 0.5;
+    this.ersActive = CAR_CLASSES[this.carClass].ers && input.ers && this.ers > 0 && car.throttle > 0.5;
     if (this.ersActive) this.ers = Math.max(0, this.ers - dt / ERS_DEPLOY_TIME);
     else this.ers = Math.min(1, this.ers + dt * (0.25 * car.brake + ERS_TRICKLE));
-    if (input.drs) this.drsOpen = true;
+    if (input.drs && CAR_CLASSES[this.carClass].drs) this.drsOpen = true;
     if (car.brake > 0.05 || car.speed < 15) this.drsOpen = false;
 
     car.gripFactor = 1;
@@ -292,6 +299,9 @@ export class OpenRoadDrive implements CarWorld {
 /** How far ahead (samples) the autopilot checks for corners. */
 const PILOT_SCAN = 150;
 const PILOT_BRAKING = 16;
+/** A GT3 has about this share of the F1 car's grip, for the autopilot's plans. */
+const GT_PILOT_GRIP = 0.45;
+const GT_PILOT_BRAKING = 7;
 
 /**
  * Hands off: follows the middle of its lane at a calm pace. Also what the tests drive with,
@@ -304,8 +314,17 @@ export class RoadPilot {
   lane = 3.4;
   /** Sideways g it will take in a corner. */
   cornering = 2.2;
+  private readonly braking: number;
+  private readonly gt: boolean;
 
-  constructor(private readonly road: EndlessRoad) {}
+  constructor(
+    private readonly road: EndlessRoad,
+    carClass: CarClassId = 'f1',
+  ) {
+    const gt = (this.gt = carClass === 'gt3');
+    this.braking = gt ? GT_PILOT_BRAKING : PILOT_BRAKING;
+    if (gt) this.cornering *= GT_PILOT_GRIP;
+  }
 
   /** Steering here is what's given to OpenRoadDrive.step (before its softening). */
   drive(car: Car): DriverInput {
@@ -326,7 +345,7 @@ export class RoadPilot {
     const p = car.params;
     const accel = p.mu * (9.81 + (p.downforceCoef * v * v) / p.mass);
     const yawLimit = Math.min(v / p.minTurnRadius, accel / Math.max(v, 1));
-    const share = 1 + (CALM_STEER_SHARE - 1) * calmShare(v);
+    const share = 1 + ((this.gt ? GT_CALM_STEER_SHARE : CALM_STEER_SHARE) - 1) * calmShare(v);
     const steer = Math.max(-1, Math.min(1, (curvature * Math.max(v, 3)) / Math.max(0.05, yawLimit) / share));
     // Slow enough for everything inside braking distance.
     const grip = this.cornering * 9.81;
@@ -336,7 +355,7 @@ export class RoadPilot {
       const c = Math.abs(r.kappa[j]);
       if (c < 1e-4) continue;
       const corner = Math.sqrt(grip / c);
-      allowed = Math.min(allowed, Math.sqrt(corner * corner + 2 * PILOT_BRAKING * (j - i) * ROAD_SPACING));
+      allowed = Math.min(allowed, Math.sqrt(corner * corner + 2 * this.braking * (j - i) * ROAD_SPACING));
     }
     const gap = allowed - v;
     return { throttle: gap > 0.5 ? Math.min(1, gap / 8) : 0, brake: gap < -2 ? Math.min(1, -gap / 12) : 0, steer };
