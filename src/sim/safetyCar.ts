@@ -1,4 +1,4 @@
-import { F1_CAR } from '../physics/carParams';
+import { F1_CAR, type CarParams } from '../physics/carParams';
 import type { Track } from '../track/track';
 import { racingLine, speedProfile } from './ai/racingLine';
 
@@ -41,12 +41,14 @@ export interface SafetyCarSnap {
   h: number;
 }
 
-const profiles = new WeakMap<Track, number[]>();
+const profiles = new WeakMap<Track, Map<CarParams, number[]>>();
 
 /** The safety car's planned speed at each track sample (it never exceeds SC_MAX_SPEED). */
-export function safetyCarProfile(track: Track): number[] {
-  let profile = profiles.get(track);
-  if (!profile) profiles.set(track, (profile = speedProfile(track, racingLine(track), F1_CAR, SC_PACE)));
+export function safetyCarProfile(track: Track, params: CarParams = F1_CAR): number[] {
+  let byCar = profiles.get(track);
+  if (!byCar) profiles.set(track, (byCar = new Map()));
+  let profile = byCar.get(params);
+  if (!profile) byCar.set(params, (profile = speedProfile(track, racingLine(track), params, SC_PACE)));
   return profile;
 }
 
@@ -71,9 +73,10 @@ export class SafetyCar {
     private readonly track: Track,
     progress: number,
     readonly deployedAt: number,
+    params: CarParams = F1_CAR,
   ) {
     this.progress = progress;
-    this.profile = safetyCarProfile(track);
+    this.profile = safetyCarProfile(track, params);
     this.speed = Math.min(SC_MAX_SPEED, this.profile[this.index(0)]);
     this.place();
     this.prevX = this.x;
