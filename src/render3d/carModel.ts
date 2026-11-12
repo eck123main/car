@@ -591,9 +591,11 @@ export function wheelAngle(steer: number, speed: number, yawRate: number, slip =
   const curvature = yawRate / Math.max(speed, 1);
   const driven = curvature * WHEEL_PER_CURVATURE + steer * WHEEL_INPUT;
   let angle = moving * driven + (1 - moving) * steer * WHEEL_PARKED;
-  // Sliding after a hit: the driver catches it, steering the way the car is really going.
+  // Sliding after a hit: the driver catches it, steering the way the car is really going. Only a
+  // real slide: a GT3 drifts 8-13 degrees in any hard corner (its tyres' slip), and the hands
+  // must keep turning into the corner then.
   if (speed > WHEEL_CATCH_SPEED) {
-    const catching = Math.max(Math.min(1, upset * 3), Math.min(1, Math.max(0, (Math.abs(slip) - 0.12) / 0.2)));
+    const catching = Math.max(Math.min(1, upset * 3), Math.min(1, Math.max(0, (Math.abs(slip) - 0.28) / 0.22)));
     const opposite = Math.max(-WHEEL_CATCH, Math.min(WHEEL_CATCH, slip * 2.5));
     angle += (opposite - angle) * catching;
   }

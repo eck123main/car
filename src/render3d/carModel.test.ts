@@ -113,6 +113,8 @@ describe('Catching a slide', () => {
 
   it('leaves normal driving and crawling alone', () => {
     expect(wheelAngle(0.5, 40, 0.5, 0.02, 0)).toBe(wheelAngle(0.5, 40, 0.5));
+    // A GT3 in a hard corner slides ~10 degrees the other way: still steering into the corner.
+    expect(wheelAngle(1, 30, 0.6, -0.2, 0)).toBe(wheelAngle(1, 30, 0.6));
     expect(wheelAngle(0.5, 4, 0.5, 0.5, 1)).toBe(wheelAngle(0.5, 4, 0.5));
   });
 

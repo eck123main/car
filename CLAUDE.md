@@ -147,7 +147,7 @@ alone: DRS free in every zone, ERS, no other cars.
   further out, the autopilot looks further and steers less at speed (`pit.ts`). Each class is its own
   time trial category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
   `track@gt3`, no database change), and GT3 medals are in `src/tracks/medals-gt3.json` (F1 author x
-  the Hard bot's GT3/F1 lap ratio, 1.34-1.52x, close to the real ~1.35x since the GT3 got 20% more grip (redone for every track then; Jeddah, with no clean bot lap, from the mean 1.433x); `npx tsx scripts/class-medals.ts gt3`; compare with
+  the Hard bot's GT3/F1 lap ratio, 1.34-1.52x, close to the real ~1.35x since the GT3 got 20% more grip (redone for every track then; Jeddah, with no clean bot lap, from the mean 1.433x); the GT3 laps set before the grip change were cleared (board: `supabase/gt3_grip_reset.sql`, run once; browsers: `CLEARS` in `adjustTimes.ts`); `npx tsx scripts/class-medals.ts gt3`; compare with
   `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
   F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
   **GT3 driving** (`CarParams.dynamics`, `Car.tyreStep`; F1 keeps the simple grip model): a real two-axle

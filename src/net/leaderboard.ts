@@ -55,6 +55,7 @@ export function playerId(): string {
 export interface KeyValue {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 function read<T>(kv: KeyValue, key: string): T | null {

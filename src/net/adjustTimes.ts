@@ -20,9 +20,30 @@ export const ADJUSTMENTS: { name: string; factors: Record<string, number> }[] = 
   { name: 'ground-2026-10', factors: groundRatios },
 ];
 
+/**
+ * Changes too big to rescale: a car class's laps kept in this browser are cleared instead (the
+ * global board: supabase/gt3_grip_reset.sql). GT3 grip +20%.
+ */
+export const CLEARS: { name: string; cls: string }[] = [{ name: 'gt3-grip-2026-11', cls: 'gt3' }];
+
 /** Apply every adjustment this browser hasn't had yet, in order. */
 export function adjustAllStoredTimes(kv: KeyValue, keys: string[]): void {
   for (const a of ADJUSTMENTS) adjustStoredTimes(kv, keys, a.factors, a.name);
+  for (const c of CLEARS) clearStoredLaps(kv, keys, c.cls, c.name);
+}
+
+/** Forget a class's laps, ghosts and personal bests kept in this browser, once. */
+export function clearStoredLaps(kv: KeyValue, keys: string[], cls: string, name: string): void {
+  const done = `f1td.adjusted.${name}`;
+  if (kv.getItem(done)) return;
+  const board = `[a-z0-9-]+@${cls}`;
+  const ours = new RegExp(String.raw`^f1td\.tt\.(?:${board}$|ghost\.${board}\.|pb\.(?:.+\.)?${board}$)`);
+  for (const key of keys) {
+    if (!ours.test(key)) continue;
+    if (kv.removeItem) kv.removeItem(key);
+    else kv.setItem(key, 'null');
+  }
+  kv.setItem(done, '1');
 }
 
 interface Lap {

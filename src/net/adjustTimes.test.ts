@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADJUSTMENTS, adjustAllStoredTimes, adjustStoredTimes } from './adjustTimes';
+import { ADJUSTMENTS, adjustAllStoredTimes, adjustStoredTimes, clearStoredLaps } from './adjustTimes';
 
 function store(data: Record<string, unknown>) {
   const m = new Map(Object.entries(data).map(([k, v]) => [k, JSON.stringify(v)]));
@@ -41,5 +41,25 @@ describe('adjusting stored times after a physics change', () => {
     adjustAllStoredTimes(kv, keys);
     const expected = ADJUSTMENTS.reduce((t, a) => t * (a.factors.monaco ?? 1), 50);
     expect(JSON.parse(kv.getItem('f1td.tt.monaco')!)[0].time).toBeCloseTo(expected, 2);
+  });
+});
+
+describe('clearing a class after a big physics change', () => {
+  it('forgets that class\'s laps, ghosts and bests once, and nothing else', () => {
+    const store = new Map<string, string>([
+      ['f1td.tt.monza@gt3', '[{"time":80}]'],
+      ['f1td.tt.ghost.monza@gt3.p1', '{"time":80,"dt":0.05}'],
+      ['f1td.tt.pb.monza@gt3', '{"time":80,"dt":0.05}'],
+      ['f1td.tt.pb.acc1.monza@gt3', '{"time":80,"dt":0.05}'],
+      ['f1td.tt.monza', '[{"time":60}]'],
+      ['f1td.tt.pb.monza', '{"time":60,"dt":0.05}'],
+    ]);
+    const kv = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    clearStoredLaps(kv, [...store.keys()], 'gt3', 'test-clear');
+    expect([...store.keys()].filter((k) => k.startsWith('f1td.tt.'))).toEqual(['f1td.tt.monza', 'f1td.tt.pb.monza']);
+    // Once only: a lap set afterwards stays.
+    store.set('f1td.tt.monza@gt3', '[{"time":70}]');
+    clearStoredLaps(kv, [...store.keys()], 'gt3', 'test-clear');
+    expect(store.get('f1td.tt.monza@gt3')).toBe('[{"time":70}]');
   });
 });
