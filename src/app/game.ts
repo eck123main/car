@@ -294,6 +294,25 @@ function resetHint(phase: string | undefined): string {
   return 'Wait for the next session';
 }
 
+const NO_WEBGL = "No 3D view in this browser: WebGL is off (turn on hardware acceleration in the browser's settings)";
+/** The 3D view failed to start once on this page: don't keep trying. */
+let webglFailed = false;
+let webglChecked: boolean | null = null;
+
+/** Can this browser draw 3D at all? Checked once (a tiny throwaway canvas). */
+function webglWorks(): boolean {
+  if (webglFailed) return false;
+  if (webglChecked === null) {
+    try {
+      const c = document.createElement('canvas');
+      webglChecked = !!(c.getContext('webgl2') ?? c.getContext('webgl'));
+    } catch {
+      webglChecked = false;
+    }
+  }
+  return webglChecked;
+}
+
 /** Draws the race and runs the fixed-step loop for whichever driver is active. */
 export class GameScreen {
   private readonly ctx: CanvasRenderingContext2D;
@@ -361,7 +380,7 @@ export class GameScreen {
     } catch {
       // Storage blocked: stay on the default fixed view.
     }
-    this.want3d = savedView() === '3d';
+    this.want3d = savedView() === '3d' && webglWorks();
     this.addViewButtons();
     // Mouse driving carries on from the last race.
     if (this.controls.mouse?.active) this.canvas.style.cursor = 'crosshair';
@@ -450,12 +469,23 @@ export class GameScreen {
 
   /** V: switch between the top-down map and the 3D first-person view. */
   private toggleView(): void {
+    if (!this.want3d && !webglWorks()) {
+      this.toast({ text: NO_WEBGL, color: '#ff6b6b', until: this.driver.now() + 5 });
+      return;
+    }
     this.want3d = !this.want3d;
     saveView(this.want3d ? '3d' : 'top');
     if (!this.want3d) this.close3d();
     this.updateViewButtons();
     const text = this.want3d ? 'FIRST PERSON (test) · C: change camera · V: back to the map' : 'TOP-DOWN VIEW';
-    this.toasts.push({ text, color: '#ffffff', until: this.driver.now() + 3 });
+    this.toast({ text, color: '#ffffff', until: this.driver.now() + 3 });
+  }
+
+  /** Show a message, replacing the same one if it is still up (so pressing a key again never stacks them). */
+  private toast(t: Toast): void {
+    const i = this.toasts.findIndex((o) => o.text === t.text);
+    if (i >= 0) this.toasts.splice(i, 1);
+    this.toasts.push(t);
   }
 
   /** In 3D, C cycles through the cameras (CAM3D_ORDER). */
@@ -498,9 +528,12 @@ export class GameScreen {
       .catch((err: unknown) => {
         this.loading3d = false;
         this.want3d = false;
+        // Don't try again every game: back to the map, and V only explains why.
+        webglFailed = true;
+        saveView('top');
         this.updateViewButtons();
         console.error(err);
-        this.toasts.push({ text: "Couldn't start the 3D view (WebGL off?)", color: '#ff6b6b', until: this.driver.now() + 4 });
+        this.toast({ text: NO_WEBGL, color: '#ff6b6b', until: this.driver.now() + 5 });
       });
   }
 
