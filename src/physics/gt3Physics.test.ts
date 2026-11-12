@@ -164,7 +164,7 @@ describe('GT3 handling', () => {
     expect(worst).toBeLessThan(0.25);
   });
 
-  it('can still be lost: the rear on grass at speed swaps ends', () => {
+  it('steps out with the rear on grass, and is caught', () => {
     const grass = { type: 'grass', grip: 0.35, drag: 0, dragPerSpeed: 0 };
     const car = moving(150);
     // Only the rear axle is on the grass.
@@ -177,7 +177,68 @@ describe('GT3 handling', () => {
       car.step({ ...none, throttle: 1, steer: 0.9 }, DT, world);
       worst = Math.max(worst, Math.abs(slide(car)));
     }
-    expect(worst).toBeGreaterThan(0.2);
+    expect(worst).toBeGreaterThan(0.08);
+    expect(worst).toBeLessThan(0.35);
+  });
+
+  /** The worst slide (rad) while moving, over a run of held keys: [seconds, keys]. */
+  function worstSlide(kmh: number, keys: [number, Partial<DriverInput>][], rearGrip = 1, gripFactor = 1): number {
+    const car = moving(kmh);
+    car.gripFactor = gripFactor;
+    const rear = { ...asphalt, grip: rearGrip };
+    const world = {
+      surfaceAt: (x: number, y: number) => ((x - car.x) * Math.cos(car.heading) + (y - car.y) * Math.sin(car.heading) < 0 ? rear : asphalt),
+      wallContact: () => null,
+    } as unknown as CarWorld;
+    let worst = 0;
+    for (const [seconds, input] of keys) {
+      for (let t = 0; t < seconds; t += DT) {
+        car.step({ ...none, ...input }, DT, world);
+        if (car.forwardSpeed > 8) worst = Math.max(worst, Math.abs(slide(car)));
+      }
+    }
+    return worst;
+  }
+
+  it('never spins from the keys alone: braking, lifting and flooring it with full lock held', () => {
+    // What a keyboard does into, through and out of every corner. It used to swap ends.
+    const left = { steer: -1 };
+    const right = { steer: 1 };
+    const runs: [number, Partial<DriverInput>][][] = [
+      [[3, { ...right, brake: 1 }]],
+      [[0.5, { brake: 1 }], [2.5, { ...right, brake: 1 }]],
+      [[1, { ...right, throttle: 1 }], [2, { ...right, brake: 1 }]],
+      [[1, { ...right, brake: 1 }], [1, right], [2, { ...right, throttle: 1 }]],
+      [[0.7, { ...left, brake: 1 }], [0.7, { ...right, brake: 1 }], [2, { ...right, throttle: 1 }]],
+      [[1, left], [1, right], [2, {}]],
+      [[4, right]],
+      [[4, { ...right, throttle: 1 }]],
+    ];
+    // Dry, worn tyres, slicks in the wet, the rear wheels on a kerb and on the grass.
+    const roads: [number, number][] = [[1, 1], [1, 0.85], [1, 0.55], [0.95, 1], [0.7, 1]];
+    for (const [rearGrip, gripFactor] of roads) {
+      for (const kmh of [90, 120, 160, 200, 250]) {
+        for (const keys of runs) expect(worstSlide(kmh, keys, rearGrip, gripFactor)).toBeLessThan(0.3);
+      }
+    }
+  });
+
+  it('still turns in on the brakes', () => {
+    const car = moving(160);
+    drive(car, { ...none, brake: 1, steer: 1 }, 1);
+    expect(Math.abs(car.heading)).toBeGreaterThan(0.25);
+  });
+
+  it('can still be lost: a hard hit spins it', () => {
+    const car = moving(150);
+    car.yawRate = 3;
+    car.upset = 1;
+    let worst = 0;
+    for (let t = 0; t < 3; t += DT) {
+      car.step({ ...none, throttle: 0.5 }, DT, flat);
+      worst = Math.max(worst, Math.abs(slide(car)));
+    }
+    expect(worst).toBeGreaterThan(1);
   });
 
   it('pulls away briskly from a standstill even at full lock', () => {
@@ -219,30 +280,30 @@ describe('GT3 handling', () => {
     expect(back.forwardSpeed).toBeLessThan(-1);
   });
 
-  it('can be driven round a lap with on/off keys', () => {
-    // A keyboard: each key is either held or not, looked at a few times a second.
-    const id = 'silverstone';
-    const track = new Track(TRACKS[id]);
-    const tt = new TimeTrial(track, id, 'Bot', 'red', 'gt3');
-    const bot = new BotDriver(track, 'me', 'hard', CAR_CLASSES.gt3.params);
-    let lap: number | null = null;
-    tt.onLap = (l) => (lap = l.time);
-    let held: DriverInput = none;
-    let acc = 0;
-    let duty = 0;
-    for (let t = 0; t < 200 && lap === null; t += DT) {
-      const want = bot.drive(tt.world, { phase: 'practice', raceStart: 0, laps: null, mandatoryStop: false }, DT);
-      acc += DT;
-      if (acc >= 1 / 30) {
-        acc = 0;
-        // Tapped: on for as much of the time as the bot wants that much steering.
-        duty += Math.abs(want.steer);
-        const tap = duty >= 1;
-        if (tap) duty -= 1;
-        held = { throttle: want.throttle > 0.5 ? 1 : 0, brake: want.brake > 0.3 ? 1 : 0, steer: tap ? Math.sign(want.steer) : 0 };
+  it('can be driven round a lap with keys held on/off, without a spin', () => {
+    // A keyboard: each key is either held or not, and the driver changes them 8 times a second.
+    for (const id of ['silverstone', 'spa', 'interlagos']) {
+      const track = new Track(TRACKS[id]);
+      const tt = new TimeTrial(track, id, 'Bot', 'red', 'gt3');
+      const bot = new BotDriver(track, 'me', 'medium', CAR_CLASSES.gt3.params);
+      let lap: number | null = null;
+      tt.onLap = (l) => (lap = l.time);
+      let held: DriverInput = none;
+      let acc = 1;
+      let worst = 0;
+      const car = tt.me.car;
+      for (let t = 0; t < 200 && lap === null; t += DT) {
+        const want = bot.drive(tt.world, { phase: 'practice', raceStart: 0, laps: null, mandatoryStop: false }, DT);
+        acc += DT;
+        if (acc >= 1 / 8) {
+          acc = 0;
+          held = { throttle: want.throttle > 0.4 ? 1 : 0, brake: want.brake > 0.15 ? 1 : 0, steer: Math.abs(want.steer) > 0.18 ? Math.sign(want.steer) : 0 };
+        }
+        tt.step(DT, { ...want, ...held });
+        if (car.speed > 10) worst = Math.max(worst, Math.abs(slide(car)));
       }
-      tt.step(DT, { ...want, ...held });
+      expect(lap, id).not.toBeNull();
+      expect(worst, id).toBeLessThan(0.45);
     }
-    expect(lap).not.toBeNull();
   });
 });

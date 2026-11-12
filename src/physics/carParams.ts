@@ -22,6 +22,15 @@ export interface TyreDynamics {
   steerSlip: number;
   /** How far the front wheels follow a slide on their own (the caster's self-aligning). */
   selfAlign: number;
+  /**
+   * Stability, in the steering: the front tyres turn the car at most this share of what the rear
+   * can follow. At 1 the rear is never asked past its peak: with a light rear (hard on the brakes,
+   * rear wheels on a kerb or the grass) the car pushes wide instead of swapping ends.
+   */
+  balance: number;
+  /** Rear slip (share of `peakSlip`) from where the steering starts catching a slide, and how hard. */
+  catchFrom: number;
+  catchGain: number;
   /** Share of `mu` the front axle really gives in a steady corner: what bots and the ideal line plan with. */
   planGrip: number;
   /** Grass and gravel's drag on this car, against the F1's (it has far less traction to pull through them). */
@@ -183,13 +192,17 @@ export const GT3_CAR: CarParams = {
     cgHeight: 0.42,
     peakSlip: 0.11,
     slideGrip: 0.9,
-    rearGrip: 1.12,
+    // Wider rear tyres: enough in hand that the front gives up first, off the throttle too.
+    rearGrip: 1.2,
     loadSensitivity: 0.06,
     rearBrake: 0.7,
     maxSteer: 0.38,
     steerSlip: 0.45,
     selfAlign: 0.85,
-    planGrip: 0.97,
+    balance: 1,
+    catchFrom: 1.1,
+    catchGain: 2,
+    planGrip: 0.96,
     surfaceDrag: 0.55,
     // A six-speed sequential: 100 / 140 / 180 / 220 / 260 / 310 km/h at the limiter.
     gears: [27.8, 38.9, 50, 61.1, 72.2, 86.1],

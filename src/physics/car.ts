@@ -85,6 +85,11 @@ export function tyreCurve(x: number, slideGrip: number): number {
   return x <= 1 ? (2 * x) / (1 + x * x) : Math.max(slideGrip, 1 - ((1 - slideGrip) * (x - 1)) / 1.5);
 }
 
+/** How much of a tyre's sideways grip is in use at this slip: all of it from the peak on. */
+function gripInUse(x: number): number {
+  return x >= 1 ? 1 : (2 * x) / (1 + x * x);
+}
+
 /** The inverse below the peak: the slip (multiple of the peak) that gives this share of the force. */
 export function slipForShare(u: number): number {
   return u <= 0 ? 0 : u >= 1 ? 1 : (1 - Math.sqrt(1 - u * u)) / u;
@@ -432,15 +437,16 @@ export class Car {
         // Traction control watches how much the rear tyres are slipping sideways, not the force
         // they make: more power means less sideways force, which would let in still more power.
         // At walking pace slip angles mean nothing (the car is on plain geometry), so it has no say.
-        const turning = Math.min(1, Math.max(0, (vx - 3) / 4)) * capR * tyreCurve(this.lastSlipR, d.slideGrip);
+        // Past the tyres' peak it counts them as fully used, so a slide gets less power, never more.
+        const turning = Math.min(1, Math.max(0, (vx - 3) / 4)) * capR * gripInUse(this.lastSlipR);
         const traction = Math.max(0.12 * capR, Math.sqrt(Math.max(0, capR * capR - turning * turning))) * 0.97;
         driveR = Math.min(traction, p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
       }
       if (this.speedLimit !== null && vx > this.speedLimit + 1) brakeR += m * 4;
       // The rear gets priority for turning: its ABS backs off first, which keeps the car straight.
       const abs = (cap: number, fy: number, share: number, keep: number) => Math.min(share * cap, Math.sqrt(Math.max(0, cap * cap - keep * fy * fy)));
-      brakeF += this.brake * abs(capF, capF * tyreCurve(this.lastSlipF, d.slideGrip), p.brakeGrip, 0.36);
-      brakeR += this.brake * abs(capR, capR * tyreCurve(this.lastSlipR, d.slideGrip), d.rearBrake, 1);
+      brakeF += this.brake * abs(capF, capF * gripInUse(this.lastSlipF), p.brakeGrip, 0.36);
+      brakeR += this.brake * abs(capR, capR * gripInUse(this.lastSlipR), d.rearBrake, 1);
       // Off the throttle the engine holds the rear back: part of why a lift rotates the car.
       if (this.throttle < 0.05 && vx > 5) brakeR += d.engineBrake * Math.min(1, this.revs);
       const stop = (m * Math.abs(vx)) / dt;
@@ -465,11 +471,20 @@ export class Car {
     const curve = Math.min(1 / p.minTurnRadius, (capF + capR) / m / Math.max(speed * speed, 1));
     const slideAngle = Math.atan2(vy, Math.max(forward, 1));
     // Caster turns the front wheels into a slide, which is what catches it.
-    const delta = clampAbs(steerIn * L * curve + Math.sign(steerIn) * d.steerSlip * d.peakSlip * slipForShare(Math.abs(steerIn)) + d.selfAlign * slideAngle, d.maxSteer);
+    const asked = steerIn * L * curve + Math.sign(steerIn) * d.steerSlip * d.peakSlip * slipForShare(Math.abs(steerIn)) + d.selfAlign * slideAngle;
+    // The driver's hands, as full lock on a key says nothing about how much the car can take:
+    // the front tyres are never asked for more turning than the rear can follow (hard on the
+    // brakes the rear is light, so the car pushes on instead of swapping ends), and once the rear
+    // is sliding the wheel goes the other way to catch it. Not after a hit: that plays out.
+    const flowF = Math.atan2(vy + a * this.yawRate, Math.max(forward, 1));
+    const slipR = -Math.atan2(vy - b * this.yawRate, Math.max(forward, 1));
+    const most = d.peakSlip * slipForShare(Math.min(1, (d.balance * b * latR) / (a * latF)));
+    const over = Math.sign(slipR) * Math.max(0, Math.abs(slipR) - d.catchFrom * d.peakSlip);
+    const centre = -d.catchGain * over * (1 - upset);
+    const delta = clampAbs(flowF + Math.max(centre - most, Math.min(centre + most, asked - flowF)), d.maxSteer);
 
     // Slip angles and the tyres' sideways force.
-    const slipF = delta - Math.atan2(vy + a * this.yawRate, Math.max(forward, 1));
-    const slipR = -Math.atan2(vy - b * this.yawRate, Math.max(forward, 1));
+    const slipF = delta - flowF;
     const lateral = (slip: number, limit: number) => Math.sign(slip) * limit * tyreCurve(Math.abs(slip) / d.peakSlip, d.slideGrip);
     const fyF = lateral(slipF, latF);
     const fyR = lateral(slipR, latR);

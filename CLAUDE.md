@@ -156,7 +156,7 @@ alone: DRS free in every zone, ERS, no other cars.
   the real cars (`gt3Physics.test.ts`): 0-100 3.7 s, 0-200 9 s, 294 km/h, 200-0 in 94 m, 1.5 g slow and
   ~1.9 g at 250 km/h. Keyboard aids, as a slip-angle model was once too hard on keys: full steering asks
   for the limit of the tyres (speed-sensitive, `steerSlip`), caster turns the front wheels into a slide
-  (`selfAlign`), the rear's ABS backs off first. A test drives a lap on simulated on/off keys. Steer still
+  (`selfAlign`), the rear's ABS backs off first. **Stability in the steering** (`balance`, `catchFrom`/`catchGain`): the front is never asked for more turning than the rear can follow, so braking, lifting or a rear wheel on a kerb/grass with full lock held pushes wide instead of spinning, and a rear slide gets opposite lock; not after a hit (`upset`), so hard hits still spin it. ABS/TC count a tyre past its peak as fully used. Tests drive every key combination in dry/worn/wet/kerb/grass, and laps on keys held 8 times a second. Steer still
   means a share of the max yaw, so `BotDriver` and `LineDriver` work unchanged; they plan with `planGrip`.
   **3D** (`src/render3d/gt3Model.ts`, `Gt3Model implements Car3d` like `CarModel`): the painted body
   is one smooth shell (`src/render3d/gt3Skin.ts`: bonnet, fender humps you see from the seat, wide
