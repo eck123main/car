@@ -107,12 +107,12 @@ function settingsPanel(): HTMLElement {
     { onchange: () => updateSettings({ tc: Number(tc.value) }) },
     ...[
       ['2', 'High'],
-      ['1', 'Low (more wheelspin, faster if you are gentle)'],
+      ['1', 'Low'],
       ['0', 'Off'],
     ].map(([v, label]) => el('option', { value: v, selected: s.tc === Number(v) }, label)),
   );
-  box.append(el('span', {}, 'GT3 traction control'), tc);
-  check('GT3 stability assist (off: a loose, oversteery car that can spin)', 'assist');
+  box.append(el('span', {}, 'GT3 traction control (low: more wheelspin)'), tc);
+  check('GT3 stability assist (off: loose and oversteery, can spin)', 'assist');
   return box;
 }
 

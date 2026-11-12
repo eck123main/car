@@ -62,7 +62,9 @@
       button.small { padding: 2px 8px; margin-left: auto; font-size: 12px; }
       .invite { display: flex; gap: 6px; }
       .invite input { flex: 1; min-width: 0; font-size: 12px; }
-      .settings { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
+      .settings { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; align-items: center; font-size: 13px; line-height: 1.35; }
+      .settings select { width: auto; max-width: 150px; padding: 5px 8px; font-size: 13px; }
+      .settings input[type=range] { width: 150px; }
       .settings .value { color: #fff; text-align: right; }
       .muted { color: #8a8d96; font-size: 12px; line-height: 1.6; }
       .error { color: #ff6b6b; }
