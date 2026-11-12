@@ -81,12 +81,22 @@ describe('GT3 performance against the real cars', () => {
     expect(Math.abs(car.y)).toBeLessThan(0.1);
   });
 
-  it('corners at 1.5 g slowly and around 2 g with downforce at 250 km/h', () => {
+  it('corners at ~1.8 g slowly and ~2.3 g with downforce at 250 km/h: 20% over a real GT3, for game feel', () => {
     const lateral = (kmh: number) => ((kmh / 3.6) * Math.abs(corner(kmh, 1).yawRate)) / G;
-    expect(lateral(70)).toBeGreaterThan(1.35);
-    expect(lateral(70)).toBeLessThan(1.7);
-    expect(lateral(250)).toBeGreaterThan(1.8);
-    expect(lateral(250)).toBeLessThan(2.3);
+    expect(lateral(70)).toBeGreaterThan(1.6);
+    expect(lateral(70)).toBeLessThan(2);
+    expect(lateral(250)).toBeGreaterThan(2.1);
+    expect(lateral(250)).toBeLessThan(2.7);
+  });
+
+  it('with the stability assist off, the keys alone can swap its ends', () => {
+    const car = moving(160);
+    let worst = 0;
+    for (let t = 0; t < 3; t += DT) {
+      car.step({ ...none, brake: 1, steer: 1, assist: false }, DT, flat);
+      if (car.forwardSpeed > 8) worst = Math.max(worst, Math.abs(slide(car)));
+    }
+    expect(worst).toBeGreaterThan(0.6);
   });
 
   it('changes gear through all six on the way up and comes back down', () => {

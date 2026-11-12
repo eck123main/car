@@ -107,6 +107,8 @@ const FLAGS = ['drs', 'ers', 'limiter', 'reset', 'ready', 'useItem'] as const;
 /** Traction control rides in two spare flag bits: low, off (neither = high). */
 const TC_LOW = 1 << 6;
 const TC_OFF = 1 << 7;
+/** Stability assist off. */
+const NO_ASSIST = 1 << 8;
 
 /** An input in a few bytes, for the 120-a-second stream from each player to the host. */
 export function packInput(seq: number, input: PlayerInput): PackedInput {
@@ -116,6 +118,7 @@ export function packInput(seq: number, input: PlayerInput): PackedInput {
   });
   if (input.tc === 1) flags |= TC_LOW;
   else if (input.tc === 0) flags |= TC_OFF;
+  if (input.assist === false) flags |= NO_ASSIST;
   return [seq, round(input.throttle), round(input.brake), round(input.steer), flags, TYRE_ORDER.indexOf(input.nextTyre)];
 }
 
@@ -139,6 +142,7 @@ export function unpackInput(p: unknown): { seq: number; input: PlayerInput } | n
       useItem: flag('useItem'),
       nextTyre: TYRE_ORDER[tyre] ?? 'medium',
       tc: flags & TC_OFF ? 0 : flags & TC_LOW ? 1 : 2,
+      assist: (flags & NO_ASSIST) === 0,
     },
   };
 }

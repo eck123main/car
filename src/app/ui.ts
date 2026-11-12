@@ -112,6 +112,7 @@ function settingsPanel(): HTMLElement {
     ].map(([v, label]) => el('option', { value: v, selected: s.tc === Number(v) }, label)),
   );
   box.append(el('span', {}, 'GT3 traction control'), tc);
+  check('GT3 stability assist (off: a loose, oversteery car that can spin)', 'assist');
   return box;
 }
 

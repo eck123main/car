@@ -16,13 +16,15 @@ export interface Settings {
   headMotion: boolean;
   /** Traction control on cars that have it (GT3): 0 off, 1 low, 2 high. */
   tc: number;
+  /** Stability assist on cars that have it (GT3): off for a loose car that can spin. */
+  assist: boolean;
 }
 
 const KEY = 'f1td.settings';
 /** Saved settings older than this still have the engine on from when it was the default. */
 const VERSION = 2;
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2 };
+export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2, assist: true };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

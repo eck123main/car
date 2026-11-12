@@ -13,6 +13,13 @@ describe('packed inputs', () => {
     }
   });
 
+  it('carry the stability assist setting', () => {
+    for (const assist of [true, false]) {
+      const input = { throttle: 1, brake: 0, steer: 0, drs: false, ers: false, limiter: false, nextTyre: 'medium' as const, assist };
+      expect(unpackInput(packInput(2, input))?.input.assist).toBe(assist);
+    }
+  });
+
   it('read a missing setting as high', () => {
     const input = { throttle: 0, brake: 0, steer: 0, drs: false, ers: false, limiter: false, nextTyre: 'medium' as const };
     expect(unpackInput(packInput(1, input))?.input.tc).toBe(2);

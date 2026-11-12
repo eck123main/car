@@ -170,7 +170,9 @@ export const GT3_CAR: CarParams = {
   width: 2.0,
   inertia: 2400,
 
-  mu: 1.55,
+  // A real GT3's slicks hold ~1.55 g; the game's is 20% grippier (game feel: next to the F1 and on
+  // half-scale tracks, the real figure felt like a car that won't turn).
+  mu: 1.86,
 
   power: 365_000,
   maxDriveForce: 10_500,
@@ -205,7 +207,7 @@ export const GT3_CAR: CarParams = {
     cgHeight: 0.42,
     peakSlip: 0.11,
     slideGrip: 0.9,
-    rearGrip: 1.12,
+    rearGrip: 1.06,
     loadSensitivity: 0.06,
     rearBrake: 0.7,
     maxSteer: 0.38,

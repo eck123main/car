@@ -9,6 +9,8 @@ export interface DriverInput {
   steer: number;
   /** Traction control (cars with the tyre model): 0 off, 1 low, 2 high (the default). */
   tc?: number;
+  /** Stability assist (cars with the tyre model, on by default): off = no help keeping the rear in line. */
+  assist?: boolean;
 }
 
 /** What the car needs to know about the world around it. */
@@ -531,10 +533,14 @@ export class Car {
     // is sliding the wheel goes the other way to catch it. Not after a hit: that plays out.
     const flowF = Math.atan2(vy + a * this.yawRate, Math.max(forward, 1));
     const slipR = -Math.atan2(vy - b * this.yawRate, Math.max(forward, 1));
-    const most = d.peakSlip * slipForShare(Math.min(1, (d.balance * b * latR) / (a * latF)));
-    const over = Math.sign(slipR) * Math.max(0, Math.abs(slipR) - d.catchFrom * d.peakSlip);
-    const centre = -d.catchGain * over * (1 - upset);
-    const delta = clampAbs(flowF + Math.max(centre - most, Math.min(centre + most, asked - flowF)), d.maxSteer);
+    // With the stability assist off, the wheels go where the keys say: a loose car that can spin.
+    let delta = clampAbs(asked, d.maxSteer);
+    if (input.assist !== false) {
+      const most = d.peakSlip * slipForShare(Math.min(1, (d.balance * b * latR) / (a * latF)));
+      const over = Math.sign(slipR) * Math.max(0, Math.abs(slipR) - d.catchFrom * d.peakSlip);
+      const centre = -d.catchGain * over * (1 - upset);
+      delta = clampAbs(flowF + Math.max(centre - most, Math.min(centre + most, asked - flowF)), d.maxSteer);
+    }
 
     // Slip angles and the tyres' sideways force.
     const slipF = delta - flowF;
