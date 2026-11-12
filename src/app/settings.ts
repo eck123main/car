@@ -14,13 +14,15 @@ export interface Settings {
   idealLine: boolean;
   /** 3D view: the driver's head moves with g-forces; the camera and steering wheel shake on kerbs and hits. Off by default: a steady view is easier to drive. */
   headMotion: boolean;
+  /** Traction control on cars that have it (GT3): 0 off, 1 low, 2 high. */
+  tc: number;
 }
 
 const KEY = 'f1td.settings';
 /** Saved settings older than this still have the engine on from when it was the default. */
 const VERSION = 2;
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false, headMotion: false };
+export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2 };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

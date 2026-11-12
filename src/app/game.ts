@@ -1184,6 +1184,8 @@ export class GameScreen {
           ersActive: me.ersActive,
           limiter: me.input.limiter,
           throttle: me.car.throttle,
+          tcLevel: me.input.tc ?? 2,
+          tc: me.car.tcActive,
           tyre: COMPOUNDS[me.tyres.compound].name[0],
           wear: me.tyres.wear,
           delta: me === own ? this.driver.delta() : null,
@@ -1337,6 +1339,7 @@ export class GameScreen {
         lights: session?.phase === 'lights' || session?.phase === 'grid' ? session.lights : 0,
         gear: me.car.gear,
         revs: me.car.revs,
+        tc: me.car.tcCutting,
       },
       dt,
     );

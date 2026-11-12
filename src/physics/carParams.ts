@@ -37,6 +37,19 @@ export interface TyreDynamics {
   surfaceDrag: number;
   /** Road speed at the rev limit in each gear (m/s). */
   gears: number[];
+  /**
+   * Wheelspin: the driven wheels' and engine's inertia as a mass at the tread (kg), the spin
+   * (m/s) where the tyre is well past its best, and how much sideways grip a spinning rear loses.
+   */
+  wheelMass: number;
+  spinPeak: number;
+  spinLateral: number;
+  /** Traction control: the wheelspin (m/s) it allows off / low / high, each ignition cut (s), and the power left during one. */
+  tcSlip: [number, number, number];
+  tcCutTime: number;
+  tcCutPower: number;
+  /** During a cut, the drive is also held to this share of what the spinning tyres give, so they hook up. */
+  tcHookUp: number;
   /** Upshift: seconds with no drive. */
   shiftTime: number;
   /** Engine braking on the rear axle at high revs (N). */
@@ -192,14 +205,13 @@ export const GT3_CAR: CarParams = {
     cgHeight: 0.42,
     peakSlip: 0.11,
     slideGrip: 0.9,
-    // Wider rear tyres: enough in hand that the front gives up first, off the throttle too.
-    rearGrip: 1.2,
+    rearGrip: 1.12,
     loadSensitivity: 0.06,
     rearBrake: 0.7,
     maxSteer: 0.38,
     steerSlip: 0.45,
     selfAlign: 0.85,
-    balance: 1,
+    balance: 1.15,
     catchFrom: 1.1,
     catchGain: 2,
     planGrip: 0.96,
@@ -207,6 +219,13 @@ export const GT3_CAR: CarParams = {
     // A six-speed sequential: 100 / 140 / 180 / 220 / 260 / 310 km/h at the limiter.
     gears: [27.8, 38.9, 50, 61.1, 72.2, 86.1],
     shiftTime: 0.05,
+    wheelMass: 60,
+    spinPeak: 2,
+    spinLateral: 0.3,
+    tcSlip: [Infinity, 0.8, 0.2],
+    tcCutTime: 0.04,
+    tcCutPower: 0.85,
+    tcHookUp: 0.92,
     engineBrake: 1600,
   },
 };

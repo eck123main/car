@@ -7,6 +7,8 @@ export interface DriverInput {
   brake: number;
   /** -1 = full left, 1 = full right. */
   steer: number;
+  /** Traction control (cars with the tyre model): 0 off, 1 low, 2 high (the default). */
+  tc?: number;
 }
 
 /** What the car needs to know about the world around it. */
@@ -90,6 +92,11 @@ function gripInUse(x: number): number {
   return x >= 1 ? 1 : (2 * x) / (1 + x * x);
 }
 
+/** A driven tyre's grip (share of its best) when the wheel spins this much (multiple of `spinPeak`). */
+function spinGrip(x: number, slideGrip: number): number {
+  return x <= 0 ? 1 : Math.max(slideGrip, 1 - ((1 - slideGrip) * x) / 2);
+}
+
 /** The inverse below the peak: the slip (multiple of the peak) that gives this share of the force. */
 export function slipForShare(u: number): number {
   return u <= 0 ? 0 : u >= 1 ? 1 : (1 - Math.sqrt(1 - u * u)) / u;
@@ -102,8 +109,8 @@ export function enginePower(revs: number): number {
 }
 
 /** What the rest of `Car.step` has worked out, for the tyre model. */
-/** Gear, shift cut, weight transfer, longitudinal g, front and rear slip. */
-export type TyreState = [number, number, number, number, number, number];
+/** Gear, shift cut, weight transfer, longitudinal g, front and rear slip, wheelspin, TC cut, TC light. */
+export type TyreState = [number, number, number, number, number, number, number, number, number];
 
 interface TyreInputs {
   vx: number;
@@ -170,6 +177,21 @@ export class Car {
   /** Last step's slip angles, as multiples of the tyres' peak (for ABS and traction control). */
   private lastSlipF = 0;
   private lastSlipR = 0;
+  /** How much faster the driven wheels turn than the car moves (m/s at the tread): wheelspin. */
+  wheelspin = 0;
+  /** Traction control: seconds left of a power cut, and of its light on the dash. */
+  private tcCut = 0;
+  private tcLight = 0;
+
+  /** Traction control is cutting the power (the light on the dash, the stutter in the engine). */
+  get tcActive(): boolean {
+    return this.tcLight > 0;
+  }
+
+  /** Traction control has the ignition cut at this moment. */
+  get tcCutting(): boolean {
+    return this.tcCut > 0;
+  }
 
   /** Share of grip in use (0..1) and whether the tyres are sliding: drives tyre wear. */
   tyreLoad = 0;
@@ -222,6 +244,7 @@ export class Car {
     this.steer = this.throttle = this.brake = 0;
     this.gear = 0;
     this.shiftCut = this.longAcc = this.lastSlipF = this.lastSlipR = 0;
+    this.wheelspin = this.tcCut = this.tcLight = 0;
   }
 
   repair(): void {
@@ -378,13 +401,16 @@ export class Car {
    */
   /** What the tyre model remembers between steps, for a client predicting this car. */
   tyreState(): TyreState {
-    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR];
+    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR, this.wheelspin, this.tcCut, this.tcLight];
   }
 
   restoreTyreState(s: TyreState): void {
     [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR] = s;
+    this.wheelspin = s[6] ?? 0;
+    this.tcCut = s[7] ?? 0;
+    this.tcLight = s[8] ?? 0;
     const gears = this.params.dynamics?.gears;
-    if (gears && this.gear > 0) this.revs = Math.abs(this.vx) / gears[Math.min(this.gear, gears.length) - 1];
+    if (gears && this.gear > 0) this.revs = (Math.abs(this.vx) + this.wheelspin) / gears[Math.min(this.gear, gears.length) - 1];
   }
 
   private tyreStep(d: TyreDynamics, input: DriverInput, t: TyreInputs, dt: number): [number, number] {
@@ -413,34 +439,59 @@ export class Car {
       while (this.gear < top.length && vx > top[this.gear - 1] * 0.95) this.gear++;
     }
     this.shiftCut = Math.max(0, this.shiftCut - dt);
-    if (this.gear < top.length && vx > top[this.gear - 1] * 0.985 && this.throttle > 0.1) {
+    // The engine turns with the driven wheels, so wheelspin shows on the revs.
+    const wheelSpeed = vx + this.wheelspin;
+    if (this.gear < top.length && wheelSpeed > top[this.gear - 1] * 0.985 && this.throttle > 0.1) {
       this.gear++;
       this.shiftCut = d.shiftTime;
     } else if (this.gear > 1 && vx < top[this.gear - 2] * 0.9) {
       this.gear--;
     }
-    this.revs = Math.abs(vx) / top[this.gear - 1];
+    this.revs = Math.abs(wheelSpeed) / top[this.gear - 1];
 
     // Longitudinal forces per axle. ABS holds each axle under its limit, easing off for
-    // whatever the tyres are using to turn; traction control does the same for the power.
+    // whatever the tyres are using to turn.
     const reversing = this.allowReverse && input.brake > 0 && input.throttle === 0 && vx < 1.5 && !this.retired;
     let driveR = 0;
     let brakeF = 0;
     let brakeR = 0;
+    this.tcCut = Math.max(0, this.tcCut - dt);
+    this.tcLight = Math.max(0, this.tcLight - dt);
     if (reversing) {
       if (vx > -p.maxReverseSpeed) driveR = -p.reverseForce;
+      this.wheelspin = 0;
     } else {
       const limited = this.speedLimit !== null && vx > this.speedLimit - 0.3;
-      if (!limited && this.shiftCut <= 0) {
+      let engine = 0;
+      // At the limiter in top gear the engine cuts out.
+      const atLimiter = this.gear === top.length && this.revs >= 1;
+      if (!limited && this.shiftCut <= 0 && !atLimiter) {
         const revs = Math.max(0.35, Math.min(1, this.revs));
         const power = (p.power * (1 - 0.12 * dmg.rearWing) + this.extraPower) * enginePower(revs);
-        // Traction control watches how much the rear tyres are slipping sideways, not the force
-        // they make: more power means less sideways force, which would let in still more power.
-        // At walking pace slip angles mean nothing (the car is on plain geometry), so it has no say.
-        // Past the tyres' peak it counts them as fully used, so a slide gets less power, never more.
-        const turning = Math.min(1, Math.max(0, (vx - 3) / 4)) * capR * gripInUse(this.lastSlipR);
-        const traction = Math.max(0.12 * capR, Math.sqrt(Math.max(0, capR * capR - turning * turning))) * 0.97;
-        driveR = Math.min(traction, p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
+        engine = Math.min(p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
+      }
+      // The most drive the rear tyres can give, after what they are using to turn. Past their
+      // peak sideways they count as fully used. At walking pace slip angles mean nothing.
+      const turning = Math.min(1, Math.max(0, (vx - 3) / 4)) * capR * gripInUse(this.lastSlipR);
+      const traction = Math.max(0.12 * capR, Math.sqrt(Math.max(0, capR * capR - turning * turning)));
+      // Wheelspin: whatever the engine pushes beyond the tyres' grip spins the wheels up, and a
+      // spinning tyre gives less than its best. Off the power the wheels catch up with the car.
+      const given = traction * spinGrip(this.wheelspin / d.spinPeak, d.slideGrip);
+      // Traction control cuts the ignition while the rear wheels spin, down to less than the
+      // tyres can take, so they hook up again; then the power comes back (the stutter you hear).
+      if (this.tcCut > 0) engine = Math.min(engine * d.tcCutPower, given * d.tcHookUp);
+      if (engine > traction || this.wheelspin > 0) {
+        this.wheelspin = Math.max(0, this.wheelspin + ((engine - given) / d.wheelMass) * dt);
+        driveR = this.wheelspin > 0 ? given : engine;
+      } else {
+        driveR = engine;
+      }
+      // Traction control: cuts in when the spin passes what its setting allows. Not at walking
+      // pace: pulling away, a little spin is fine.
+      const allowed = d.tcSlip[Math.max(0, Math.min(2, Math.round(input.tc ?? 2)))];
+      if (this.wheelspin > allowed && vx > 3) {
+        this.tcCut = Math.max(this.tcCut, d.tcCutTime);
+        this.tcLight = 0.3;
       }
       if (this.speedLimit !== null && vx > this.speedLimit + 1) brakeR += m * 4;
       // The rear gets priority for turning: its ABS backs off first, which keeps the car straight.
@@ -462,7 +513,9 @@ export class Car {
 
     // What's left of each axle's grip for turning.
     const latF = Math.sqrt(Math.max(capF * capF - fxF * fxF, 0.0625 * capF * capF)) * (1 - 0.65 * upset) * (1 - 0.4 * dmg.frontWing);
-    const latR = Math.sqrt(Math.max(capR * capR - fxR * fxR, 0.0625 * capR * capR)) * (1 - 0.65 * upset);
+    // A spinning rear tyre has little left to hold the car sideways: power oversteer.
+    const spinning = Math.min(1, this.wheelspin / d.spinPeak);
+    const latR = Math.sqrt(Math.max(capR * capR - fxR * fxR, 0.0625 * capR * capR)) * (1 - 0.65 * upset) * (1 - d.spinLateral * spinning);
 
     // Steering: the input asks for a share of the tightest turn the tyres can hold.
     const forward = Math.abs(vx);
@@ -506,7 +559,7 @@ export class Car {
     const fx = w * slipFx + (1 - w) * (fxF + fxR);
     const fy = w * slipFy + (1 - w) * plainFy;
     this.tyreLoad = Math.hypot(fx, fy) / Math.max(capF + capR, 1);
-    this.sliding = speed > 3 && (Math.abs(slipF) > d.peakSlip * 1.4 || Math.abs(slipR) > d.peakSlip * 1.4);
+    this.sliding = speed > 3 && (Math.abs(slipF) > d.peakSlip * 1.4 || Math.abs(slipR) > d.peakSlip * 1.4 || this.wheelspin > d.spinPeak);
     return [fx, fy];
   }
 

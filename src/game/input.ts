@@ -1,6 +1,7 @@
 import type { DriverInput } from '../physics/car';
 import type { Compound } from '../sim/tyres';
 import type { PlayerInput } from '../sim/world';
+import { settings } from '../app/settings';
 
 const THROTTLE = ['KeyW', 'ArrowUp'];
 const BRAKE = ['KeyS', 'ArrowDown'];
@@ -128,6 +129,7 @@ export class LocalControls {
       ers: this.keyboard.isDown(['ShiftLeft', 'ShiftRight']),
       limiter: this.limiter,
       nextTyre: this.nextTyre,
+      tc: settings().tc,
       reset: this.keyboard.wasPressed('KeyR'),
       useItem: this.keyboard.isDown(['KeyE']),
       ready: this.ready || this.keyboard.isDown(['Enter', 'NumpadEnter']),

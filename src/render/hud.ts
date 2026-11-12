@@ -41,6 +41,15 @@ export function drawHud(
   ctx.textAlign = 'center';
   ctx.fillText(gear, px + 200, py + 56);
 
+  // Traction control light (cars that have it): orange while it cuts the power.
+  if (car.params.dynamics) {
+    ctx.fillStyle = car.tcActive ? '#ff6a00' : 'rgba(255,255,255,0.08)';
+    ctx.fillRect(px + 186, py + 6, 34, 16);
+    ctx.fillStyle = car.tcActive ? '#000' : '#666';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillText('TC', px + 203, py + 18);
+  }
+
   bar(ctx, px + 14, py + 76, 200, 10, car.throttle, '#2ecc40', 'THR');
   bar(ctx, px + 14, py + 94, 200, 10, car.brake, '#ff4136', 'BRK');
   bar(ctx, px + 14, py + 112, 200, 10, car.damage, '#ff851b', 'DMG');

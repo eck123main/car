@@ -683,6 +683,9 @@ export interface WheelInfo {
   /** A car with its own gearbox: the gear (0 = none, gears follow from the speed) and revs (0-1). */
   gear?: number;
   revs?: number;
+  /** Traction control: its setting (0 off, 1 low, 2 high) and whether it is cutting in now. */
+  tcLevel?: number;
+  tc?: boolean;
   /** Tyres: compound letter and wear (0-1). */
   tyre?: string;
   wear?: number;
@@ -1030,7 +1033,7 @@ export class SteeringWheel {
     this.showLeds(info.gear ? gearboxLights(info.revs ?? 0) : shiftLights(engineRpm(info.speedKmh, info.throttle ?? 0)), info.flag ?? null, info.drsAvailable);
     const delta = info.delta == null ? null : Math.round(info.delta * 10) / 10;
     const wear = Math.round((info.wear ?? 0) * 100);
-    const key = `${gear}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}|${info.tyre}|${wear}|${delta}|${info.message?.text}`;
+    const key = `${gear}|${Math.round(info.speedKmh)}|${info.drsOpen}|${info.drsAvailable}|${Math.round(info.ers * 20)}|${info.ersActive}|${info.limiter}|${info.tyre}|${wear}|${delta}|${info.message?.text}|${info.tcLevel}|${info.tc}`;
     if (key === this.last) return;
     this.last = key;
     const c = this.ctx;
@@ -1054,7 +1057,8 @@ export class SteeringWheel {
         c.fillStyle = '#050608';
         c.fillText(`${label} ${value}`, x + 18, 56);
       };
-      tag('TC', '4', 6, '#ffcf1f');
+      // The TC tag lights up orange while traction control cuts in.
+      tag('TC', ['OFF', 'LO', 'HI'][info.tcLevel ?? 2] ?? 'HI', 6, info.tc ? '#ff6a00' : info.tcLevel === 0 ? '#6b6e75' : '#ffcf1f');
       tag('ABS', '3', 46, '#4dd2ff');
       tag('MAP', '1', 86, '#c9ccd1');
     } else {

@@ -84,7 +84,7 @@ function controlsHelp(): HTMLElement {
 function settingsPanel(): HTMLElement {
   const box = el('div', { class: 'settings' });
   const s = settings();
-  const check = (label: string, key: keyof Omit<Settings, 'volume'>) => {
+  const check = (label: string, key: keyof Omit<Settings, 'volume' | 'tc'>) => {
     const input = el('input', { type: 'checkbox', checked: s[key], onchange: () => updateSettings({ [key]: input.checked }) });
     box.append(el('span', {}, label), input);
   };
@@ -102,6 +102,16 @@ function settingsPanel(): HTMLElement {
   check('Big live delta (top centre)', 'delta');
   check('Ideal racing line: green throttle, yellow hold, red brake (L)', 'idealLine');
   check('3D view: head moves with g-forces, camera and wheel shake on kerbs and hits', 'headMotion');
+  const tc = el(
+    'select',
+    { onchange: () => updateSettings({ tc: Number(tc.value) }) },
+    ...[
+      ['2', 'High'],
+      ['1', 'Low (more wheelspin, faster if you are gentle)'],
+      ['0', 'Off'],
+    ].map(([v, label]) => el('option', { value: v, selected: s.tc === Number(v) }, label)),
+  );
+  box.append(el('span', {}, 'GT3 traction control'), tc);
   return box;
 }
 

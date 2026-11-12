@@ -73,6 +73,8 @@ export interface SoundFrame {
   /** A car with its own gearbox: the gear (0 = none, gears follow from the speed) and revs (0-1). */
   gear?: number;
   revs?: number;
+  /** Traction control is cutting the ignition: the engine stutters. */
+  tc?: boolean;
 }
 
 interface Loop<S extends AudioScheduledSourceNode = AudioBufferSourceNode> {
@@ -420,6 +422,9 @@ export class GameAudio {
     }
     this.lastGear = gear;
     this.shiftCut = Math.max(0, this.shiftCut - dt);
+    // Traction control: quick ignition cuts, a stutter in the engine note.
+    if (f.tc && f.throttle > 0.5 && !f.stopped && Math.sin(this.time * 2 * Math.PI * 14) > 0) this.shiftCut = Math.max(this.shiftCut, 0.02);
+    if (!recorded && this.shiftCut > 0) set(this.engineGain.gain, synth * 0.06, 0.008);
     if (recorded) {
       // Never quite steady: the pitch and level wander a little at random, like a real engine
       // under changing load, and the copies drift against each other.

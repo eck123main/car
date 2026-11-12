@@ -307,3 +307,70 @@ describe('GT3 handling', () => {
     }
   });
 });
+
+describe('GT3 wheelspin and traction control', () => {
+  /** Floor it on wet slicks with this TC setting: the most wheelspin and whether TC cut in. */
+  function wetLaunch(tc: number): { spin: number; tcOn: boolean; kmh: number } {
+    const car = moving(60);
+    car.gripFactor = 0.55;
+    let spin = 0;
+    let tcOn = false;
+    for (let t = 0; t < 2.5; t += DT) {
+      car.step({ ...none, throttle: 1, tc }, DT, flat);
+      spin = Math.max(spin, car.wheelspin);
+      tcOn ||= car.tcActive;
+    }
+    return { spin, tcOn, kmh: car.speed * 3.6 };
+  }
+
+  it('spins the rear wheels with too much power for the grip, and TC off lets them', () => {
+    const off = wetLaunch(0);
+    expect(off.spin).toBeGreaterThan(5);
+    expect(off.tcOn).toBe(false);
+  });
+
+  it('traction control holds the spin to its setting: a little on low, less on high', () => {
+    const low = wetLaunch(1);
+    const high = wetLaunch(2);
+    expect(low.tcOn).toBe(true);
+    expect(high.tcOn).toBe(true);
+    expect(low.spin).toBeLessThan(2);
+    expect(high.spin).toBeLessThan(low.spin);
+    // Spinning wheels waste the power: with TC the car gets away faster.
+    expect(high.kmh).toBeGreaterThan(wetLaunch(0).kmh);
+  });
+
+  it('does not spin the wheels flat out on a dry straight', () => {
+    const car = moving(40);
+    let spin = 0;
+    for (let t = 0; t < 4; t += DT) {
+      car.step({ ...none, throttle: 1 }, DT, flat);
+      spin = Math.max(spin, car.wheelspin);
+    }
+    expect(spin).toBe(0);
+    expect(car.tcActive).toBe(false);
+  });
+
+  it('shows wheelspin on the revs', () => {
+    const grip = moving(60);
+    const spin = moving(60);
+    spin.gripFactor = 0.55;
+    drive(grip, { ...none, throttle: 1, tc: 0 }, 0.6);
+    drive(spin, { ...none, throttle: 1, tc: 0 }, 0.6);
+    expect(spin.wheelspin).toBeGreaterThan(1);
+    expect(spin.revs).toBeGreaterThan(spin.forwardSpeed / GT3_CAR.dynamics!.gears[spin.gear - 1]);
+  });
+
+  it('even with TC off, flooring it out of a corner does not swap ends', () => {
+    for (const grip of [1, 0.55]) {
+      const car = corner(70, 1);
+      car.gripFactor = grip;
+      let worst = 0;
+      for (let t = 0; t < 2.5; t += DT) {
+        car.step({ ...none, throttle: 1, steer: 1, tc: 0 }, DT, flat);
+        worst = Math.max(worst, Math.abs(slide(car)));
+      }
+      expect(worst).toBeLessThan(0.3);
+    }
+  });
+});
