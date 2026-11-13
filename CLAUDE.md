@@ -534,7 +534,7 @@ keydown/keyup on the document (`BUTTON_KEYS`: A DRS, X ERS, B item, Y camera, RB
 Enter, Menu Esc, L3 V, R3 P, D-pad arrows), so new keys need no controller code. While a menu
 (`#ui .screen`, tyre picker included) is up, the D-pad / stick moves focus between its buttons
 (`moveFocus`, nearest in that direction), A presses, B or Menu clicks Resume/Back. A toast on
-connect. Analog values go over the network as they are (`packInput`).
+connect, and a "Controller connected" bar bottom centre while one is (`showBar`). Analog values go over the network as they are (`packInput`).
 
 - Keys should be **rebindable** later.
 - Note: the 2026 F1 rules replaced DRS with active aero plus a manual-override boost. We

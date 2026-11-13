@@ -155,6 +155,9 @@ export class GamepadInput {
   private stickRepeat = 0;
   private lastTime = 0;
   private notice: HTMLElement | null = null;
+  /** The bar that stays on screen while a controller is connected. */
+  private bar: HTMLElement | null = null;
+  private barName = '';
 
   constructor(private readonly doc: Document = document) {
     window.addEventListener('gamepadconnected', (e) => this.toast(`Controller connected: ${shortName(e.gamepad.id)}`));
@@ -170,6 +173,7 @@ export class GamepadInput {
     const dt = this.lastTime ? Math.min(0.1, (time - this.lastTime) / 1000) : 0;
     this.lastTime = time;
     const list = pads();
+    this.showBar(list);
     const now = new Set<number>();
     for (const p of list) p.buttons.forEach((b, i) => b.pressed && now.add(i));
     const screen = menuScreen();
@@ -239,12 +243,34 @@ export class GamepadInput {
     for (const code of [...this.keysDown]) this.key('keyup', code);
   }
 
+  /** Bottom centre: a green dot and the controller's name, only while one is connected. */
+  private showBar(list: Gamepad[]): void {
+    const name = list.length ? shortName(list[0].id) + (list.length > 1 ? ` +${list.length - 1}` : '') : '';
+    if (name === this.barName) return;
+    this.barName = name;
+    if (!name) {
+      this.bar?.remove();
+      this.bar = null;
+      return;
+    }
+    if (!this.bar) {
+      this.bar = this.doc.createElement('div');
+      this.bar.style.cssText =
+        'position:fixed;left:50%;bottom:8px;transform:translateX(-50%);z-index:999;display:flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;background:rgba(15,17,22,.78);border:1px solid rgba(255,255,255,.12);color:#d8dae0;font:600 12px system-ui,sans-serif;pointer-events:none;white-space:nowrap';
+      this.doc.body.append(this.bar);
+    }
+    this.bar.replaceChildren();
+    const dot = this.doc.createElement('span');
+    dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#2ecc71;box-shadow:0 0 6px #2ecc71';
+    this.bar.append(dot, `Controller connected · ${name}`);
+  }
+
   private toast(text: string): void {
     this.notice?.remove();
     const n = this.doc.createElement('div');
     n.textContent = text;
     n.style.cssText =
-      'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:1000;padding:8px 14px;border-radius:8px;background:rgba(15,17,22,.92);color:#fff;font:600 13px system-ui,sans-serif;pointer-events:none';
+      'position:fixed;left:50%;bottom:40px;transform:translateX(-50%);z-index:1000;padding:8px 14px;border-radius:8px;background:rgba(15,17,22,.92);color:#fff;font:600 13px system-ui,sans-serif;pointer-events:none';
     this.doc.body.append(n);
     this.notice = n;
     setTimeout(() => n.remove(), 3000);
