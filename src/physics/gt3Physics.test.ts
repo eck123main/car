@@ -73,20 +73,20 @@ describe('GT3 performance against the real cars', () => {
     expect(car.gear).toBe(GT3_CAR.dynamics!.gears.length);
   });
 
-  it('stops from 200 km/h in about 90-120 m, in a straight line', () => {
+  it('stops from 200 km/h in about 65-120 m (real cars ~95 m; more grip and downforce here), in a straight line', () => {
     const car = moving(200);
     timeUntil(car, { ...none, brake: 1 }, () => car.speed < 1);
-    expect(car.x).toBeGreaterThan(80);
+    expect(car.x).toBeGreaterThan(65);
     expect(car.x).toBeLessThan(125);
     expect(Math.abs(car.y)).toBeLessThan(0.1);
   });
 
-  it('corners at ~1.8 g slowly and ~2.3 g with downforce at 250 km/h: 20% over a real GT3, for game feel', () => {
+  it('corners at ~1.8 g slowly and ~3.2 g with downforce at 250 km/h: over a real GT3 (1.5 / 1.9 g), for game feel on half-scale tracks', () => {
     const lateral = (kmh: number) => ((kmh / 3.6) * Math.abs(corner(kmh, 1).yawRate)) / G;
     expect(lateral(70)).toBeGreaterThan(1.6);
     expect(lateral(70)).toBeLessThan(2);
-    expect(lateral(250)).toBeGreaterThan(2.1);
-    expect(lateral(250)).toBeLessThan(2.7);
+    expect(lateral(250)).toBeGreaterThan(2.8);
+    expect(lateral(250)).toBeLessThan(3.6);
   });
 
   it('with the stability assist off, the keys alone can swap its ends', () => {

@@ -160,7 +160,7 @@ export const F1_CAR: CarParams = {
 /**
  * A GT3 car (911 GT3 R, M4 GT3, 296 GT3 and friends), on real figures: about 1300 kg with the
  * driver, 365 kW at the wheels, slicks with ~1.55 g of mechanical grip, and an estimated 600 kg of
- * downforce at 250 km/h. Driven by the full tyre model, with the ABS and traction control the
+ * downforce at 250 km/h (the game gives it more grip and downforce, see `mu` and `downforceCoef`). Driven by the full tyre model, with the ABS and traction control the
  * real cars have. Checked against real performance in `gt3Physics.test.ts`.
  */
 export const GT3_CAR: CarParams = {
@@ -182,7 +182,10 @@ export const GT3_CAR: CarParams = {
   brakeGrip: 0.95,
 
   dragCoef: 0.64,
-  downforceCoef: 1.2,
+  // A real GT3 makes ~600 kg of downforce at 250 km/h (1.2 here); the game's makes twice that: on
+  // half-scale tracks fast corners are twice as tight, and at the real figure players found it
+  // would hardly turn at speed. ~3 g at 250 km/h, still well short of the F1's 6-7 g.
+  downforceCoef: 2.4,
   aeroBalanceFront: 0.4,
   rollingResistance: 0.015,
 

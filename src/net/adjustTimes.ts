@@ -22,9 +22,13 @@ export const ADJUSTMENTS: { name: string; factors: Record<string, number> }[] = 
 
 /**
  * Changes too big to rescale: a car class's laps kept in this browser are cleared instead (the
- * global board: supabase/gt3_grip_reset.sql). GT3 grip +20%.
+ * global board: supabase/gt3_grip_reset.sql). GT3 grip +20%, then GT3 downforce doubled
+ * (supabase/gt3_aero_reset.sql).
  */
-export const CLEARS: { name: string; cls: string }[] = [{ name: 'gt3-grip-2026-11', cls: 'gt3' }];
+export const CLEARS: { name: string; cls: string }[] = [
+  { name: 'gt3-grip-2026-11', cls: 'gt3' },
+  { name: 'gt3-aero-2026-11', cls: 'gt3' },
+];
 
 /** Apply every adjustment this browser hasn't had yet, in order. */
 export function adjustAllStoredTimes(kv: KeyValue, keys: string[]): void {

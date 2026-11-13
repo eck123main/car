@@ -136,7 +136,7 @@ alone: DRS free in every zone, ERS, no other cars.
   far more corner speed), so bot laps alone are not a pace reference.
 
 - **Car classes** (`src/sim/carClass.ts`): **F1** and **GT3** (`GT3_CAR` in `carParams.ts`: 1300 kg,
-  365 kW at the wheels, ~600 kg of downforce at 250 km/h, grip 20% over a real GT3's 1.55 g (`mu` 1.86: at the real
+  365 kW at the wheels, downforce twice a real GT3's ~600 kg at 250 km/h (`downforceCoef` 2.4: on half-scale tracks fast corners are twice as tight, and players found it would hardly turn at speed), grip 20% over a real GT3's 1.55 g (`mu` 1.86: at the real
   figure players found it wouldn't turn), tougher; no DRS, no ERS, flags on the class). Picked at the top of the
   time trial menu (remembered, `f1td.tt.class`). **In every other mode too, never mixed**: a race is all
   one class (`RaceSettings.carClass`, lobby setting "Cars", so races vs bots, online and party; last
@@ -147,15 +147,15 @@ alone: DRS free in every zone, ERS, no other cars.
   further out, the autopilot looks further and steers less at speed (`pit.ts`). Each class is its own
   time trial category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
   `track@gt3`, no database change), and GT3 medals are in `src/tracks/medals-gt3.json` (F1 author x
-  the Hard bot's GT3/F1 lap ratio, 1.34-1.52x, close to the real ~1.35x since the GT3 got 20% more grip (redone for every track then; Jeddah, with no clean bot lap, from the mean 1.433x); the GT3 laps set before the grip change were cleared (board: `supabase/gt3_grip_reset.sql`, run once; browsers: `CLEARS` in `adjustTimes.ts`); `npx tsx scripts/class-medals.ts gt3`; compare with
+  the Hard bot's GT3/F1 lap ratio, 1.34-1.52x, close to the real ~1.35x since the GT3 got 20% more grip (redone for every track then); redone again after the downforce was doubled; the GT3 laps set before each change were cleared (board: `supabase/gt3_grip_reset.sql` then `supabase/gt3_aero_reset.sql`, each run once; browsers: `CLEARS` in `adjustTimes.ts`); `npx tsx scripts/class-medals.ts gt3`; compare with
   `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
   F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
   **GT3 driving** (`CarParams.dynamics`, `Car.tyreStep`; F1 keeps the simple grip model): a real two-axle
   tyre model with slip angles, a tyre curve that peaks then falls off, weight transfer, load sensitivity,
   slip-based ABS and traction control, a six-speed gearbox with a power curve (`Car.gear`, `Car.revs`, used
   by the HUD, wheel display, shift lights and sound). Measured with `npx tsx scripts/gt3-bench.ts` against
-  the real cars (`gt3Physics.test.ts`): 0-100 3.7 s, 0-200 9 s, 294 km/h; with the game's extra grip 200-0 in 80 m, 1.85 g slow and
-  ~2.35 g at 250 km/h (real cars: 94 m, 1.5 g, 1.9 g). Keyboard aids, as a slip-angle model was once too hard on keys: full steering asks
+  the real cars (`gt3Physics.test.ts`): 0-100 3.7 s, 0-200 9 s, 294 km/h; with the game's extra grip and downforce 200-0 in 74 m, 1.85 g slow and
+  ~3.1 g at 250 km/h (real cars: 94 m, 1.5 g, 1.9 g). Keyboard aids, as a slip-angle model was once too hard on keys: full steering asks
   for the limit of the tyres (speed-sensitive, `steerSlip`), caster turns the front wheels into a slide
   (`selfAlign`, only past `alignFrom` of the peak slip: following the small slide of a normal corner swung the car back the other way when a key was let go, so players kept steering), the rear's ABS backs off first. **Stability assist** (`balance`, `catchFrom`/`catchGain`; a per-player setting, "GT3 stability assist", `Settings.assist`,
   on by default, sent as an input flag bit; off = the wheels go where the keys say, a loose car that spins like the original): the front is never asked for more turning than the rear can follow, so braking, lifting or a rear wheel on a kerb/grass with full lock held pushes wide instead of spinning, and a rear slide gets opposite lock; not after a hit (`upset`), so hard hits still spin it. ABS counts a tyre past its peak as fully used. **Wheelspin and traction control**: power beyond the rear tyres' grip spins the wheels up (`Car.wheelspin`, m/s at the tread; `wheelMass`, `spinPeak`), a spinning tyre gives less drive and less side grip (`spinLateral`), and the revs show it. TC cuts the power in short pulses once the spin passes its setting (`tcSlip` off / low / high; `tcCutPower`, `tcHookUp`): an orange TC light on the HUD speed panel and the wheel display's TC tag, and a stutter in the engine sound (`Car.tcActive` / `tcCutting`, synced in `CarSnap.ty`). The setting is per player, Settings "GT3 traction control" (`Settings.tc`, default high), sent to the host in two spare input flag bits (`packInput`, protocol 12); bots use high. Even with TC off the steering aid keeps the car from swapping ends: TC off just wastes drive. Hard bot laps ~0.5% slower than before wheelspin. Tests drive every key combination in dry/worn/wet/kerb/grass, and laps on keys held 8 times a second. Steer still
