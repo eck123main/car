@@ -22,6 +22,8 @@ export interface TyreDynamics {
   steerSlip: number;
   /** How far the front wheels follow a slide on their own (the caster's self-aligning). */
   selfAlign: number;
+  /** Slide angle (share of `peakSlip`) the caster ignores: a car cornering normally runs a little sideways, and following that made it flick back when the keys were let go. */
+  alignFrom: number;
   /**
    * Stability, in the steering: the front tyres turn the car at most this share of what the rear
    * can follow. At 1 the rear is never asked past its peak: with a light rear (hard on the brakes,
@@ -212,7 +214,8 @@ export const GT3_CAR: CarParams = {
     rearBrake: 0.7,
     maxSteer: 0.38,
     steerSlip: 0.45,
-    selfAlign: 0.85,
+    selfAlign: 0.7,
+    alignFrom: 0.4,
     balance: 1.15,
     catchFrom: 1.1,
     catchGain: 2,

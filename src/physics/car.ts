@@ -526,7 +526,7 @@ export class Car {
     const curve = Math.min(1 / p.minTurnRadius, (capF + capR) / m / Math.max(speed * speed, 1));
     const slideAngle = Math.atan2(vy, Math.max(forward, 1));
     // Caster turns the front wheels into a slide, which is what catches it.
-    const asked = steerIn * L * curve + Math.sign(steerIn) * d.steerSlip * d.peakSlip * slipForShare(Math.abs(steerIn)) + d.selfAlign * slideAngle;
+    const asked = steerIn * L * curve + Math.sign(steerIn) * d.steerSlip * d.peakSlip * slipForShare(Math.abs(steerIn)) + d.selfAlign * Math.sign(slideAngle) * Math.max(0, Math.abs(slideAngle) - d.alignFrom * d.peakSlip);
     // The driver's hands, as full lock on a key says nothing about how much the car can take:
     // the front tyres are never asked for more turning than the rear can follow (hard on the
     // brakes the rear is light, so the car pushes on instead of swapping ends), and once the rear

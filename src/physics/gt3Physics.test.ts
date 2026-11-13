@@ -291,7 +291,8 @@ describe('GT3 handling', () => {
   });
 
   it('can be driven round a lap with keys held on/off, without a spin', () => {
-    // A keyboard: each key is either held or not, and the driver changes them 8 times a second.
+    // A keyboard: each key is either held or not. Pedals change 8 times a second; steering is
+    // tapped like a player does, held for a share of each eighth of a second.
     for (const id of ['silverstone', 'spa', 'interlagos']) {
       const track = new Track(TRACKS[id]);
       const tt = new TimeTrial(track, id, 'Bot', 'red', 'gt3');
@@ -307,13 +308,29 @@ describe('GT3 handling', () => {
         acc += DT;
         if (acc >= 1 / 8) {
           acc = 0;
-          held = { throttle: want.throttle > 0.4 ? 1 : 0, brake: want.brake > 0.15 ? 1 : 0, steer: Math.abs(want.steer) > 0.18 ? Math.sign(want.steer) : 0 };
+          held = { throttle: want.throttle > 0.4 ? 1 : 0, brake: want.brake > 0.15 ? 1 : 0, steer: 0 };
         }
-        tt.step(DT, { ...want, ...held });
+        const tap = Math.abs(want.steer) * 1.6 > (t * 8) % 1 ? Math.sign(want.steer) : 0;
+        tt.step(DT, { ...want, ...held, steer: tap });
         if (car.speed > 10) worst = Math.max(worst, Math.abs(slide(car)));
       }
       expect(lap, id).not.toBeNull();
       expect(worst, id).toBeLessThan(0.45);
+    }
+  });
+
+  it('keeps the turn when the key is let go, without flicking back', () => {
+    // Players found it fought them: a tap turned the car, then it swung back the other way.
+    for (const kmh of [150, 220]) {
+      const car = new Car(GT3_CAR, 'red');
+      car.vx = kmh / 3.6;
+      let back = 0;
+      for (let t = 0; t < 3; t += DT) {
+        car.step({ ...none, throttle: 0.6, steer: t < 0.5 ? 1 : 0 }, DT, flat);
+        if (t > 0.5) back = Math.max(back, -car.yawRate);
+      }
+      expect(car.heading, `${kmh}`).toBeGreaterThan(0.25);
+      expect(back, `${kmh}`).toBeLessThan(0.18);
     }
   });
 });
