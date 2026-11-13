@@ -72,6 +72,7 @@ const CONTROLS: [string, string][] = [
   ['V', 'Test the first-person 3D view; C then changes camera, M mirror on/off, hold Q to look behind'],
   ['F, T, N, H', 'Open road: autopilot, time of day, music, hide the display'],
   ['Esc', 'Menu'],
+  ['Controller', 'Xbox-style: RT throttle, LT brake, left stick steer, A DRS, X ERS (hold), B item, Y camera, RB reset / restart lap, LB look behind, View ready, Menu menu, left stick click 3D view, right stick click pit limiter, D-pad switch driver. In menus: D-pad or stick to move, A select, B back'],
 ];
 
 function controlsHelp(): HTMLElement {

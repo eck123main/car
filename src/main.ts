@@ -11,6 +11,7 @@ import { accounts } from './net/accounts';
 import { gameAudio } from './audio/sound';
 import type { GameMode } from './sim/session';
 import { recommendedStartTyre } from './sim/strategy';
+import { GamepadInput } from './game/gamepad';
 import { Keyboard, Mouse } from './game/input';
 import { ClientGame } from './net/client';
 import { HostGame } from './net/host';
@@ -30,6 +31,8 @@ try {
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const keyboard = new Keyboard(window);
+// Xbox-style controllers: triggers and stick drive, buttons act as keys, D-pad + A in menus.
+new GamepadInput();
 const mouse = new Mouse(canvas, window);
 const params = new URLSearchParams(location.search);
 const joinCode = params.get('join');

@@ -527,6 +527,15 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 
 The timing tower is always shown (no Tab needed).
 
+**Controller** (`src/game/gamepad.ts`, Xbox layout via the browser's standard mapping, any mode):
+RT throttle and LT brake (analog), left stick steering (analog, dead zone + curve, `stickToSteer`),
+merged into `Keyboard.driverInput`. Every other button sends the key it stands for as a real
+keydown/keyup on the document (`BUTTON_KEYS`: A DRS, X ERS, B item, Y camera, RB R, LB Q, View
+Enter, Menu Esc, L3 V, R3 P, D-pad arrows), so new keys need no controller code. While a menu
+(`#ui .screen`, tyre picker included) is up, the D-pad / stick moves focus between its buttons
+(`moveFocus`, nearest in that direction), A presses, B or Menu clicks Resume/Back. A toast on
+connect. Analog values go over the network as they are (`packInput`).
+
 - Keys should be **rebindable** later.
 - Note: the 2026 F1 rules replaced DRS with active aero plus a manual-override boost. We
   keep **DRS + ERS** because it's well known and fun in a top-down game.

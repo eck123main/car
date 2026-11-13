@@ -2,6 +2,7 @@ import type { DriverInput } from '../physics/car';
 import type { Compound } from '../sim/tyres';
 import type { PlayerInput } from '../sim/world';
 import { settings } from '../app/settings';
+import { padDrive } from './gamepad';
 
 const THROTTLE = ['KeyW', 'ArrowUp'];
 const BRAKE = ['KeyS', 'ArrowDown'];
@@ -33,11 +34,14 @@ export class Keyboard {
     return this.pressed.delete(code);
   }
 
+  /** Keys, plus a controller's triggers and stick (analog) when one is connected. */
   driverInput(): DriverInput {
+    const pad = padDrive();
+    const keySteer = (this.isDown(RIGHT) ? 1 : 0) - (this.isDown(LEFT) ? 1 : 0);
     return {
-      throttle: this.isDown(THROTTLE) ? 1 : 0,
-      brake: this.isDown(BRAKE) ? 1 : 0,
-      steer: (this.isDown(RIGHT) ? 1 : 0) - (this.isDown(LEFT) ? 1 : 0),
+      throttle: Math.max(this.isDown(THROTTLE) ? 1 : 0, pad.throttle),
+      brake: Math.max(this.isDown(BRAKE) ? 1 : 0, pad.brake),
+      steer: keySteer !== 0 ? keySteer : pad.steer,
     };
   }
 }
