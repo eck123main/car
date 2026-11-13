@@ -4,7 +4,7 @@ export interface Settings {
   sound: boolean;
   /** Master volume, 0..1. */
   volume: number;
-  /** Engine, wind and tyre noise. Off by default until the engine sound is better. */
+  /** Engine, wind and tyre noise. */
   engine: boolean;
   /** DRS, ERS, start lights and other beeps. */
   effects: boolean;
@@ -24,7 +24,7 @@ const KEY = 'f1td.settings';
 /** Saved settings older than this still have the engine on from when it was the default. */
 const VERSION = 2;
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: false, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2, assist: true };
+export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: true, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2, assist: true };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

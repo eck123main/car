@@ -419,8 +419,12 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   pops on lift-off, limiter bounce), turbo, ERS whine, wind, tyre squeal, kerb/gravel rumble,
   hits, and beeps: DRS available, DRS flap open/close, pit limiter on/off, each start light.
   Muted while paused, in a hidden tab or off the game screen.
-- `src/app/settings.ts` (`f1td.settings`): sound on/off, volume, engine sounds (**off by default**
-  until the engine sound is improved; players opt in), beeps, and the
+- **Engine recording**: `engine-10500.wav` and `engine-11500.wav` are two steady-revs stretches cut from a
+  2026 Audi onboard (the source mp3 stays local, gitignored), pitch-flattened, looped with a crossfade,
+  one copy each (detuned copies of the same recording sounded washy). The game's F1 revs (9000-11800)
+  barely need pitching. The GT3 uses them pitched down (no GT recording yet).
+- `src/app/settings.ts` (`f1td.settings`): sound on/off, volume, engine sounds (on by default since the
+  recording; a player who turned them off before keeps them off), beeps, and the
   **big live delta** (top centre, green ahead / red behind, against your best or the ghost).
   On the welcome screen (Settings) and in the Esc menu.
 

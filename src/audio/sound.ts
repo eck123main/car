@@ -105,7 +105,9 @@ interface EngineSample {
 }
 
 /** Detune (as a playback rate factor) of each copy of a recorded engine loop. */
-const VOICE_DETUNE = [1, 1.006, 0.993];
+// One copy: the loops are long, steady stretches of a real onboard; detuned copies of the same
+// recording mixed together only made it sound washy (phasing).
+const VOICE_DETUNE = [1];
 
 /**
  * How loud each engine loop plays at these revs (loops sorted by their revs): a crossfade
