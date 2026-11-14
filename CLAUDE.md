@@ -189,7 +189,7 @@ alone: DRS free in every zone, ERS, no other cars.
   versions. **3D** (`src/render3d/lmhModel.ts`, `LmhModel implements Car3d`): one lofted, vertex-coloured
   shell (glossy, reflecting like the GT3's paint) with the livery painted per face; the canopy is its own
   grid so the glass edges are clean, and the shell's top has a matching hole under it so the cockpit
-  shows; fin, splitter and wing (`lmhSplitterGeometry`, `lmhRearWingGeometry`, also the debris).
+  shows; fin, splitter and wing (`lmhSplitterGeometry`, `lmhRearWingGeometry`, also the debris). Details: louvres over the wheels, fender exits and sidepod intakes with slats, dark nose intakes, glowing LED headlight slashes and a full-width tail light bar (`lightsGeometry`, unlit material), race numbers on the fin and doors (`numberTexture`), endplates sitting on the rear fenders.
   Right-hand drive cockpit: carbon tub, lying-back seat, harness, switch panel, GT wheel
   (`LMH_COCKPIT`) and a rear-view screen at the top of the windscreen (no rear window). Cameras
   `LMH_CAMS` (roof, low nose, splitter, fin). Wheels, tyres and materials shared with the GT3 model.
