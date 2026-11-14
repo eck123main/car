@@ -39,8 +39,8 @@ export const IDLE_INPUT: PlayerInput = {
 };
 
 /** ERS: extra power while deploying, seconds of deployment in a full battery. */
-const ERS_POWER = 120_000;
-const ERS_DEPLOY_TIME = 7;
+export const ERS_POWER = 120_000;
+export const ERS_DEPLOY_TIME = 7;
 const DRS_DRAG = 0.65;
 const DRS_GAP = 1;
 /** A press of the DRS button this long (s) before reaching the zone still opens it there. */

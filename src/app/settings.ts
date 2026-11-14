@@ -18,13 +18,17 @@ export interface Settings {
   tc: number;
   /** Stability assist on cars that have it (GT3): off for a loose car that can spin. */
   assist: boolean;
+  /** Driving aid: ERS deploys by itself where it gains the most time (Shift still works). */
+  autoErs: boolean;
+  /** Driving aid: DRS opens by itself wherever it's allowed (Space still works). */
+  autoDrs: boolean;
 }
 
 const KEY = 'f1td.settings';
 /** Saved settings older than this still have the engine on from when it was the default. */
 const VERSION = 2;
 
-export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: true, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2, assist: true };
+export const DEFAULT_SETTINGS: Settings = { sound: true, volume: 0.6, engine: true, effects: true, delta: true, idealLine: false, headMotion: false, tc: 2, assist: true, autoErs: false, autoDrs: false };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

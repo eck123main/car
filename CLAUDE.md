@@ -507,6 +507,13 @@ Top-down 2D car physics that feels like an F1 car:
 - **Brake boards** (100 / 50 m) are drawn before slow corners that follow a fast stretch.
 - **[OPEN]** Fuel load / car getting lighter over the race? (Probably skip at first.)
 - **ERS boost** button with a battery meter (see Controls).
+- **Auto ERS / Auto DRS** (Settings, off by default, `Settings.autoErs` / `autoDrs`, applied in
+  `GameScreen.driveAids`, so they just press Shift / Space for the player and need no network
+  change). Auto DRS holds the button, so it opens wherever the rules allow. Auto ERS
+  (`src/sim/autoErs.ts`) deploys only where extra power adds drive (F1: above ~190 km/h, under
+  that the car is traction-limited), worth (extra accel / speed) x time to the ideal line's next
+  braking point against how empty the battery is, and always with a full battery. Measured with
+  `npx tsx scripts/ers-bench.ts`: ~0.67 s/lap vs ~0.53 holding Shift on every straight, 0.21 the bots' rule.
 
 ## Controls
 

@@ -25,6 +25,7 @@ import { TileCache } from '../render/tiles';
 import { TrackGraphics } from '../render/trackGraphics';
 import { RESET_WAIT, type SessionEvent } from '../sim/session';
 import { settings, updateSettings } from './settings';
+import { autoErs } from '../sim/autoErs';
 import { idealLine } from '../sim/ai/idealLine';
 import { drawIdealLine } from '../render/idealLine';
 import { saveCam3d, savedCam3d, savedView, saveView } from './view';
@@ -598,6 +599,20 @@ export class GameScreen {
   }
 
   /** Mouse driving: steer towards the cursor, harder the further it is off the car's heading. */
+  /** Auto ERS / Auto DRS (Settings): the aids press Shift and Space for the player. */
+  private driveAids(input: PlayerInput): PlayerInput {
+    const { autoErs: ers, autoDrs: drs } = settings();
+    if (!ers && !drs) return input;
+    const world = this.driver.world();
+    const me = world?.racer(this.driver.meId);
+    if (!world || !me) return input;
+    return {
+      ...input,
+      drs: input.drs || drs,
+      ers: input.ers || (ers && autoErs(world.track, idealLine(world.track, undefined, me.carClass), me, input)),
+    };
+  }
+
   private mouseSteer(): number {
     const mouse = this.controls.mouse;
     const car = this.driver.world()?.racer(this.driver.meId)?.car;
@@ -685,6 +700,7 @@ export class GameScreen {
     this.updateSpectating();
     this.controls.mouseSteer = this.mouseSteer();
     let input = this.controls.read();
+    input = this.driveAids(input);
     this.mouseChanged();
     // Nothing to keep in sync with: stop the clock while the menu is open.
     if (this.paused && this.driver.pausable) this.acc = 0;

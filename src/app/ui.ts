@@ -102,6 +102,8 @@ function settingsPanel(): HTMLElement {
   check('DRS, ERS and start light beeps', 'effects');
   check('Big live delta (top centre)', 'delta');
   check('Ideal racing line: green throttle, yellow hold, red brake (L)', 'idealLine');
+  check('Auto ERS: deploys by itself where it gains the most time', 'autoErs');
+  check('Auto DRS: opens by itself wherever it is allowed', 'autoDrs');
   check('3D view: head moves with g-forces, camera and wheel shake on kerbs and hits', 'headMotion');
   const tc = el(
     'select',
