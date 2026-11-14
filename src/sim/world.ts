@@ -325,7 +325,8 @@ export class RaceWorld {
     const input = pitInput;
 
     // ERS: deploy on the throttle while the button is held; harvest under braking.
-    r.ersActive = CAR_CLASSES[r.carClass].ers && input.ers && r.ers > 0 && car.throttle > 0.5 && !car.retired;
+    const cls = CAR_CLASSES[r.carClass];
+    r.ersActive = cls.ers && input.ers && r.ers > 0 && car.throttle > 0.5 && !car.retired && car.speed >= (cls.ersFrom ?? 0);
     if (r.ersActive) r.ers = Math.max(0, r.ers - dt / ERS_DEPLOY_TIME);
     else r.ers = Math.min(1, r.ers + dt * (0.25 * car.brake + 0.01));
 

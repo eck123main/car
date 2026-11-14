@@ -1,5 +1,6 @@
 import MEDAL_TABLE from '../tracks/medals.json';
 import GT3_MEDAL_TABLE from '../tracks/medals-gt3.json';
+import LMH_MEDAL_TABLE from '../tracks/medals-lmh.json';
 import { parseBoardKey, type CarClassId } from './carClass';
 
 /**
@@ -35,6 +36,7 @@ const TABLE = MEDAL_TABLE as Record<string, MedalTimes>;
 /** Other classes' medal times (scripts/class-medals.ts), by track. */
 const CLASS_TABLES: Partial<Record<CarClassId, Record<string, MedalTimes>>> = {
   gt3: GT3_MEDAL_TABLE as Record<string, MedalTimes>,
+  lmh: LMH_MEDAL_TABLE as Record<string, MedalTimes>,
 };
 
 /** How many tracks have F1 medals (the medal skins count F1 medals only). */

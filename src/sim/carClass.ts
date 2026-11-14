@@ -1,10 +1,10 @@
-import { F1_CAR, GT3_CAR, type CarParams } from '../physics/carParams';
+import { F1_CAR, GT3_CAR, HYPERCAR_CAR, type CarParams } from '../physics/carParams';
 
 /**
  * Kinds of car. Each one is its own category in time trial (own leaderboard, ghosts and medals):
  * an F1 lap and a GT3 lap are never compared.
  */
-export type CarClassId = 'f1' | 'gt3';
+export type CarClassId = 'f1' | 'gt3' | 'lmh';
 
 export interface CarClass {
   id: CarClassId;
@@ -15,6 +15,8 @@ export interface CarClass {
   /** Has a DRS flap / an ERS battery (GT3 cars have neither). */
   drs: boolean;
   ers: boolean;
+  /** ERS only deploys above this speed (m/s): a Hypercar's front-axle hybrid, from 190 km/h. */
+  ersFrom?: number;
 }
 
 export const CAR_CLASSES: Record<CarClassId, CarClass> = {
@@ -34,9 +36,18 @@ export const CAR_CLASSES: Record<CarClassId, CarClass> = {
     drs: false,
     ers: false,
   },
+  lmh: {
+    id: 'lmh',
+    name: 'Hypercar',
+    blurb: 'Le Mans prototype: light, lots of downforce, hybrid boost above 190 km/h (Shift). No DRS.',
+    params: HYPERCAR_CAR,
+    drs: false,
+    ers: true,
+    ersFrom: 190 / 3.6,
+  },
 };
 
-export const CAR_CLASS_ORDER: CarClassId[] = ['f1', 'gt3'];
+export const CAR_CLASS_ORDER: CarClassId[] = ['f1', 'gt3', 'lmh'];
 
 export function isCarClassId(v: unknown): v is CarClassId {
   return typeof v === 'string' && v in CAR_CLASSES;

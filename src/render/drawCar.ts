@@ -4,6 +4,7 @@ import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { liveryFor, type Livery } from './livery';
 import type { CarClassId } from '../sim/carClass';
 import { drawGt3Body } from './drawGt3';
+import { drawLmhBody } from './drawLmh';
 
 export interface CarLook {
   /** DRS flap open: the rear wing lights up green. */
@@ -20,7 +21,7 @@ export interface CarLook {
   lost?: number;
   /** Damage per part (0-1): shows as bare carbon, scratches, bent wings and wheels out of line. */
   parts?: CarParts;
-  /** The kind of car (default F1): a GT3 has a closed body. */
+  /** The kind of car (default F1): a GT3 and a Hypercar have closed bodies. */
   body?: CarClassId;
 }
 
@@ -82,8 +83,9 @@ export function drawCar(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
-  if (look.body === 'gt3') {
-    drawGt3Body(ctx, p, steer, liv, lost, dmg, toe, (d) => drawBodyDamage(ctx, d), !!look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0);
+  if (look.body === 'gt3' || look.body === 'lmh') {
+    const draw = look.body === 'gt3' ? drawGt3Body : drawLmhBody;
+    draw(ctx, p, steer, liv, lost, dmg, toe, (d) => drawBodyDamage(ctx, d), !!look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0);
     ctx.restore();
     return;
   }

@@ -91,7 +91,7 @@ const GARAGE = 6.5;
 /** Where a car's wheels are (along, and half the track), and how far its jacks reach under it. */
 export function wheelsOf(cls: CarClassId): { front: number; rear: number; y: number; jackFront: number; jackRear: number } {
   const p = CAR_CLASSES[cls].params;
-  return { front: p.cgToFront, rear: -p.cgToRear, y: cls === 'gt3' ? 0.83 : 0.75, jackFront: p.length / 2 + 0.4, jackRear: -p.length / 2 - 0.05 };
+  return { front: p.cgToFront, rear: -p.cgToRear, y: cls === 'f1' ? 0.75 : 0.83, jackFront: p.length / 2 + 0.4, jackRear: -p.length / 2 - 0.05 };
 }
 
 type Role = 'gun' | 'carry' | 'jack' | 'hold';

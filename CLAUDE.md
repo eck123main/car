@@ -135,7 +135,7 @@ alone: DRS free in every zone, ERS, no other cars.
   chase a time it shouldn't move. Note: good players are ~20% faster than the Hard bot (they carry
   far more corner speed), so bot laps alone are not a pace reference.
 
-- **Car classes** (`src/sim/carClass.ts`): **F1** and **GT3** (`GT3_CAR` in `carParams.ts`: 1300 kg,
+- **Car classes** (`src/sim/carClass.ts`): **F1**, **GT3** and **Hypercar** (below) (`GT3_CAR` in `carParams.ts`: 1300 kg,
   365 kW at the wheels, downforce twice a real GT3's ~600 kg at 250 km/h (`downforceCoef` 2.4: on half-scale tracks fast corners are twice as tight, and players found it would hardly turn at speed), grip 20% over a real GT3's 1.55 g (`mu` 1.86: at the real
   figure players found it wouldn't turn), tougher; no DRS, no ERS, flags on the class). Picked at the top of the
   time trial menu (remembered, `f1td.tt.class`). **In every other mode too, never mixed**: a race is all
@@ -177,6 +177,22 @@ alone: DRS free in every zone, ERS, no other cars.
   draw calls; the paint with a Fresnel falloff, the glass off from inside). Vents stand proud of the paint
   (`addVents`), race fittings in `addFittings` (bonnet pins, tow straps, quick-fill, air jack), slicks with
   rolled shoulders and sidewall lettering tinted by compound. Total length ~4.9 m with splitter and wing.
+- **Hypercar** (class `lmh`, `HYPERCAR_CAR` in `carParams.ts`): a Le Mans Hypercar (GR010, 499P, 963):
+  1030 kg, 400 kW plus the hybrid, ~340 km/h, 0-100 in 2.7 s (`npx tsx scripts/gt3-bench.ts lmh`). The GT3's
+  tyre model, aids and settings (TC, stability assist; seven-speed gearbox), grip +20% over real like the
+  GT3 (`mu` 2.1), `downforceCoef` 3.4. **Hybrid boost = the class's ERS** (Shift, Auto ERS works) but only
+  above 190 km/h like the real front-axle rule (`CarClass.ersFrom`, checked in `RaceWorld`, `autoErs`
+  and open road). **No DRS.** Hard bot laps 1.18-1.27x the F1 and ~0.87x the GT3
+  (`npx tsx scripts/class-laps.ts`; real cars ~1.15x F1). Medals in `src/tracks/medals-lmh.json`
+  (`scripts/class-medals.ts lmh`). Drawn top-down by `src/render/drawLmh.ts` (fenders over the wheels,
+  low nose, bubble canopy, fin, full-width wing); damage diagram and debris use the GT3's closed-body
+  versions. **3D** (`src/render3d/lmhModel.ts`, `LmhModel implements Car3d`): one lofted, vertex-coloured
+  shell (glossy, reflecting like the GT3's paint) with the livery painted per face; the canopy is its own
+  grid so the glass edges are clean, and the shell's top has a matching hole under it so the cockpit
+  shows; fin, splitter and wing (`lmhSplitterGeometry`, `lmhRearWingGeometry`, also the debris).
+  Right-hand drive cockpit: carbon tub, lying-back seat, harness, switch panel, GT wheel
+  (`LMH_COCKPIT`) and a rear-view screen at the top of the windscreen (no rear window). Cameras
+  `LMH_CAMS` (roof, low nose, splitter, fin). Wheels, tyres and materials shared with the GT3 model.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,

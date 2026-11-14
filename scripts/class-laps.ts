@@ -4,7 +4,7 @@
  *   npx tsx scripts/class-laps.ts [trackId ...]
  */
 import { BotDriver } from '../src/sim/ai/botDriver';
-import { CAR_CLASSES, type CarClassId } from '../src/sim/carClass';
+import { CAR_CLASS_ORDER, CAR_CLASSES, type CarClassId } from '../src/sim/carClass';
 import { TimeTrial } from '../src/sim/timeTrial';
 import { Track } from '../src/track/track';
 import { REAL_TRACK_IDS, TRACKS } from '../src/tracks';
@@ -30,8 +30,11 @@ if (process.argv[1]?.includes('class-laps')) {
   const named = process.argv.slice(2);
   for (const id of named.length ? named : REAL_TRACK_IDS) {
     const f1 = botLap(id, 'f1');
-    const gt = botLap(id, 'gt3');
-    const ratio = f1.time && gt.time ? (gt.time / f1.time).toFixed(3) : '-';
-    console.log(`${id.padEnd(16)} F1 ${f1.time?.toFixed(2) ?? 'none'} (${f1.top.toFixed(0)})  GT3 ${gt.time?.toFixed(2) ?? 'none'} (${gt.top.toFixed(0)})  x${ratio}`);
+    const others = CAR_CLASS_ORDER.filter((c) => c !== 'f1').map((c) => {
+      const lap = botLap(id, c);
+      const ratio = f1.time && lap.time ? (lap.time / f1.time).toFixed(3) : '-';
+      return `${CAR_CLASSES[c].name} ${lap.time?.toFixed(2) ?? 'none'} (${lap.top.toFixed(0)}) x${ratio}`;
+    });
+    console.log(`${id.padEnd(16)} F1 ${f1.time?.toFixed(2) ?? 'none'} (${f1.top.toFixed(0)})  ${others.join('  ')}`);
   }
 }
