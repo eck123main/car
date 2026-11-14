@@ -1,9 +1,10 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHEEL_RL, LOST_WHEEL_RR, type CarParts } from '../physics/car';
 import { accentOf, type Livery } from '../render/livery';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { CARBON, dentAt, DISC_DARK, DISC_HOT, discGlow, mirrorUv, SHOWS_FROM, SteeringWheel, strut, tbox, TYRE, WORN_TYRE, type Car3d, type Cockpit, type V3 } from './carModel';
-import { GLASS_REFLECT, PAINT_REFLECT, reflective, spokeGeometry, tyreGeometry, withFresnel } from './gt3Model';
+import { GLASS_REFLECT, PAINT_REFLECT, raceNumber, reflective, spokeGeometry, tyreGeometry, withFresnel } from './gt3Model';
 import { sidewallTexture, type Sky } from './gt3Skin';
 import { QuadBuilder } from './trackMesh';
 
@@ -29,6 +30,9 @@ const TRACK = 0.82;
 const D = 0.12;
 const GLASS = '#22303d';
 const DARK = '#0b0b0d';
+const VENT = '#050507';
+const LED = '#eef4ff';
+const TAIL_LIGHT = '#ff1424';
 const SEAT = '#1d1e22';
 const STRAP = '#d0202e';
 
@@ -116,6 +120,26 @@ function sideBottom(x: number): number {
   return 0.1;
 }
 
+/** Between the wheels the sides tuck in under the sidepods (0 over the wheels, 1 mid-way). */
+function waist(x: number): number {
+  return smooth((FRONT_AXLE - 0.5 - x) / 0.3) * smooth((x - REAR_AXLE - 0.55) / 0.3);
+}
+
+/** How far the side sits in from the widest point, `f` from the sill (0) to the top (1). */
+function sideInset(x: number, f: number): number {
+  const under = f < 0.6 ? 0.03 + 0.12 * waist(x) * ((0.6 - f) / 0.6) ** 1.5 : 0;
+  const shoulder = f > 0.8 ? 0.04 * ((f - 0.8) / 0.2) ** 2 : 0;
+  return under + shoulder;
+}
+
+/** A point on a side, `f` from sill to top, `out` proud of it. */
+function onSide(x: number, f: number, side: number, out = 0): V3 {
+  const hw = halfWidth(x);
+  const top = baseHeight(x, side * (hw - 0.04));
+  const bottom = sideBottom(x);
+  return [x, bottom + (Math.max(bottom, top) - bottom) * f, side * (hw - sideInset(x, f) + out)];
+}
+
 /** Glass on the canopy (`s` across it, -1 to 1): the windscreen and the side windows. */
 function isGlass(x: number, s: number): boolean {
   const a = Math.abs(s);
@@ -133,9 +157,13 @@ function paintAt(l: Livery, x: number, y: number, z: number, onTop: boolean): st
   if (!onTop && y < 0.23) return accent;
   // Louvres over the front wheels, dark slots.
   if (onTop && a > hw - 0.5 && a < hw - 0.18 && x > FRONT_AXLE - 0.42 && x < FRONT_AXLE + 0.4 && Math.floor((x - FRONT_AXLE) / 0.08) % 2 === 0) return '#050506';
-  // Nose tip and the light strips on the fender fronts.
+  // ...and over the rear wheels.
+  if (onTop && a > hw - 0.48 && a < hw - 0.2 && x > REAR_AXLE - 0.3 && x < REAR_AXLE + 0.32 && Math.floor((x - REAR_AXLE) / 0.07) % 2 === 0) return '#050506';
+  // The front fenders' exits behind the wheels, and the sidepod intakes ahead of the rear wheels.
+  if (!onTop && x > FRONT_AXLE - 0.78 && x < FRONT_AXLE - 0.47 && y > 0.36 && y < 0.8) return VENT;
+  if (!onTop && x > -0.98 && x < -0.62 && y > 0.42 && y < 0.82 - 0.25 * (x + 0.98)) return VENT;
+  // Nose tip.
   if (x > NOSE - 0.25 && a < 0.42) return l.nose;
-  if (x > NOSE - 0.16 && a > hw - 0.38 && a < hw - 0.12 && y > 0.36) return '#f4f7ff';
   if (onTop && l.stripe && a > 0.1 && a < 0.22) return l.stripe;
   const front = l.front && l.front.toLowerCase() !== l.body.toLowerCase() ? l.front : null;
   const edgeF = 0.75 + 0.4 * (1 - zn);
@@ -163,7 +191,7 @@ function shellGeometry(l: Livery): { shell: THREE.BufferGeometry; glass: THREE.B
   const q = new QuadBuilder();
   const g = new QuadBuilder();
   const xs: number[] = [];
-  for (let x = TAIL; x < NOSE; x += 0.07) xs.push(x);
+  for (let x = TAIL; x < NOSE; x += 0.05) xs.push(x);
   xs.push(NOSE);
   // Across the section, left sill to right sill: the side (f from sill 0 to top 1), then the top.
   const TOP = 33;
@@ -171,9 +199,10 @@ function shellGeometry(l: Livery): { shell: THREE.BufferGeometry; glass: THREE.B
   const INNER = 0.375;
   type Pt = { side: number; f: number; u: number };
   const prof: Pt[] = [];
-  for (const f of [0, 0.35, 0.7, 1]) prof.push({ side: -1, f, u: -1 });
+  const SIDE_F = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.88, 1];
+  for (const f of SIDE_F) prof.push({ side: -1, f, u: -1 });
   for (let k = 1; k < TOP - 1; k++) prof.push({ side: 0, f: 1, u: -1 + (2 * k) / (TOP - 1) });
-  for (const f of [1, 0.7, 0.35, 0]) prof.push({ side: 1, f, u: 1 });
+  for (const f of [...SIDE_F].reverse()) prof.push({ side: 1, f, u: 1 });
   const at = (x: number, p: Pt): V3 => {
     const hw = halfWidth(x);
     if (p.side === 0) {
@@ -183,10 +212,7 @@ function shellGeometry(l: Livery): { shell: THREE.BufferGeometry; glass: THREE.B
       const z = Math.sign(p.u) * (a <= INNER ? (a / INNER) * half : half + ((a - INNER) / (1 - INNER)) * (hw - 0.04 - half));
       return [x, baseHeight(x, z), z];
     }
-    const top = baseHeight(x, p.side * (hw - 0.04));
-    const bottom = sideBottom(x);
-    const y = bottom + (Math.max(bottom, top) - bottom) * p.f;
-    return [x, y, p.side * (hw - (p.f > 0.7 ? 0.04 * (p.f - 0.7) / 0.3 : 0))];
+    return onSide(x, p.f, p.side);
   };
   for (let i = 0; i < xs.length - 1; i++) {
     for (let j = 0; j < prof.length - 1; j++) {
@@ -226,14 +252,25 @@ function shellGeometry(l: Livery): { shell: THREE.BufferGeometry; glass: THREE.B
       else q.quad(a, b, c, d, paintAt(l, mx, (a[1] + c[1]) / 2, (a[2] + c[2]) / 2, true));
     }
   }
-  // The nose and tail faces: fans from the middle.
+  // The nose and tail faces: columns across, cut at a few heights so they can be painted in bands.
+  const tops = prof.filter((p) => p.side === 0 || p.f === 1);
   for (const x of [NOSE, TAIL]) {
-    const ring = prof.map((p) => at(x, p));
-    const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
-    const c: V3 = [x, cy, 0];
-    for (let j = 0; j < ring.length - 1; j++) {
-      const color = x > 0 ? (ring[j][1] < 0.22 ? CARBON : l.nose) : ring[j][1] > 0.68 && ring[j][1] < 0.78 ? '#c00c14' : ring[j][1] < 0.45 ? '#121214' : l.pods ?? l.body;
-      q.quad(c, ring[j], ring[j + 1], ring[j + 1], color);
+    const bottom = sideBottom(x);
+    const colorAt = (y: number, z: number): string => {
+      if (x > 0) return y < 0.2 ? CARBON : y < 0.33 && z > 0.18 ? VENT : l.nose;
+      return y < 0.45 ? '#121214' : l.pods ?? l.body;
+    };
+    for (let j = 0; j < tops.length - 1; j++) {
+      const [, t0, z0] = at(x, tops[j]);
+      const [, t1, z1] = at(x, tops[j + 1]);
+      const cuts = [bottom, 0.2, 0.33, 0.45].filter((y) => y < Math.min(t0, t1));
+      for (let k = 0; k < cuts.length; k++) {
+        const y0 = cuts[k];
+        const last = k === cuts.length - 1;
+        const ya = last ? t0 : cuts[k + 1];
+        const yb = last ? t1 : cuts[k + 1];
+        q.quad([x, y0, z0], [x, y0, z1], [x, yb, z1], [x, ya, z0], colorAt((y0 + Math.min(ya, yb)) / 2, Math.abs(z0 + z1) / 2));
+      }
     }
   }
   return { shell: q.build(), glass: g.build() };
@@ -265,8 +302,6 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
   const finColor = l.pods ?? l.body;
   tbox(q, -2.22, -1.05, 0.04, 0.04, 0.84, 1.07, 0.86, 0.96, finColor);
   tbox(q, -2.22, -1.05, 0.05, 0.05, 1.065, 1.08, 0.955, 0.97, accent);
-  // A white number board on each side of the fin.
-  for (const side of [-1, 1]) tbox(q, -1.95, -1.55, 0.005, 0.005, 0.89, 1.03, 0.89, 1.0, '#f2f2f2', side * 0.022);
   // Roof scoop on the back of the canopy.
   tbox(q, -0.95, -0.55, 0.2, 0.16, 0.98, 1.06, 1.0, 1.1, l.body);
   tbox(q, -0.56, -0.54, 0.15, 0.15, 1.0, 1.09, 1.0, 1.09, DARK);
@@ -275,12 +310,80 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
     strut(q, [0.82, 0.66, side * 0.62], [0.78, 0.8, side * 0.7], 0.03, CARBON);
     tbox(q, 0.7, 0.8, 0.16, 0.15, 0.75, 0.86, 0.76, 0.85, l.body, side * 0.72);
   }
-  // Rear light bar and the rain light.
-  tbox(q, -2.31, -2.29, 1.7, 1.7, 0.7, 0.74, 0.7, 0.74, '#e3141c');
-  tbox(q, -2.33, -2.3, 0.18, 0.18, 0.5, 0.58, 0.5, 0.58, '#ff2a2a');
+  // Slats across the vents (standing proud of the paint).
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 4; k++) {
+      const x = FRONT_AXLE - 0.74 + k * 0.08;
+      strut(q, onSide(x, 0.3, side, 0.004), onSide(x + 0.04, 0.85, side, 0.004), 0.018, CARBON);
+    }
+    // The intake's lip.
+    strut(q, onSide(-0.62, 0.45, side, 0.03), onSide(-0.62, 0.9, side, 0.03), 0.03, CARBON);
+  }
   // Tow strap on the nose.
   strut(q, [2.43, 0.32, 0.3], [2.53, 0.27, 0.3], 0.028, '#e3141c');
   return q.build();
+}
+
+/** The lights, unlit so they glow: three-slash LED headlights on each front fender, the tail bar, the rain light. */
+function lightsGeometry(): THREE.BufferGeometry {
+  const q = new QuadBuilder();
+  const onTop = (x: number, z: number, lift = 0.008): V3 => [x, baseHeight(x, z) + lift, z];
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 3; k++) {
+      const x0 = 2.06 + k * 0.075;
+      const a0 = 0.5;
+      const a1 = 0.86;
+      q.quad(onTop(x0, side * a0), onTop(x0 + 0.03, side * a0), onTop(x0 + 0.1, side * a1), onTop(x0 + 0.07, side * a1), LED);
+    }
+    // Vertical end strips of the tail lights.
+    q.quad([TAIL - 0.006, 0.5, side * 0.86], [TAIL - 0.006, 0.8, side * 0.86], [TAIL - 0.006, 0.8, side * 0.9], [TAIL - 0.006, 0.5, side * 0.9], TAIL_LIGHT);
+  }
+  q.quad([TAIL - 0.006, 0.76, -0.9], [TAIL - 0.006, 0.8, -0.9], [TAIL - 0.006, 0.8, 0.9], [TAIL - 0.006, 0.76, 0.9], TAIL_LIGHT);
+  q.quad([TAIL - 0.006, 0.46, -0.08], [TAIL - 0.006, 0.54, -0.08], [TAIL - 0.006, 0.54, 0.08], [TAIL - 0.006, 0.46, 0.08], '#ff2a2a');
+  return q.build();
+}
+
+const numberTextures = new Map<number, THREE.CanvasTexture>();
+
+/** A number board: white, the number in black, a red strip for the class (as WEC Hypercars). */
+function numberTexture(num: number): THREE.CanvasTexture {
+  let t = numberTextures.get(num);
+  if (t) return t;
+  const c = document.createElement('canvas');
+  c.width = 384;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#f4f4f4';
+  g.fillRect(0, 0, 384, 128);
+  g.fillStyle = '#e3141c';
+  g.fillRect(0, 0, 56, 128);
+  g.fillStyle = '#0b0b0d';
+  g.font = 'italic 900 112px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(String(num), 220, 70, 300);
+  t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  numberTextures.set(num, t);
+  return t;
+}
+
+/** Number boards on both sides of the fin and on both doors, as one mesh. */
+function numberGeometry(): THREE.BufferGeometry {
+  const plates: THREE.BufferGeometry[] = [];
+  const plate = (w: number, h: number, x: number, y: number, z: number, side: number) => {
+    const p = new THREE.PlaneGeometry(w, h);
+    if (side < 0) p.rotateY(Math.PI);
+    p.translate(x, y, z);
+    plates.push(p);
+  };
+  for (const side of [-1, 1]) {
+    plate(0.4, 0.133, -1.75, 0.955, side * 0.024, side);
+    const [x, y, z] = onSide(0.15, 0.78, side, 0.006);
+    plate(0.42, 0.14, x, y, z, side);
+  }
+  return mergeGeometries(plates);
 }
 
 /** Splitter with an accent lip and dive planes on the fender corners (comes off like a front wing). */
@@ -308,8 +411,8 @@ export function lmhRearWingGeometry(l: Livery): THREE.BufferGeometry {
   tbox(q, -2.5, -2.12, 1.92, 1.92, 1.06, 1.1, 1.0, 1.04, l.wings);
   tbox(q, -2.52, -2.5, 1.92, 1.92, 1.07, 1.12, 1.07, 1.12, accent);
   for (const side of [-1, 1]) {
-    tbox(q, -2.55, -1.95, 0.025, 0.025, 0.62, 1.14, 0.72, 1.02, l.endplates, side * 0.975);
-    tbox(q, -2.55, -2.52, 0.03, 0.03, 0.63, 1.13, 0.63, 1.13, accent, side * 0.975);
+    tbox(q, -2.55, -1.92, 0.025, 0.025, 0.74, 1.14, 0.86, 1.04, l.endplates, side * 0.975);
+    tbox(q, -2.55, -2.52, 0.03, 0.03, 0.75, 1.13, 0.75, 1.13, accent, side * 0.975);
   }
   return q.build();
 }
@@ -453,6 +556,14 @@ export class LmhModel implements Car3d {
     if (!ghost) this.mats.push(glassMat);
     this.glassMat = glassMat;
     this.group.add(new THREE.Mesh(glass, glassMat));
+
+    const lights = lightsGeometry();
+    const numbers = numberGeometry();
+    this.owned.push(lights, numbers);
+    const lightMat = ghost ? this.bodyMat : new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const numberMat = ghost ? this.bodyMat : lambert({ map: numberTexture(raceNumber(livery)) });
+    if (!ghost) this.mats.push(lightMat);
+    this.group.add(new THREE.Mesh(lights, lightMat), new THREE.Mesh(numbers, numberMat));
 
     shared.scuff ??= new THREE.BoxGeometry(1, 1, 1);
     const carbon = lambert({ color: CARBON });
