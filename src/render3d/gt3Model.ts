@@ -410,7 +410,7 @@ function cageGeometry(): { cage: THREE.BufferGeometry; padding: THREE.BufferGeom
 }
 
 /** The window net on the driver's door: black mesh with a red strap along the top. */
-function netTexture(): THREE.CanvasTexture {
+export function netTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 128;
   c.height = 48;
@@ -472,22 +472,22 @@ const shared = {
 };
 
 /** A slick: flat across the tread, the shoulders rolled into the sidewalls. */
-function tyreGeometry(radius: number, width: number): THREE.BufferGeometry {
+export function tyreGeometry(radius: number, width: number): THREE.BufferGeometry {
   const h = width / 2;
   const profile = [[0, -h], [radius - 0.03, -h], [radius - 0.01, -h + 0.018], [radius, -h + 0.05], [radius, h - 0.05], [radius - 0.01, h - 0.018], [radius - 0.03, h], [0, h]];
   return new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), 24).rotateX(Math.PI / 2);
 }
 
-const PAINT_REFLECT = 0.6;
-const GLASS_REFLECT = 0.55;
+export const PAINT_REFLECT = 0.6;
+export const GLASS_REFLECT = 0.55;
 
 /** Material settings for a surface that reflects the sky and the land round it. */
-function reflective(sky: Sky = 'day', amount: number): THREE.MeshPhongMaterialParameters {
+export function reflective(sky: Sky = 'day', amount: number): THREE.MeshPhongMaterialParameters {
   return { envMap: paintReflections(sky), combine: THREE.MixOperation, reflectivity: amount };
 }
 
 /** Like real paint: little reflection looking straight at it, a lot along it. */
-function withFresnel(m: THREE.MeshPhongMaterial): void {
+export function withFresnel(m: THREE.MeshPhongMaterial): void {
   m.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <envmap_fragment>',
@@ -497,7 +497,7 @@ function withFresnel(m: THREE.MeshPhongMaterial): void {
 }
 
 /** A centre-lock wheel's rim, ten thin spokes and nut, facing out along +z. */
-function spokeGeometry(): THREE.BufferGeometry {
+export function spokeGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [new THREE.TorusGeometry(0.235, 0.028, 4, 18)];
   for (let i = 0; i < 10; i++) {
     const g = new THREE.BoxGeometry(0.024, 0.2, 0.024);

@@ -4,6 +4,7 @@ import { debrisOpacity, type Debris } from '../sim/debris';
 import { COMPOUNDS } from '../sim/tyres';
 import { frontWingGeometry, rearWingGeometry } from './carModel';
 import { gt3RearWingGeometry, gt3SplitterGeometry } from './gt3Model';
+import { LMH_SPLITTER_X, LMH_WING, lmhRearWingGeometry, lmhSplitterGeometry } from './lmhModel';
 import type { CarClassId } from '../sim/carClass';
 
 const CARBON = '#1c1d20';
@@ -71,7 +72,9 @@ export class Debris3d {
       const key = `${body}|${p.kind}|${livery.wings}|${livery.endplates}`;
       let geo = this.geos.get(key);
       if (!geo) {
-        if (body === 'gt3') {
+        if (body === 'lmh') {
+          geo = p.kind === 'frontWing' ? lmhSplitterGeometry().translate(-LMH_SPLITTER_X, 0, 0) : lmhRearWingGeometry(livery).translate(-LMH_WING[0], -LMH_WING[1], 0);
+        } else if (body === 'gt3') {
           geo = p.kind === 'frontWing' ? gt3SplitterGeometry().translate(-GT3_SPLITTER_X, 0, 0) : gt3RearWingGeometry(livery).translate(-GT3_WING_X, -GT3_WING_Y, 0);
         } else {
           geo = p.kind === 'frontWing' ? frontWingGeometry(livery).translate(-FRONT_WING_X, 0, 0) : rearWingGeometry(livery).translate(-REAR_WING_X, -REAR_WING_Y, 0);

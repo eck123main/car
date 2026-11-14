@@ -17,7 +17,8 @@ import { ERS_POWER, type PlayerInput, type Racer } from './world';
  */
 export function autoErs(track: Track, ideal: IdealLine, r: Racer, input: PlayerInput): boolean {
   const car = r.car;
-  if (!CAR_CLASSES[r.carClass].ers || r.ers <= 0 || car.retired) return false;
+  const cls = CAR_CLASSES[r.carClass];
+  if (!cls.ers || r.ers <= 0 || car.retired || car.speed < (cls.ersFrom ?? 0)) return false;
   if (input.throttle < 0.9 || input.brake > 0 || input.limiter || r.pit.phase !== 'out') return false;
   const v = car.speed;
   const p = car.params;

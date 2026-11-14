@@ -237,3 +237,62 @@ export const GT3_CAR: CarParams = {
     engineBrake: 1600,
   },
 };
+
+/**
+ * A Le Mans Hypercar (Toyota GR010, Ferrari 499P, Porsche 963 and friends), on real figures:
+ * 1030 kg, ~400 kW from the engine plus a front-axle hybrid (the class's ERS, only above
+ * 190 km/h as the real rules allow), about 340 km/h flat out. Far more downforce than a GT3 and
+ * less than the F1; given the same extra grip over the real tyres as the GT3 (game feel on
+ * half-scale tracks). Driven by the full tyre model like the GT3, with ABS and traction control.
+ */
+export const HYPERCAR_CAR: CarParams = {
+  mass: 1030,
+  // A 3.15 m wheelbase, ~48% of the weight on the front.
+  cgToFront: 1.65,
+  cgToRear: 1.5,
+  length: 5.0,
+  width: 2.0,
+  inertia: 1900,
+
+  mu: 2.1,
+
+  power: 400_000,
+  maxDriveForce: 11_500,
+  combinedGripPenalty: 0.55,
+  brakeGrip: 0.95,
+
+  dragCoef: 0.6,
+  downforceCoef: 3.4,
+  aeroBalanceFront: 0.42,
+  rollingResistance: 0.015,
+
+  minTurnRadius: 7,
+  turnGripUse: 1,
+  yawResponse: 7,
+  steerRate: 6.5,
+  steerReturnRate: 9.5,
+  wheelAngleVisual: 0.36,
+  throttleRate: 6,
+  brakeRate: 7.5,
+
+  reverseForce: 6000,
+  maxReverseSpeed: 8,
+
+  wallRestitution: 0.25,
+  wallFriction: 0.5,
+  damageThreshold: 4,
+  crashSpeed: 27,
+  damagePerSpeed: 0.022,
+  maxDamage: 0.8,
+
+  dynamics: {
+    ...GT3_CAR.dynamics!,
+    cgHeight: 0.34,
+    peakSlip: 0.1,
+    surfaceDrag: 0.65,
+    // A seven-speed sequential: 100 / 140 / 180 / 220 / 260 / 300 / 345 km/h at the limiter.
+    gears: [27.8, 38.9, 50, 61.1, 72.2, 83.3, 95.8],
+    wheelMass: 50,
+    engineBrake: 1400,
+  },
+};

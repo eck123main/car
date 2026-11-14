@@ -4,6 +4,7 @@ import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
 import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
 import { GT3_EYE, Gt3Model } from './gt3Model';
+import { LMH_EYE, LmhModel } from './lmhModel';
 import type { CarClassId } from '../sim/carClass';
 import { Items3d, type ItemsFrame } from './items3d';
 import { Debris3d } from './debris3d';
@@ -76,9 +77,21 @@ export const GT3_CAM_NAMES: Record<Cam3d, string> = {
   far: 'CHASE CAM (far)',
 };
 
+/** The cameras' names in a Hypercar: the nose cam sits low between the fenders, the rear one on the fin. */
+export const LMH_CAM_NAMES: Record<Cam3d, string> = {
+  cockpit: 'COCKPIT',
+  clear: 'COCKPIT (wide)',
+  tcam: 'ROOF CAM',
+  nose: 'NOSE CAM',
+  wing: 'SPLITTER CAM',
+  tail: 'FIN CAM',
+  chase: 'CHASE CAM',
+  far: 'CHASE CAM (far)',
+};
+
 /** Camera names for a kind of car. */
 export function camNames(body: CarClassId = 'f1'): Record<Cam3d, string> {
-  return body === 'gt3' ? GT3_CAM_NAMES : CAM3D_NAMES;
+  return body === 'gt3' ? GT3_CAM_NAMES : body === 'lmh' ? LMH_CAM_NAMES : CAM3D_NAMES;
 }
 
 /** Looking behind: from above the driver's head, over the airbox and rear wing. */
@@ -110,14 +123,30 @@ export const GT3_CAMS: Record<Cam3d, CamDef> = {
 };
 const GT3_LOOK_BACK: CamDef = { eye: [0.2, 1.7, 0], look: [-30, 0.4, 0], fov: 62 };
 
+/**
+ * A Hypercar's cameras: from the seat (low, right of the middle, the fenders standing up either
+ * side of the nose), on the canopy roof, low on the nose, on the splitter, on the fin.
+ */
+export const LMH_CAMS: Record<Cam3d, CamDef> = {
+  cockpit: { eye: LMH_EYE, look: [30, -0.3, LMH_EYE[2]], fov: 68, inside: true },
+  clear: { eye: [LMH_EYE[0] - 0.06, LMH_EYE[1] + 0.03, LMH_EYE[2]], look: [30, -0.4, LMH_EYE[2]], fov: 76, inside: true },
+  tcam: { eye: [-0.7, 1.32, 0], look: [30, 0.15, 0], fov: 60 },
+  nose: { eye: [1.9, 0.62, 0], look: [30, 0.1, 0], fov: 66 },
+  wing: { eye: [2.5, 0.25, -0.4], look: [30, 0.2, -0.4], fov: 68 },
+  tail: { eye: [-2.0, 1.32, 0], look: [30, 0.3, 0], fov: 64 },
+  chase: CAMS.chase,
+  far: CAMS.far,
+};
+const LMH_LOOK_BACK: CamDef = { eye: [0.1, 1.45, 0], look: [-30, 0.4, 0], fov: 62 };
+
 /** Looking back from a kind of car. */
 export function lookBackFor(body: CarClassId = 'f1'): CamDef {
-  return body === 'gt3' ? GT3_LOOK_BACK : LOOK_BACK;
+  return body === 'gt3' ? GT3_LOOK_BACK : body === 'lmh' ? LMH_LOOK_BACK : LOOK_BACK;
 }
 
 /** The cameras for a kind of car. */
 export function camsFor(body: CarClassId = 'f1'): Record<Cam3d, CamDef> {
-  return body === 'gt3' ? GT3_CAMS : CAMS;
+  return body === 'gt3' ? GT3_CAMS : body === 'lmh' ? LMH_CAMS : CAMS;
 }
 
 /** Wider view at top speed (deg), for a sense of speed. */
@@ -458,7 +487,7 @@ export class View3D {
       }
       if (!entry) {
         const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
-        const model: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : new CarModel(car.livery, opts);
+        const model: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : car.body === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
         if (onboard) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);
@@ -608,7 +637,7 @@ export class View3D {
       return;
     }
     const lift = this.heightAt(own.x, own.y, own.trackIndex);
-    const cam = this.lookBack ? (own.body === 'gt3' ? GT3_LOOK_BACK : LOOK_BACK) : camsFor(own.body)[this.mode];
+    const cam = this.lookBack ? lookBackFor(own.body) : camsFor(own.body)[this.mode];
     let heading = own.heading;
     if (cam.chase) {
       // The chase camera swings round behind the car a little late.

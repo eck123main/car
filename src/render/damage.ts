@@ -52,7 +52,7 @@ export function drawDamage(ctx: CanvasRenderingContext2D, car: Car, width: numbe
     ctx.stroke();
   };
 
-  if (body === 'gt3') {
+  if (body && body !== 'f1') {
     drawGt3Parts(d, shape, mirror, wheel);
     ctx.restore();
     listParts(ctx, car, x0, y0, w, GT3_NAMES);

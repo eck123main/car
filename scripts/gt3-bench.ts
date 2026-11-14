@@ -1,10 +1,17 @@
 /**
- * How the GT3 compares with the real cars: acceleration, top speed, braking, cornering g.
+ * How a car class compares with the real cars: acceleration, top speed, braking, cornering g.
+ * The Hypercar's hybrid (ERS) is on from 190 km/h, as in a race with the battery to spare.
  *
- *   npx tsx scripts/gt3-bench.ts
+ *   npx tsx scripts/gt3-bench.ts [gt3 | lmh]
  */
 import { Car, type CarWorld } from '../src/physics/car';
-import { GT3_CAR } from '../src/physics/carParams';
+import { CAR_CLASSES, isCarClassId } from '../src/sim/carClass';
+import { ERS_POWER } from '../src/sim/world';
+
+const arg = process.argv[2] ?? 'gt3';
+if (!isCarClassId(arg)) throw new Error(`Unknown class ${arg}`);
+const CLS = CAR_CLASSES[arg];
+const GT3_CAR = CLS.params;
 
 const DT = 1 / 120;
 const flat = {
@@ -16,6 +23,7 @@ const none = { throttle: 0, brake: 0, steer: 0 };
 function run(car: Car, input: typeof none, until: (t: number) => boolean): number {
   let t = 0;
   while (!until(t) && t < 300) {
+    car.extraPower = CLS.ers && car.speed >= (CLS.ersFrom ?? 0) && input.throttle > 0.5 ? ERS_POWER : 0;
     car.step(input, DT, flat);
     t += DT;
   }

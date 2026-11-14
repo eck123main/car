@@ -134,6 +134,19 @@ describe('Bot races', () => {
     }, 120_000);
   }
 
+  for (const id of ['silverstone', 'monaco']) {
+    it(`a Hypercar grid races a full weekend at ${id}, never with DRS`, () => {
+      const grid: Difficulty[] = ['hard', 'medium', 'easy', 'hard', 'medium', 'easy'];
+      const { session, events } = race(id, grid, 4, true, 'lmh');
+      expect(session.phase).toBe('finished');
+      expect(session.world.racers.every((r) => r.carClass === 'lmh')).toBe(true);
+      expect(session.standings().filter((s) => s.status === 'dnf')).toHaveLength(0);
+      expect(session.world.racers.every((r) => r.pit.stops >= 1)).toBe(true);
+      expect(session.world.racers.some((r) => r.drsOpen)).toBe(false);
+      expect(events.filter((e) => e.kind === 'contact' && e.verdict === 'yourFault').length).toBeLessThanOrEqual(6);
+    }, 120_000);
+  }
+
   it('a GT3 party race finishes', () => {
     const { session } = race('silverstone', ['hard', 'medium', 'easy', 'hard'], 3, false, 'gt3', 'party');
     expect(session.phase).toBe('finished');

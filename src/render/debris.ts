@@ -37,7 +37,7 @@ export function drawDebris(ctx: CanvasRenderingContext2D, debris: readonly Debri
     ctx.scale(lift, lift);
     switch (p.kind) {
       case 'frontWing':
-        if (owner?.carClass === 'gt3') {
+        if (owner && owner.carClass !== 'f1') {
           // A GT3's splitter: a carbon lip, with the bumper's paint on its top.
           ctx.fillStyle = CARBON;
           ctx.fillRect(-0.28, -0.97, 0.56, 1.94);
@@ -46,7 +46,7 @@ export function drawDebris(ctx: CanvasRenderingContext2D, debris: readonly Debri
         } else drawFrontWing(ctx, liv, 0.25, 0.95, 1.9);
         break;
       case 'rearWing':
-        if (owner?.carClass === 'gt3') {
+        if (owner && owner.carClass !== 'f1') {
           ctx.fillStyle = liv.wings;
           ctx.fillRect(-0.22, -0.95, 0.44, 1.9);
           ctx.fillStyle = liv.endplates;
