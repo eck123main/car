@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Livery } from '../render/livery';
 import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
-import { bodyTopAt, customBodyShape, customBodyVersion, hasCustomBody, loadCustomBodies, withCustomBody, type BodyShape } from './customBody';
+import { bodyTopAt, customBodyCockpit, customBodyShape, customBodyVersion, hasCustomBody, loadCustomBodies, withCustomBody, type BodyShape } from './customBody';
 import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
 import { GT3_EYE, Gt3Model } from './gt3Model';
 import { LMH_EYE, LmhModel } from './lmhModel';
@@ -172,9 +172,18 @@ export function fittedCams(body: CarClassId, shape: BodyShape): { cams: Record<C
   const bonnetX = shape.front - length * 0.24;
   const tailX = shape.rear + 0.25;
   const bumperX = shape.front + 0.06;
+  // The model's own driver's seat, when its steering wheel was found (`customBody.ts`).
+  const cp = customBodyCockpit(body);
+  const seat = cp
+    ? {
+        cockpit: { ...base.cockpit, eye: cp.eye, look: [30, -0.5, cp.eye[2]] as [number, number, number] },
+        clear: { ...base.clear, eye: [cp.eye[0] - 0.08, cp.eye[1] + 0.04, cp.eye[2]] as [number, number, number], look: [30, -0.6, cp.eye[2]] as [number, number, number] },
+      }
+    : {};
   out = {
     cams: {
       ...base,
+      ...seat,
       tcam: { ...base.tcam, eye: [roofX, on(roofX, 0.14), 0] },
       nose: { ...base.nose, eye: [bonnetX, on(bonnetX, 0.12), 0] },
       wing: { ...base.wing, eye: [bumperX, Math.max(0.3, on(shape.front - 0.15, 0.04)), -0.36] },

@@ -603,6 +603,7 @@ export class LmhModel implements Car3d {
     this.miniWheel.position.set(...LMH_COCKPIT.wheel);
     this.miniWheel.rotation.z = LMH_COCKPIT.tilt;
     this.group.add(this.miniWheel);
+    this.exterior.push(this.miniWheel);
 
     // Splitter and rear wing hang from mounts, so damage can droop and twist them.
     const splitterGeo = lmhSplitterGeometry(accentOf(livery));

@@ -4,7 +4,7 @@ import type { CarParts } from '../physics/car';
 import type { Livery } from '../render/livery';
 import type { CarClassId } from '../sim/carClass';
 import type { Compound } from '../sim/tyres';
-import type { Car3d, SteeringWheel } from './carModel';
+import { SteeringWheel, type Car3d, type Cockpit } from './carModel';
 import { FRONT_AXLE as GT3_FRONT, REAR_AXLE as GT3_REAR } from './gt3Skin';
 
 /**
@@ -76,9 +76,24 @@ export function bodyTopAt(shape: BodyShape, x: number): number {
   return top;
 }
 
+export interface ModelCockpit {
+  /** Centre of the model's steering wheel (car frame). */
+  wheel: [number, number, number];
+  /** How far its top leans back towards the driver (rad, as `Cockpit.tilt`). */
+  tilt: number;
+  /** The driver's eyes. */
+  eye: [number, number, number];
+}
+
 export interface PreparedBody {
   shape: BodyShape;
   parts: BodyPart[];
+  /** The model's own interior (seats, cage, dash...), for your own car only; empty if none was found. */
+  interior: BodyPart[];
+  /** Where its steering wheel is, so the game's arms and the cockpit camera go there. */
+  cockpit: ModelCockpit | null;
+  /** The model's steering wheel, centred on `cockpit.wheel`, to turn with the steering. */
+  steering: BodyPart[];
   /** How the fit was found, for the console. */
   fit: 'axles' | 'length';
   triangles: number;
@@ -93,7 +108,10 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   const tint = spec.tint === false ? null : new RegExp(spec.tint ?? DEFAULT_TINT, 'i');
   scene.updateMatrixWorld(true);
 
-  const kept: { geo: THREE.BufferGeometry; mat: THREE.Material }[] = [];
+  type Piece = { geo: THREE.BufferGeometry; mat: THREE.Material };
+  const kept: Piece[] = [];
+  const inside: Piece[] = [];
+  const steer: Piece[] = [];
   const wheels: { box: THREE.Box3; name: string }[] = [];
   const named = (o: THREE.Object3D): string => {
     let s = '';
@@ -115,8 +133,12 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     } else pieces.push({ geo, mat: mats[0] });
     for (const piece of pieces) {
       const name = `${named(mesh)} ${piece.mat.name}`;
+      if (STEER.test(name)) {
+        steer.push(piece);
+        continue;
+      }
       if (drop && drop.test(piece.mat.name)) {
-        piece.geo.dispose();
+        inside.push(piece);
         continue;
       }
       if (hide.test(name)) {
@@ -155,7 +177,7 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   if (vote > 0 || (vote === 0 && ahead.length && behind.length && width(ahead) > width(behind) * 1.03)) degrees += 180;
   degrees += spec.turn ?? 0;
   const turn = turned();
-  for (const k of kept) k.geo.applyMatrix4(turn);
+  for (const k of [...kept, ...inside, ...steer]) k.geo.applyMatrix4(turn);
   const hubs = wheels.map((w) => w.box.clone().applyMatrix4(turn).getCenter(new THREE.Vector3()));
   const wheelBottoms = wheels.map((w) => w.box.clone().applyMatrix4(turn).min.y);
   box.makeEmpty();
@@ -190,32 +212,109 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     .makeTranslation((target.front + target.rear) / 2, spec.lift ?? 0, 0)
     .multiply(new THREE.Matrix4().makeScale(scale, scale, scale))
     .multiply(new THREE.Matrix4().makeTranslation(-centreX, -ground, -(box.min.z + box.max.z) / 2));
-  for (const k of kept) k.geo.applyMatrix4(place);
+  for (const k of [...kept, ...inside, ...steer]) k.geo.applyMatrix4(place);
 
-  // One mesh per material; materials that look the same count as one.
-  const same = new Map<string, THREE.Material>();
-  for (const k of kept) {
-    const key = looks(k.mat);
-    k.mat = same.get(key) ?? (same.set(key, k.mat), k.mat);
+  // The game's own wheel replaces the model's (it turns, with the driver's arms on it); without one
+  // found, the model's interior isn't used and the built-in cockpit stays.
+  const cockpit = findCockpit(steer.map((p) => p.geo), measure(toParts(kept, null).parts));
+  if (cockpit) for (const p of steer) p.geo.translate(-cockpit.wheel[0], -cockpit.wheel[1], -cockpit.wheel[2]);
+  else for (const p of [...inside, ...steer]) p.geo.dispose();
+  const outer = toParts(kept, tint);
+  const inner = cockpit ? toParts(inside, null) : { parts: [], triangles: 0 };
+  const steering = cockpit ? toParts(steer, null).parts : [];
+  for (const p of [...outer.parts, ...inner.parts]) if (MIRROR.test(p.material.name)) mirrorUvs(p.geometry);
+  return { parts: outer.parts, interior: inner.parts, steering, cockpit, fit, triangles: outer.triangles, shape: measure(outer.parts) };
+}
+
+const MIRROR = /mirror/i;
+
+/**
+ * Mirror glass shows the rear-view picture (as the built-in mirrors: left door the left half, right
+ * door the right half, the one inside the middle), whatever UVs the model came with.
+ */
+function mirrorUvs(geo: THREE.BufferGeometry): void {
+  const pos = geo.getAttribute('position');
+  const groups = [
+    { test: (z: number) => z < -0.5, u0: 0, u1: 0.5 },
+    { test: (z: number) => z > 0.5, u0: 0.5, u1: 1 },
+    { test: () => true, u0: 0.15, u1: 0.85 },
+  ].map((g) => ({ ...g, box: new THREE.Box3() }));
+  const which: number[] = [];
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const g = groups.findIndex((gr) => gr.test(pos.getZ(i)));
+    which.push(g);
+    groups[g].box.expandByPoint(v.fromBufferAttribute(pos, i));
   }
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const { box, u0, u1 } = groups[which[i]];
+    const t = (pos.getZ(i) - box.min.z) / Math.max(1e-6, box.max.z - box.min.z);
+    uv[i * 2] = 1 - (u0 + t * (u1 - u0));
+    uv[i * 2 + 1] = (pos.getY(i) - box.min.y) / Math.max(1e-6, box.max.y - box.min.y);
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
+
+/** Meshes / materials of the model's steering wheel. */
+const STEER = /steer|volante|lenkrad/i;
+
+/** One mesh per material; materials that look the same count as one. */
+function toParts(pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[], tint: RegExp | null): { parts: BodyPart[]; triangles: number } {
+  const same = new Map<string, THREE.Material>();
   const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
-  for (const k of kept) {
-    const list = byMat.get(k.mat) ?? [];
+  for (const k of pieces) {
+    const key = looks(k.mat);
+    const mat = same.get(key) ?? (same.set(key, k.mat), k.mat);
+    const list = byMat.get(mat) ?? [];
     list.push(k.geo);
-    byMat.set(k.mat, list);
+    byMat.set(mat, list);
   }
   const parts: BodyPart[] = [];
   let triangles = 0;
   for (const [mat, geos] of byMat) {
-    const merged = mergeAll(geos);
-    for (const geometry of merged) {
+    for (const geometry of mergeAll(geos)) {
       triangles += (geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3;
       // A textured paint is the model's own livery: tinting it would spoil it.
       const textured = !!(mat as THREE.MeshStandardMaterial).map;
       parts.push({ geometry, material: toPhong(mat), tinted: !!tint && !textured && tint.test(mat.name) });
     }
   }
-  return { parts, fit, triangles: Math.round(triangles), shape: measure(parts) };
+  return { parts, triangles: Math.round(triangles) };
+}
+
+/**
+ * The model's steering wheel: its centre, and its lean from the flat disc it makes (the direction
+ * in the x-y plane its points spread least along). The eyes sit where the game's own GT driver's
+ * do from their wheel, kept under the roof.
+ */
+export function findCockpit(geos: THREE.BufferGeometry[], shape: BodyShape): ModelCockpit | null {
+  const pts: THREE.Vector3[] = [];
+  for (const g of geos) {
+    const pos = g.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) pts.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+  }
+  if (pts.length < 8) return null;
+  const box = new THREE.Box3().setFromPoints(pts);
+  const size = box.getSize(new THREE.Vector3());
+  // A steering wheel is 0.2-0.45 m across; anything else is a wrong match.
+  if (size.z < 0.15 || size.z > 0.6) return null;
+  const c = box.getCenter(new THREE.Vector3());
+  let tilt = 0.3;
+  let least = Infinity;
+  for (let t = -0.2; t <= 1.2; t += 0.02) {
+    const nx = Math.cos(t);
+    const ny = Math.sin(t);
+    let v = 0;
+    for (const p of pts) v += ((p.x - c.x) * nx + (p.y - c.y) * ny) ** 2;
+    if (v < least) {
+      least = v;
+      tilt = t;
+    }
+  }
+  const eyeX = c.x - 0.49;
+  const eyeY = Math.min(c.y + 0.26, bodyTopAt(shape, eyeX) - 0.12);
+  return { wheel: [c.x, c.y, c.z], tilt, eye: [eyeX, eyeY, c.z] };
 }
 
 /** What a material looks like, so copies with other names can share a draw call. */
@@ -334,6 +433,11 @@ export function customBodyVersion(): number {
   return version;
 }
 
+/** Where the loaded body's driver sits, if its steering wheel was found. */
+export function customBodyCockpit(body: CarClassId | undefined): ModelCockpit | null {
+  return (body && prepared.get(body)?.cockpit) || null;
+}
+
 /** The loaded body's shape for a class, if one is loaded. */
 export function customBodyShape(body: CarClassId | undefined): BodyShape | undefined {
   return body ? prepared.get(body)?.shape : undefined;
@@ -391,57 +495,78 @@ export function loadCustomBodies(): Promise<void> {
 
 // ---- The model ------------------------------------------------------------------------------
 
-/** A built-in car with its outside bodywork swapped for a loaded one. */
+/**
+ * A built-in car with its outside bodywork swapped for a loaded one. Your own car also gets the
+ * model's interior and the game's steering wheel, arms and dash display moved onto the model's
+ * wheel (when one was found; else the built-in cockpit, shown only from the inside cameras).
+ */
 export class CustomBodyCar implements Car3d {
   private readonly body = new THREE.Group();
-  /** The built-in cockpit (own car), only for the inside cameras: it would poke through a different body. */
+  /** The built-in cockpit (own car, model without a usable interior), only for the inside cameras. */
   private readonly cockpit = new THREE.Group();
+  /** The model's interior and the game's wheel on it (own car). */
+  private readonly interior = new THREE.Group();
   private readonly meshes: THREE.Mesh[] = [];
   private readonly ownMats: THREE.Material[] = [];
   private readonly overlay: THREE.MeshLambertMaterial;
+  /** Built-in parts the built-in cockpit hid for good (the small stand-in wheel). */
+  private readonly keepHidden = new Set<THREE.Object3D>();
+  private ownWheel: SteeringWheel | null = null;
+  /** The model's steering wheel, turning as the game's (hidden) one does. */
+  private readonly steering = new THREE.Group();
+  private mirrorGlass: { mesh: THREE.Mesh; glass: THREE.Material; plain: THREE.Material }[] = [];
   private painted: string | null = null;
   private outside = true;
 
   constructor(
     private readonly inner: Car3d & { readonly exterior: THREE.Object3D[] },
-    ready: PreparedBody,
-    livery: Livery,
+    private readonly ready: PreparedBody,
+    private readonly livery: Livery,
   ) {
-    for (const part of ready.parts) {
-      let mat = part.material;
-      if (part.tinted && 'color' in mat) {
-        mat = mat.clone();
-        (mat as THREE.MeshPhongMaterial).color.set(livery.body);
-        this.ownMats.push(mat);
-      }
-      const mesh = new THREE.Mesh(part.geometry, mat);
-      this.meshes.push(mesh);
-      this.body.add(mesh);
-    }
+    for (const part of ready.parts) this.body.add(this.meshFor(part));
     this.overlay = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
     this.ownMats.push(this.overlay);
     inner.group.add(this.body);
     this.show(true);
   }
 
+  private meshFor(part: BodyPart): THREE.Mesh {
+    let mat = part.material;
+    if (part.tinted && 'color' in mat) {
+      mat = mat.clone();
+      (mat as THREE.MeshPhongMaterial).color.set(this.livery.body);
+      this.ownMats.push(mat);
+    }
+    const mesh = new THREE.Mesh(part.geometry, mat);
+    this.meshes.push(mesh);
+    return mesh;
+  }
+
+  /** The model's own interior is in use (own car, wheel found): the loaded body stays on inside too. */
+  private get modelCockpit(): boolean {
+    return this.ownWheel !== null;
+  }
+
   private show(outside: boolean): void {
     this.outside = outside;
-    this.body.visible = outside;
-    this.cockpit.visible = !outside;
-    for (const o of this.inner.exterior) o.visible = !outside;
+    const built = !outside && !this.modelCockpit;
+    this.body.visible = !built;
+    this.cockpit.visible = built;
+    for (const o of this.inner.exterior) o.visible = built && !this.keepHidden.has(o);
   }
 
   get group(): THREE.Group {
     return this.inner.group;
   }
   get wheel(): SteeringWheel | null {
-    return this.inner.wheel;
+    return this.ownWheel ?? this.inner.wheel;
   }
   set wheel(w: SteeringWheel | null) {
     this.inner.wheel = w;
   }
   update(x: number, y: number, heading: number, steer: number, drsOpen: boolean, compound: Compound): void {
     this.inner.update(x, y, heading, steer, drsOpen, compound);
+    if (this.ownWheel) this.steering.rotation.x = this.ownWheel.group.rotation.x;
   }
   setWear(wear: number): void {
     this.inner.setWear(wear);
@@ -451,8 +576,8 @@ export class CustomBodyCar implements Car3d {
   }
   setLost(lost: number): void {
     this.inner.setLost(lost);
-    // setLost shows the built-in splitter and wing again: keep them hidden outside.
-    if (this.outside) this.show(true);
+    // setLost shows the built-in splitter and wing again.
+    this.show(this.outside);
   }
   setDamage(d: CarParts): void {
     this.inner.setDamage(d);
@@ -466,7 +591,7 @@ export class CustomBodyCar implements Car3d {
       this.overlay.emissive.set(color).multiplyScalar(0.45);
     }
     // Rainbow item etc.: the whole loaded body takes the colour, then gets its materials back.
-    for (const m of this.meshes) {
+    for (const m of this.body.children as THREE.Mesh[]) {
       m.userData.mat ??= m.material;
       m.material = color ? this.overlay : m.userData.mat;
     }
@@ -475,17 +600,53 @@ export class CustomBodyCar implements Car3d {
     this.inner.setBrakeHeat(heat);
   }
   addMirrorGlass(view: THREE.Texture): void {
-    this.intoCockpit(() => this.inner.addMirrorGlass(view));
+    if (!this.modelCockpit) {
+      this.intoCockpit(() => this.inner.addMirrorGlass(view));
+      return;
+    }
+    // The model's own mirrors show the view behind.
+    const glass = new THREE.MeshBasicMaterial({ map: view });
+    this.ownMats.push(glass);
+    for (const mesh of this.meshes) {
+      if (!/mirror/i.test(mesh.material instanceof THREE.Material ? mesh.material.name : '')) continue;
+      this.mirrorGlass.push({ mesh, glass, plain: mesh.material as THREE.Material });
+      mesh.material = glass;
+    }
   }
   addSteeringWheel(): SteeringWheel {
-    return this.intoCockpit(() => this.inner.addSteeringWheel());
+    const cp = this.ready.cockpit;
+    if (!cp) return this.intoCockpit(() => this.inner.addSteeringWheel());
+    for (const part of this.ready.interior) this.interior.add(this.meshFor(part));
+    const [wx, wy, wz] = cp.wheel;
+    const layout: Cockpit = {
+      wheel: cp.wheel,
+      tilt: cp.tilt,
+      // Where the game's GT driver has them, measured from their wheel.
+      shoulder: [wx - 0.45, wy + 0.1, 0.2],
+      style: 'gt',
+      display: [wx + 0.33, wy + 0.17, wz],
+    };
+    const wheel = new SteeringWheel(this.livery, layout);
+    // The model's wheel and dash are better looking: keep the game's gloves and arms only.
+    wheel.dash.visible = false;
+    const turning = wheel.group.children[0];
+    for (const o of turning.children) if ((o as THREE.Mesh).isMesh) o.visible = false;
+    for (const part of this.ready.steering) this.steering.add(this.meshFor(part));
+    this.steering.position.set(wx, wy, wz);
+    this.interior.add(wheel.group, wheel.arms, this.steering);
+    this.inner.group.add(this.interior);
+    this.ownWheel = wheel;
+    this.show(this.outside);
+    return wheel;
   }
 
   /** Whatever `add` puts on the car (frame, cage, seat, wheel, arms, mirror glass) is shown only inside. */
   private intoCockpit<T>(add: () => T): T {
     const group = this.inner.group;
     const before = new Set(group.children);
+    for (const o of this.inner.exterior) o.visible = true;
     const out = add();
+    for (const o of this.inner.exterior) if (!o.visible) this.keepHidden.add(o);
     for (const o of [...group.children]) if (!before.has(o)) this.cockpit.add(o);
     group.add(this.cockpit);
     this.show(this.outside);
@@ -500,10 +661,13 @@ export class CustomBodyCar implements Car3d {
   }
   set mirrorsVisible(on: boolean) {
     this.inner.mirrorsVisible = on;
+    for (const m of this.mirrorGlass) if (!this.painted) m.mesh.material = on ? m.glass : m.plain;
   }
   dispose(): void {
     this.body.removeFromParent();
+    this.interior.removeFromParent();
     for (const m of this.ownMats) m.dispose();
+    this.ownWheel?.dispose();
     this.inner.dispose();
   }
 }
