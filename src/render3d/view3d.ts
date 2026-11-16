@@ -535,7 +535,7 @@ export class View3D {
       if (!entry) {
         const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
         const built: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : car.body === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
-        const model = withCustomBody(built, car.body, car.livery, !!car.ghost);
+        const model = withCustomBody(built, car.body, car.livery, !!car.ghost, car.id, car === own);
         if (onboard) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);

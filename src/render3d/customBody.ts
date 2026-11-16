@@ -83,6 +83,8 @@ export interface ModelCockpit {
   tilt: number;
   /** The driver's eyes. */
   eye: [number, number, number];
+  /** The model's wheel is a whole wheel (rim and all), not just a part of one: else the game's rim is shown too. */
+  whole: boolean;
 }
 
 export interface PreparedBody {
@@ -113,6 +115,7 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   const inside: Piece[] = [];
   const steer: Piece[] = [];
   const wheels: { box: THREE.Box3; name: string }[] = [];
+  const wheelPts: THREE.Vector3[] = [];
   const named = (o: THREE.Object3D): string => {
     let s = '';
     for (let p: THREE.Object3D | null = o; p; p = p.parent) s += ` ${p.name}`;
@@ -144,6 +147,10 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
       if (hide.test(name)) {
         piece.geo.computeBoundingBox();
         wheels.push({ box: piece.geo.boundingBox!.clone(), name });
+        // Some models have all four wheels in one mesh: keep points to split them by corner.
+        const pos = piece.geo.getAttribute('position');
+        const step = Math.max(1, Math.floor(pos.count / 4000));
+        for (let i = 0; i < pos.count; i += step) wheelPts.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
         piece.geo.dispose();
       } else kept.push(piece);
     }
@@ -168,18 +175,31 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     const behind = placed.filter((w) => w.box.getCenter(new THREE.Vector3()).x <= midX);
     return { ahead, behind };
   };
+  // The four corners' wheels (whatever meshes they came in), split about the middle of them all.
+  const corners = (m: THREE.Matrix4): { box: THREE.Box3 }[] => {
+    const pts = wheelPts.map((p) => p.clone().applyMatrix4(m));
+    if (!pts.length) return [];
+    const c = pts.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(pts.length);
+    const boxes = [0, 1, 2, 3].map(() => new THREE.Box3());
+    for (const p of pts) boxes[(p.x > c.x ? 2 : 0) + (p.z > c.z ? 1 : 0)].expandByPoint(p);
+    return boxes.filter((b) => !b.isEmpty()).map((box) => ({ box, front: box.getCenter(new THREE.Vector3()).x > c.x }));
+  };
   const { ahead, behind } = sides(turned());
+  const quads = corners(turned()) as { box: THREE.Box3; front: boolean }[];
   const says = (list: { name: string }[], re: RegExp) => list.filter((w) => re.test(w.name)).length;
   const FRONT = /front|[_\-. ]f[lr](?![a-z])/i;
   const REAR = /rear|back|[_\-. ]r[lr](?![a-z])/i;
   const vote = says(ahead, REAR) + says(behind, FRONT) - says(ahead, FRONT) - says(behind, REAR);
   const width = (list: { box: THREE.Box3 }[]) => Math.max(0, ...list.map((w) => w.box.max.z - w.box.min.z));
-  if (vote > 0 || (vote === 0 && ahead.length && behind.length && width(ahead) > width(behind) * 1.03)) degrees += 180;
+  const quadsAhead = quads.filter((q) => q.front);
+  const quadsBehind = quads.filter((q) => !q.front);
+  if (vote > 0 || (vote === 0 && quadsAhead.length && quadsBehind.length && width(quadsAhead) > width(quadsBehind) * 1.03)) degrees += 180;
   degrees += spec.turn ?? 0;
   const turn = turned();
   for (const k of [...kept, ...inside, ...steer]) k.geo.applyMatrix4(turn);
-  const hubs = wheels.map((w) => w.box.clone().applyMatrix4(turn).getCenter(new THREE.Vector3()));
-  const wheelBottoms = wheels.map((w) => w.box.clone().applyMatrix4(turn).min.y);
+  const placedQuads = corners(turn);
+  const hubs = placedQuads.map((q) => q.box.getCenter(new THREE.Vector3()));
+  const wheelBottoms = placedQuads.map((q) => q.box.min.y);
   box.makeEmpty();
   for (const k of kept) {
     k.geo.computeBoundingBox();
@@ -257,7 +277,7 @@ function mirrorUvs(geo: THREE.BufferGeometry): void {
 }
 
 /** Meshes / materials of the model's steering wheel. */
-const STEER = /steer|volante|lenkrad/i;
+const STEER = /steer|volante|lenkrad|(^|[ _.])sw_/i;
 
 /** One mesh per material; materials that look the same count as one. */
 function toParts(pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[], tint: RegExp | null): { parts: BodyPart[]; triangles: number } {
@@ -314,7 +334,9 @@ export function findCockpit(geos: THREE.BufferGeometry[], shape: BodyShape): Mod
   }
   const eyeX = c.x - 0.49;
   const eyeY = Math.min(c.y + 0.26, bodyTopAt(shape, eyeX) - 0.12);
-  return { wheel: [c.x, c.y, c.z], tilt, eye: [eyeX, eyeY, c.z] };
+  // A whole wheel is about as tall as it is wide, and more than a plate of a few triangles.
+  const whole = size.y > 0.15 && pts.length > 300;
+  return { wheel: [c.x, c.y, c.z], tilt, eye: [eyeX, eyeY, c.z], whole };
 }
 
 /** What a material looks like, so copies with other names can share a draw call. */
@@ -424,73 +446,145 @@ function toPhong(mat: THREE.Material): THREE.Material {
 
 // ---- Loading -------------------------------------------------------------------------------
 
-const prepared = new Map<CarClassId, PreparedBody>();
-let loading: Promise<void> | null = null;
+/** Each class's model files (from models.json; by default just gt3.glb / lmh.glb). */
+const specs = new Map<CarClassId, (BodySpec & { name?: string })[]>();
+/** Loaded (or failed: null) bodies by file. */
+const prepared = new Map<string, PreparedBody | null>();
+const pending = new Set<string>();
+/** The body your own car uses per class, for the cockpit and bolted-on cameras. */
+const own = new Map<CarClassId, PreparedBody>();
+let listing: Promise<void> | null = null;
+let loader: Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTFLoader> | null = null;
 let version = 0;
+const OWN_KEY = 'f1td.model.';
 
-/** Bumps when a body finishes loading, so the view can rebuild its cars. */
+/** Bumps when a body finishes loading or your choice changes, so the view rebuilds its cars. */
 export function customBodyVersion(): number {
   return version;
 }
 
-/** Where the loaded body's driver sits, if its steering wheel was found. */
+/** Where your own car's loaded body has its driver, if its steering wheel was found. */
 export function customBodyCockpit(body: CarClassId | undefined): ModelCockpit | null {
-  return (body && prepared.get(body)?.cockpit) || null;
+  return (body && own.get(body)?.cockpit) || null;
 }
 
-/** The loaded body's shape for a class, if one is loaded. */
+/** Your own car's loaded body's shape for a class. */
 export function customBodyShape(body: CarClassId | undefined): BodyShape | undefined {
-  return body ? prepared.get(body)?.shape : undefined;
+  return body ? own.get(body)?.shape : undefined;
 }
 
+/** There are model files for this class. */
 export function hasCustomBody(body: CarClassId | undefined): boolean {
-  return !!body && prepared.has(body);
+  return !!body && (specs.get(body)?.length ?? 0) > 0;
 }
 
-/** Starts loading the model files once (fine to call every frame). */
+function readOwn(body: CarClassId): string | null {
+  try {
+    return localStorage.getItem(OWN_KEY + body);
+  } catch {
+    return null;
+  }
+}
+
+/** The model a car uses: your own choice (remembered), else one picked from the car's id, so a race has a mix. */
+function specFor(body: CarClassId, carId: string, mine: boolean): (BodySpec & { name?: string }) | undefined {
+  const list = specs.get(body);
+  if (!list?.length) return undefined;
+  if (mine) {
+    const chosen = readOwn(body);
+    return list.find((s) => s.file === chosen) ?? list[0];
+  }
+  let h = 2166136261;
+  for (let i = 0; i < carId.length; i++) h = Math.imul(h ^ carId.charCodeAt(i), 16777619);
+  return list[(h >>> 0) % list.length];
+}
+
+/** Your own car's next model (K): its name, or null if there's nothing to pick from. */
+export function cycleOwnModel(body: CarClassId | undefined): string | null {
+  const list = body ? specs.get(body) : undefined;
+  if (!body || !list || list.length < 2) return null;
+  const at = list.findIndex((s) => s.file === (readOwn(body) ?? list[0].file));
+  const next = list[(at + 1) % list.length];
+  try {
+    localStorage.setItem(OWN_KEY + body, next.file);
+  } catch {
+    /* not remembered */
+  }
+  version++;
+  return next.name ?? next.file.replace(/^.*\//, '').replace(/\.gl(b|tf)$/i, '').replace(/[_-]+/g, ' ');
+}
+
+/** Reads the list of model files once (fine to call every frame); models load when a car needs one. */
 export function loadCustomBodies(): Promise<void> {
-  loading ??= (async () => {
+  listing ??= (async () => {
     const base = `${import.meta.env.BASE_URL}models/`;
-    let specs: Partial<Record<CarClassId, BodySpec>> = { gt3: { file: 'gt3.glb' }, lmh: { file: 'lmh.glb' } };
+    let config: Record<string, BodySpec | BodySpec[]> = { gt3: { file: 'gt3.glb' }, lmh: { file: 'lmh.glb' } };
     try {
       const res = await fetch(`${base}models.json`);
-      if (res.ok && (res.headers.get('content-type') ?? '').includes('json')) specs = { ...specs, ...(await res.json()) };
+      if (res.ok && (res.headers.get('content-type') ?? '').includes('json')) config = { ...config, ...(await res.json()) };
     } catch {
       /* no config: defaults */
     }
+    for (const [body, entry] of Object.entries(config) as [CarClassId, BodySpec | BodySpec[]][]) {
+      if (!TARGET[body]) continue;
+      const list = (Array.isArray(entry) ? entry : [entry]).filter((s) => s?.file);
+      // Only files that are there (a HEAD request; the dev server answers a missing one with the page).
+      const found = await Promise.all(
+        list.map(async (s) => {
+          try {
+            const res = await fetch(base + s.file, { method: 'HEAD' });
+            return res.ok && !(res.headers.get('content-type') ?? '').includes('html') ? s : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const ok = found.filter((s): s is BodySpec => !!s);
+      if (ok.length) specs.set(body, ok);
+    }
+    if (specs.size) version++;
+  })();
+  return listing;
+}
+
+async function gltfLoader() {
+  loader ??= (async () => {
     const [{ GLTFLoader }, { DRACOLoader }, { MeshoptDecoder }] = await Promise.all([
       import('three/examples/jsm/loaders/GLTFLoader.js'),
       import('three/examples/jsm/loaders/DRACOLoader.js'),
       import('three/examples/jsm/libs/meshopt_decoder.module.js'),
     ]);
-    const loader = new GLTFLoader();
+    const l = new GLTFLoader();
     // Compressed models: Meshopt decodes here; Draco's decoder is fetched only for a Draco file.
-    loader.setMeshoptDecoder(MeshoptDecoder);
-    loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'));
-    for (const [body, spec] of Object.entries(specs) as [CarClassId, BodySpec][]) {
-      if (!spec?.file || !TARGET[body]) continue;
-      try {
-        const url = base + spec.file;
-        let gltf;
-        if (spec.file.toLowerCase().endsWith('.glb')) {
-          const res = await fetch(url);
-          if (!res.ok) continue;
-          const data = await res.arrayBuffer();
-          // The dev server answers a missing file with the page itself: only real GLB data counts.
-          if (data.byteLength < 12 || new TextDecoder().decode(data.slice(0, 4)) !== 'glTF') continue;
-          gltf = await loader.parseAsync(data, base);
-        } else gltf = await loader.loadAsync(url);
-        const ready = prepareBody(gltf.scene, spec, body);
-        if (!ready) continue;
-        prepared.set(body, ready);
-        version++;
-        console.info(`[models] ${body}: ${spec.file}, ${ready.triangles} triangles, ${ready.parts.length} draw calls, fitted by ${ready.fit}`);
-      } catch (e) {
-        console.warn(`[models] ${body}: could not load ${spec.file}`, e);
-      }
-    }
+    l.setMeshoptDecoder(MeshoptDecoder);
+    l.setDRACOLoader(new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'));
+    return l;
   })();
-  return loading;
+  return loader;
+}
+
+/** The body for this spec if it's loaded; starts loading it if not. */
+function need(body: CarClassId, spec: BodySpec): PreparedBody | null {
+  const ready = prepared.get(spec.file);
+  if (ready !== undefined) return ready;
+  if (pending.has(spec.file)) return null;
+  pending.add(spec.file);
+  void (async () => {
+    const base = `${import.meta.env.BASE_URL}models/`;
+    let result: PreparedBody | null = null;
+    try {
+      const l = await gltfLoader();
+      const gltf = await l.loadAsync(base + spec.file);
+      result = prepareBody(gltf.scene, spec, body);
+      if (result) console.info(`[models] ${body}: ${spec.file}, ${result.triangles} triangles, ${result.parts.length} draw calls, fitted by ${result.fit}, ${result.cockpit ? (result.cockpit.whole ? 'own interior' : 'own interior, game wheel rim') : 'built-in cockpit'}`);
+    } catch (e) {
+      console.warn(`[models] ${body}: could not load ${spec.file}`, e);
+    }
+    prepared.set(spec.file, result);
+    pending.delete(spec.file);
+    version++;
+  })();
+  return null;
 }
 
 // ---- The model ------------------------------------------------------------------------------
@@ -552,7 +646,8 @@ export class CustomBodyCar implements Car3d {
     const built = !outside && !this.modelCockpit;
     this.body.visible = !built;
     this.cockpit.visible = built;
-    for (const o of this.inner.exterior) o.visible = built && !this.keepHidden.has(o);
+    // The built-in driver only with the built-in body, and never from the seat.
+    for (const o of this.inner.exterior) o.visible = built && !this.keepHidden.has(o) && !(o.userData.driver && !outside);
   }
 
   get group(): THREE.Group {
@@ -630,7 +725,7 @@ export class CustomBodyCar implements Car3d {
     // The model's wheel and dash are better looking: keep the game's gloves and arms only.
     wheel.dash.visible = false;
     const turning = wheel.group.children[0];
-    for (const o of turning.children) if ((o as THREE.Mesh).isMesh) o.visible = false;
+    if (cp.whole) for (const o of turning.children) if ((o as THREE.Mesh).isMesh) o.visible = false;
     for (const part of this.ready.steering) this.steering.add(this.meshFor(part));
     this.steering.position.set(wx, wy, wz);
     this.interior.add(wheel.group, wheel.arms, this.steering);
@@ -654,7 +749,8 @@ export class CustomBodyCar implements Car3d {
   }
   set driverVisible(on: boolean) {
     this.inner.driverVisible = on;
-    if (on !== this.outside) this.show(on);
+    // Always: that setter shows the built-in driver again, who'd poke through a body of another shape.
+    this.show(on);
   }
   set haloVisible(on: boolean) {
     this.inner.haloVisible = on;
@@ -672,9 +768,18 @@ export class CustomBodyCar implements Car3d {
   }
 }
 
-/** Wraps a GT3 / Hypercar model in its loaded body when there is one (never for ghosts). */
-export function withCustomBody(model: Car3d & { readonly exterior?: THREE.Object3D[] }, body: CarClassId | undefined, livery: Livery, ghost: boolean): Car3d {
-  const ready = body && !ghost ? prepared.get(body) : undefined;
-  if (!ready || !model.exterior) return model;
+/**
+ * Wraps a GT3 / Hypercar model in a loaded body when there is one (never for ghosts): `carId`
+ * picks which, `mine` is your own car (your choice, and the cockpit cameras follow its body).
+ */
+export function withCustomBody(model: Car3d & { readonly exterior?: THREE.Object3D[] }, body: CarClassId | undefined, livery: Livery, ghost: boolean, carId: string, mine: boolean): Car3d {
+  if (!body || ghost || !model.exterior) return model;
+  const spec = specFor(body, carId, mine);
+  const ready = spec ? need(body, spec) : null;
+  if (mine) {
+    if (ready) own.set(body, ready);
+    else own.delete(body);
+  }
+  if (!ready) return model;
   return new CustomBodyCar(model as Car3d & { readonly exterior: THREE.Object3D[] }, ready, livery);
 }

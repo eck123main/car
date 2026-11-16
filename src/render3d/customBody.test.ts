@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { describe, expect, it } from 'vitest';
 import { prepareBody } from './customBody';
 import { FRONT_AXLE, REAR_AXLE } from './gt3Skin';
@@ -86,6 +87,27 @@ describe('loaded car bodies', () => {
       const scale = (FRONT_AXLE - REAR_AXLE) / 3;
       expect(box.max.x).toBeCloseTo((FRONT_AXLE + REAR_AXLE) / 2 + 2.3 * scale, 3);
     }
+  });
+
+  it('fits a model whose four wheels are one mesh, facing backwards', () => {
+    const car = fakeCar({ backwards: true, rearWidth: 0.38 });
+    // Merge the four wheel meshes into one, as some exporters do.
+    car.updateMatrixWorld(true);
+    const wheels: THREE.Mesh[] = [];
+    car.traverse((o) => {
+      if (o.name === 'Wheel') wheels.push(o as THREE.Mesh);
+    });
+    const merged = mergeGeometries(wheels.map((w) => w.geometry.clone().applyMatrix4(w.matrixWorld)))!;
+    for (const w of wheels) w.removeFromParent();
+    const one = new THREE.Mesh(merged, wheels[0].material);
+    one.name = 'Wheels';
+    car.add(one);
+    const ready = prepareBody(car, {}, 'gt3')!;
+    expect(ready.fit).toBe('axles');
+    const box = bounds(ready.parts);
+    const scale = (FRONT_AXLE - REAR_AXLE) / 3;
+    expect(box.max.x).toBeCloseTo((FRONT_AXLE + REAR_AXLE) / 2 + 2.3 * scale, 3);
+    expect(box.min.y).toBeCloseTo(0.1 * scale, 3);
   });
 
   it('has nothing for the F1 car', () => {

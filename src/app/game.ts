@@ -684,6 +684,14 @@ export class GameScreen {
       this.view3d.mirror = !this.view3d.mirror;
       this.toasts.push({ text: this.view3d.mirror ? 'MIRROR ON' : 'MIRROR OFF', color: '#ffffff', until: this.driver.now() + 2 });
     }
+    // K: your car's next model (3D view, when model files are in public/models).
+    if (this.keyboard.wasPressed('KeyK') && this.view3d) {
+      const body = this.driver.world()?.racer(this.driver.meId)?.carClass;
+      void import('../render3d/customBody').then(({ cycleOwnModel }) => {
+        const name = cycleOwnModel(body);
+        if (name) this.toasts.push({ text: `CAR: ${name.toUpperCase()}`, color: '#ffffff', until: this.driver.now() + 2 });
+      });
+    }
     if (this.keyboard.wasPressed('KeyL')) {
       updateSettings({ idealLine: !settings().idealLine });
       this.toasts.push({ text: settings().idealLine ? 'RACING LINE ON' : 'RACING LINE OFF', color: '#ffffff', until: this.driver.now() + 2 });

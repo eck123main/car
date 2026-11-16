@@ -597,6 +597,8 @@ export class LmhModel implements Car3d {
     torso.rotation.z = -0.5;
     this.driver.add(this.head, torso);
     this.group.add(this.driver);
+    this.driver.userData.driver = true;
+    this.exterior.push(this.driver);
     const miniGeo = new THREE.BoxGeometry(0.03, 0.22, 0.26);
     this.owned.push(miniGeo);
     this.miniWheel = new THREE.Mesh(miniGeo, carbon);

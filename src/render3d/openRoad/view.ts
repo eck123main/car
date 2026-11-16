@@ -290,7 +290,7 @@ export class OpenRoadView {
       this.model?.group.removeFromParent();
       this.model?.dispose();
       const built: Car3d = this.body === 'gt3' ? new Gt3Model(car.livery, { sky: 'day' }) : this.body === 'lmh' ? new LmhModel(car.livery, { sky: 'day' }) : new CarModel(car.livery);
-      this.model = withCustomBody(built, this.body, car.livery, false);
+      this.model = withCustomBody(built, this.body, car.livery, false, 'player', true);
       this.model.addSteeringWheel();
       this.model.addMirrorGlass(this.mirrorTarget.texture);
       this.near.add(this.model.group);

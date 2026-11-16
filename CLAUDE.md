@@ -205,6 +205,10 @@ alone: DRS free in every zone, ERS, no other cars.
   turns with the game's (whose rim and dash display are hidden; gloves and arms kept), and mirror materials show
   the rear view (`mirrorUvs` remaps their UVs). Without a wheel found: built-in body and cockpit inside. The bolted-on cameras are moved onto the loaded body (`fittedCams` in `view3d.ts`). Optional
   `models.json` overrides (turn, scale, lift, hide, tint). Draco and Meshopt files load. No file = built-in.
+  **Several per class**: `models.json` can list an array per class (files in `gt3/`, `lmh/`); other cars get one by
+  a hash of their id, **K** (3D view, open road) cycles your own (`cycleOwnModel`, `f1td.model.<class>`), each loaded
+  on first use. Wheels are split into four corners by position (some models merge them into one mesh). Tested
+  with 7 GT3s and 2 Hypercars (local only: most are game rips, not for the public site).
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,

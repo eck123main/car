@@ -630,6 +630,8 @@ export class Gt3Model implements Car3d {
     seat.rotation.z = 0.12;
     this.driver.add(this.head, torso, hans, seat);
     this.group.add(this.driver);
+    this.driver.userData.driver = true;
+    this.exterior.push(this.driver);
     const miniGeo = new THREE.BoxGeometry(0.03, 0.26, 0.26);
     this.owned.push(miniGeo);
     this.miniWheel = new THREE.Mesh(miniGeo, carbon);

@@ -226,6 +226,12 @@ export class OpenRoadScreen {
       this.view.mirror = !this.view.mirror;
       this.say(this.view.mirror ? 'MIRROR ON' : 'MIRROR OFF');
     }
+    if (k.wasPressed('KeyK') && this.view) {
+      void import('../render3d/customBody').then(({ cycleOwnModel }) => {
+        const name = cycleOwnModel(this.carClass);
+        if (name) this.say(`CAR: ${name.toUpperCase()}`);
+      });
+    }
     if (k.wasPressed('KeyT') && this.view) {
       const next = TIMES[(TIMES.indexOf(this.view.timeOfDay) + 1) % TIMES.length];
       this.view.setTime(next);
