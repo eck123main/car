@@ -207,7 +207,11 @@ alone: DRS free in every zone, ERS, no other cars.
   `models.json` overrides (turn, scale, lift, hide, tint). Draco and Meshopt files load. No file = built-in.
   **Several per class**: `models.json` can list an array per class (files in `gt3/`, `lmh/`); other cars get one by
   a hash of their id, **K** (3D view, open road) cycles your own (`cycleOwnModel`, `f1td.model.<class>`), each loaded
-  on first use. Wheels are split into four corners by position (some models merge them into one mesh). Tested
+  in the background a few seconds after the 3D view opens (one at a time, yours first); until a model is ready a car shows
+  one that is (never the built-in body after the first). **Seat** (`seatView`): the solid parts (not glass) are cut by
+  the upright plane through the driver's head and, for eye spots on a grid under a roof, the clear pitch band through
+  the windscreen is measured; the eye, view angle and fov (52-70) come from the widest band. Glass (by name, or
+  transmission, which Phong lacks) is made clear. Wheels are split into four corners by position (some models merge them into one mesh). Tested
   with 7 GT3s and 2 Hypercars (local only: most are game rips, not for the public site).
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the

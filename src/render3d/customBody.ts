@@ -83,6 +83,9 @@ export interface ModelCockpit {
   tilt: number;
   /** The driver's eyes. */
   eye: [number, number, number];
+  /** Where the cockpit camera looks (a point in the car frame) and its field of view, from the windscreen's opening. */
+  look: [number, number, number];
+  fov: number;
   /** The model's wheel is a whole wheel (rim and all), not just a part of one: else the game's rim is shown too. */
   whole: boolean;
 }
@@ -236,7 +239,9 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
 
   // The game's own wheel replaces the model's (it turns, with the driver's arms on it); without one
   // found, the model's interior isn't used and the built-in cockpit stays.
-  const cockpit = findCockpit(steer.map((p) => p.geo), measure(toParts(kept, null).parts));
+  const shapeNow = measure(toParts(kept, null).parts);
+  const found = findCockpit(steer.map((p) => p.geo), shapeNow);
+  const cockpit = found && seatView(found, [...kept, ...inside, ...steer], shapeNow);
   if (cockpit) for (const p of steer) p.geo.translate(-cockpit.wheel[0], -cockpit.wheel[1], -cockpit.wheel[2]);
   else for (const p of [...inside, ...steer]) p.geo.dispose();
   const outer = toParts(kept, tint);
@@ -336,7 +341,136 @@ export function findCockpit(geos: THREE.BufferGeometry[], shape: BodyShape): Mod
   const eyeY = Math.min(c.y + 0.26, bodyTopAt(shape, eyeX) - 0.12);
   // A whole wheel is about as tall as it is wide, and more than a plate of a few triangles.
   const whole = size.y > 0.15 && pts.length > 300;
-  return { wheel: [c.x, c.y, c.z], tilt, eye: [eyeX, eyeY, c.z], whole };
+  return { wheel: [c.x, c.y, c.z], tilt, eye: [eyeX, eyeY, c.z], look: [eyeX + 30, -0.5, c.z], fov: 68, whole };
+}
+
+/** Pitch range (degrees) the windscreen view is judged over: the road ahead, not the sky. */
+const VIEW_LO = -28;
+const VIEW_HI = 8;
+const BIN = 0.5;
+const SEE_THROUGH = /glass|window|windscreen|windshield/i;
+
+/**
+ * Where to put the eyes so the windscreen shows the most road: the solid parts (glass doesn't count)
+ * are cut by the upright plane through the driver's head, and for each eye position on a grid the
+ * clear band of pitch angles straight ahead is found. Then the view is aimed and sized to that band,
+ * keeping a little dash and the top of the wheel in sight.
+ */
+export function seatView(cp: ModelCockpit, pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[], shape: BodyShape): ModelCockpit {
+  const ez = cp.wheel[2];
+  // Segments (x0, y0, x1, y1) where the solid triangles cross the plane z = ez.
+  const segs: number[] = [];
+  // The same with glass too: the roof over the driver's head (a canopy is glass).
+  const shell: number[] = [];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  for (const { geo, mat } of pieces) {
+    const m = mat as THREE.MeshStandardMaterial;
+    const clear = SEE_THROUGH.test(m.name) || (m.transparent && m.opacity < 0.9);
+    const pos = geo.getAttribute('position');
+    const index = geo.getIndex();
+    const n = index ? index.count : pos.count;
+    for (let i = 0; i + 2 < n; i += 3) {
+      const ia = index ? index.getX(i) : i;
+      const ib = index ? index.getX(i + 1) : i + 1;
+      const ic = index ? index.getX(i + 2) : i + 2;
+      a.fromBufferAttribute(pos, ia);
+      b.fromBufferAttribute(pos, ib);
+      c.fromBufferAttribute(pos, ic);
+      if (Math.max(a.z, b.z, c.z) < ez || Math.min(a.z, b.z, c.z) > ez) continue;
+      if (Math.max(a.x, b.x, c.x) < cp.wheel[0] - 0.7) continue;
+      const cut: number[] = [];
+      for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+        const dp = p.z - ez;
+        const dq = q.z - ez;
+        if (dp === dq) continue;
+        if ((dp <= 0 && dq >= 0) || (dp >= 0 && dq <= 0)) {
+          const t = dp / (dp - dq);
+          cut.push(p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t);
+        }
+      }
+      if (cut.length < 4) continue;
+      shell.push(cut[0], cut[1], cut[2], cut[3]);
+      if (!clear) segs.push(cut[0], cut[1], cut[2], cut[3]);
+    }
+  }
+  const bins = Math.round((VIEW_HI - VIEW_LO) / BIN);
+  const blocked = new Uint8Array(bins);
+  // The clear band (lo, hi in degrees) seen from (ex, ey): the widest gap, judged over the road range.
+  const band = (ex: number, ey: number): [number, number] => {
+    blocked.fill(0);
+    for (let i = 0; i < segs.length; i += 4) {
+      let x0 = segs[i] - ex;
+      let y0 = segs[i + 1] - ey;
+      let x1 = segs[i + 2] - ex;
+      let y1 = segs[i + 3] - ey;
+      if (x0 < 0.05 && x1 < 0.05) continue;
+      // Clip to just ahead of the eyes.
+      if (x0 < 0.05 || x1 < 0.05) {
+        const t = (0.05 - x0) / (x1 - x0);
+        const cx = 0.05;
+        const cy = y0 + (y1 - y0) * t;
+        if (x0 < 0.05) [x0, y0] = [cx, cy];
+        else [x1, y1] = [cx, cy];
+      }
+      const p0 = (Math.atan2(y0, x0) * 180) / Math.PI;
+      const p1 = (Math.atan2(y1, x1) * 180) / Math.PI;
+      const from = Math.max(0, Math.floor((Math.min(p0, p1) - VIEW_LO) / BIN));
+      const to = Math.min(bins - 1, Math.floor((Math.max(p0, p1) - VIEW_LO) / BIN));
+      for (let k = from; k <= to; k++) blocked[k] = 1;
+    }
+    let best: [number, number] = [0, 0];
+    for (let k = 0; k < bins; ) {
+      if (blocked[k]) {
+        k++;
+        continue;
+      }
+      let e = k;
+      while (e < bins && !blocked[e]) e++;
+      if (e - k > (best[1] - best[0]) / BIN) best = [VIEW_LO + k * BIN, VIEW_LO + e * BIN];
+      k = e;
+    }
+    return best;
+  };
+  // Still inside: something over the head, 8-40 cm up, within 20 cm fore and aft.
+  const roofed = (ex: number, ey: number): boolean => {
+    for (let i = 0; i < shell.length; i += 4) {
+      const [x0, y0, x1, y1] = [shell[i], shell[i + 1], shell[i + 2], shell[i + 3]];
+      if (Math.max(x0, x1) < ex - 0.2 || Math.min(x0, x1) > ex + 0.2) continue;
+      if (Math.min(y0, y1) > ey + 0.08 && Math.max(y0, y1) < ey + 0.4) return true;
+      if (Math.max(y0, y1) > ey + 0.08 && Math.min(y0, y1) < ey + 0.4) return true;
+    }
+    return false;
+  };
+  const [wx, wy] = cp.wheel;
+  let eye: [number, number, number] = cp.eye;
+  let view = band(cp.eye[0], cp.eye[1]);
+  let score = view[1] - view[0];
+  for (let dx = -0.6; dx <= -0.38 + 1e-9; dx += 0.02) {
+    const ex = wx + dx;
+    const top = bodyTopAt(shape, ex) - 0.14;
+    for (let ey = wy + 0.14; ey <= Math.min(wy + 0.32, top) + 1e-9; ey += 0.02) {
+      if (!roofed(ex, ey)) continue;
+      const v = band(ex, ey);
+      // Sitting far from where a driver would is a small cost.
+      const s = v[1] - v[0] - 4 * Math.abs(dx + 0.49) - 4 * Math.abs(ey - (wy + 0.26));
+      if (s > score) {
+        score = s;
+        eye = [ex, ey, ez];
+        view = v;
+      }
+    }
+  }
+  if (view[1] - view[0] < 2) return cp;
+  // The clear band fills about 60% of the height, a little more dash than roof below it; never so
+  // high that the top of the wheel drops out of sight.
+  const fov = Math.min(70, Math.max(52, (view[1] - view[0]) / 0.6));
+  const wheelTop = (Math.atan2(wy + 0.12 - eye[1], wx - eye[0]) * 180) / Math.PI;
+  let pitch = (view[0] + view[1]) / 2 - 0.06 * fov;
+  pitch = Math.min(pitch, wheelTop + fov / 2 - 2);
+  const look: [number, number, number] = [eye[0] + 30, eye[1] + 30 * Math.tan((pitch * Math.PI) / 180), ez];
+  return { ...cp, eye, look, fov };
 }
 
 /** What a material looks like, so copies with other names can share a draw call. */
@@ -441,6 +575,15 @@ function toPhong(mat: THREE.Material): THREE.Material {
     specular: new THREE.Color().setScalar(0.12 + (1 - m.roughness) * 0.3),
   });
   if (m.normalMap) phong.normalScale.copy(m.normalScale);
+  // Glass: many models make it clear with transmission, which Phong hasn't got, so it came out
+  // as dark smoked glass you couldn't see the road through from the seat.
+  const physical = m as THREE.MeshPhysicalMaterial;
+  if (SEE_THROUGH.test(m.name) || (physical.transmission ?? 0) > 0) {
+    phong.transparent = true;
+    phong.opacity = Math.min(phong.opacity, 0.18);
+    phong.depthWrite = false;
+    phong.color = m.color.clone().lerp(new THREE.Color(0xdde6ee), 0.6);
+  }
   return phong;
 }
 
@@ -450,7 +593,7 @@ function toPhong(mat: THREE.Material): THREE.Material {
 const specs = new Map<CarClassId, (BodySpec & { name?: string })[]>();
 /** Loaded (or failed: null) bodies by file. */
 const prepared = new Map<string, PreparedBody | null>();
-const pending = new Set<string>();
+const pending = new Map<string, Promise<void>>();
 /** The body your own car uses per class, for the cockpit and bolted-on cameras. */
 const own = new Map<CarClassId, PreparedBody>();
 let listing: Promise<void> | null = null;
@@ -542,7 +685,10 @@ export function loadCustomBodies(): Promise<void> {
       const ok = found.filter((s): s is BodySpec => !!s);
       if (ok.length) specs.set(body, ok);
     }
-    if (specs.size) version++;
+    if (specs.size) {
+      version++;
+      preloadAll();
+    }
   })();
   return listing;
 }
@@ -567,16 +713,23 @@ async function gltfLoader() {
 function need(body: CarClassId, spec: BodySpec): PreparedBody | null {
   const ready = prepared.get(spec.file);
   if (ready !== undefined) return ready;
-  if (pending.has(spec.file)) return null;
-  pending.add(spec.file);
-  void (async () => {
+  void load(body, spec);
+  return null;
+}
+
+/** Loads (once) and prepares a model file. */
+function load(body: CarClassId, spec: BodySpec): Promise<void> {
+  if (prepared.has(spec.file)) return Promise.resolve();
+  const busy = pending.get(spec.file);
+  if (busy) return busy;
+  const job = (async () => {
     const base = `${import.meta.env.BASE_URL}models/`;
     let result: PreparedBody | null = null;
     try {
       const l = await gltfLoader();
       const gltf = await l.loadAsync(base + spec.file);
       result = prepareBody(gltf.scene, spec, body);
-      if (result) console.info(`[models] ${body}: ${spec.file}, ${result.triangles} triangles, ${result.parts.length} draw calls, fitted by ${result.fit}, ${result.cockpit ? (result.cockpit.whole ? 'own interior' : 'own interior, game wheel rim') : 'built-in cockpit'}`);
+      if (result) console.info(`[models] ${body}: ${spec.file}, ${result.triangles} triangles, ${result.parts.length} draw calls, fitted by ${result.fit}, ${result.cockpit ? (result.cockpit.whole ? 'own interior' : 'own interior, game wheel rim') : 'built-in cockpit'}`, result.cockpit ? JSON.stringify({ wheel: result.cockpit.wheel.map((v) => +v.toFixed(2)), eye: result.cockpit.eye.map((v) => +v.toFixed(2)), look: result.cockpit.look.map((v) => +v.toFixed(2)), fov: Math.round(result.cockpit.fov) }) : '');
     } catch (e) {
       console.warn(`[models] ${body}: could not load ${spec.file}`, e);
     }
@@ -584,6 +737,35 @@ function need(body: CarClassId, spec: BodySpec): PreparedBody | null {
     pending.delete(spec.file);
     version++;
   })();
+  pending.set(spec.file, job);
+  return job;
+}
+
+/**
+ * Loads every model in the background, one at a time (your own choices first), a few seconds after
+ * the 3D view opens, so K switches at once and a race's grid doesn't wait for its models.
+ */
+let preloading = false;
+function preloadAll(): void {
+  if (preloading) return;
+  preloading = true;
+  setTimeout(async () => {
+    const queue: [CarClassId, BodySpec][] = [];
+    for (const body of specs.keys()) {
+      const mine = specFor(body, '', true);
+      if (mine) queue.push([body, mine]);
+    }
+    for (const [body, list] of specs) for (const spec of list) queue.push([body, spec]);
+    for (const [body, spec] of queue) await load(body, spec);
+  }, 3000);
+}
+
+/** Any model of this class that is ready, to stand in while the right one loads. */
+function anyReady(body: CarClassId): PreparedBody | null {
+  for (const spec of specs.get(body) ?? []) {
+    const ready = prepared.get(spec.file);
+    if (ready) return ready;
+  }
   return null;
 }
 
@@ -775,11 +957,10 @@ export class CustomBodyCar implements Car3d {
 export function withCustomBody(model: Car3d & { readonly exterior?: THREE.Object3D[] }, body: CarClassId | undefined, livery: Livery, ghost: boolean, carId: string, mine: boolean): Car3d {
   if (!body || ghost || !model.exterior) return model;
   const spec = specFor(body, carId, mine);
-  const ready = spec ? need(body, spec) : null;
-  if (mine) {
-    if (ready) own.set(body, ready);
-    else own.delete(body);
-  }
+  // While the right model loads, keep the one you had (or any loaded one), never the built-in car.
+  const wanted = spec ? need(body, spec) : null;
+  const ready = wanted ?? (mine ? own.get(body) : undefined) ?? anyReady(body);
+  if (mine && ready) own.set(body, ready);
   if (!ready) return model;
   return new CustomBodyCar(model as Car3d & { readonly exterior: THREE.Object3D[] }, ready, livery);
 }

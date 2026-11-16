@@ -176,8 +176,8 @@ export function fittedCams(body: CarClassId, shape: BodyShape): { cams: Record<C
   const cp = customBodyCockpit(body);
   const seat = cp
     ? {
-        cockpit: { ...base.cockpit, eye: cp.eye, look: [30, -0.5, cp.eye[2]] as [number, number, number] },
-        clear: { ...base.clear, eye: [cp.eye[0] - 0.08, cp.eye[1] + 0.04, cp.eye[2]] as [number, number, number], look: [30, -0.6, cp.eye[2]] as [number, number, number] },
+        cockpit: { ...base.cockpit, eye: cp.eye, look: cp.look, fov: cp.fov },
+        clear: { ...base.clear, eye: [cp.eye[0] - 0.06, cp.eye[1] + 0.03, cp.eye[2]] as [number, number, number], look: cp.look, fov: cp.fov + 6 },
       }
     : {};
   out = {
