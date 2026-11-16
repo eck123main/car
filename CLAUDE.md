@@ -210,7 +210,7 @@ alone: DRS free in every zone, ERS, no other cars.
   in the background a few seconds after the 3D view opens (one at a time, yours first); until a model is ready a car shows
   one that is (never the built-in body after the first). **Seat** (`seatView`): the solid parts (not glass) are cut by
   the upright plane through the driver's head and, for eye spots on a grid under a roof, the clear pitch band through
-  the windscreen is measured; the eye, view angle and fov (52-70) come from the widest band. Glass (by name, or
+  the windscreen is measured; the eye comes from the widest band; the view is framed like a sim (horizon 38% down, bottom edge at the wheel's middle, fov 54-80). Glass (by name, or
   transmission, which Phong lacks) is made clear. Wheels are split into four corners by position (some models merge them into one mesh). Tested
   with 7 GT3s and 2 Hypercars (local only: most are game rips, not for the public site).
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,

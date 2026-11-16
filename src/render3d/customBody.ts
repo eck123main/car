@@ -131,6 +131,7 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     const geo = mesh.geometry.clone();
     deinterleaveGeometry(geo);
     geo.morphAttributes = {};
+    floatAttributes(geo);
     geo.applyMatrix4(mesh.matrixWorld);
     const pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[] = [];
     if (Array.isArray(mesh.material) && geo.groups.length) {
@@ -249,6 +250,19 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   const steering = cockpit ? toParts(steer, null).parts : [];
   for (const p of [...outer.parts, ...inner.parts]) if (MIRROR.test(p.material.name)) mirrorUvs(p.geometry);
   return { parts: outer.parts, interior: inner.parts, steering, cockpit, fit, triangles: outer.triangles, shape: measure(outer.parts) };
+}
+
+/**
+ * Plain float attributes: compressed files (gltf-transform / meshopt) store positions, normals and
+ * UVs as packed integers, which transforms, merging and our measuring would read as raw numbers.
+ */
+function floatAttributes(geo: THREE.BufferGeometry): void {
+  for (const [name, attr] of Object.entries(geo.attributes) as [string, THREE.BufferAttribute][]) {
+    if (attr.array instanceof Float32Array && !attr.normalized) continue;
+    const out = new Float32Array(attr.count * attr.itemSize);
+    for (let i = 0; i < attr.count; i++) for (let k = 0; k < attr.itemSize; k++) out[i * attr.itemSize + k] = attr.getComponent(i, k);
+    geo.setAttribute(name, new THREE.BufferAttribute(out, attr.itemSize));
+  }
 }
 
 const MIRROR = /mirror/i;
@@ -463,12 +477,11 @@ export function seatView(cp: ModelCockpit, pieces: { geo: THREE.BufferGeometry; 
     }
   }
   if (view[1] - view[0] < 2) return cp;
-  // The clear band fills about 60% of the height, a little more dash than roof below it; never so
-  // high that the top of the wheel drops out of sight.
-  const fov = Math.min(70, Math.max(52, (view[1] - view[0]) / 0.6));
-  const wheelTop = (Math.atan2(wy + 0.12 - eye[1], wx - eye[0]) * 180) / Math.PI;
-  let pitch = (view[0] + view[1]) / 2 - 0.06 * fov;
-  pitch = Math.min(pitch, wheelTop + fov / 2 - 2);
+  // Framed like a racing sim: the horizon 38% down the screen and the bottom edge at the middle of
+  // the steering wheel, so the road, the wheel and the driver's hands are all in sight.
+  const wheelMid = (Math.atan2(wy - eye[1], wx - eye[0]) * 180) / Math.PI;
+  const fov = Math.min(80, Math.max(54, -wheelMid / 0.57));
+  const pitch = -0.12 * fov;
   const look: [number, number, number] = [eye[0] + 30, eye[1] + 30 * Math.tan((pitch * Math.PI) / 180), ez];
   return { ...cp, eye, look, fov };
 }
