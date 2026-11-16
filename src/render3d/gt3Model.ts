@@ -512,6 +512,8 @@ export function spokeGeometry(): THREE.BufferGeometry {
 
 export class Gt3Model implements Car3d {
   readonly group = new THREE.Group();
+  /** The bodywork seen from outside (not wheels, driver or cockpit), so a loaded body can stand in for it. */
+  readonly exterior: THREE.Object3D[] = [];
   wheel: SteeringWheel | null = null;
   private readonly frontWheels: THREE.Group[] = [];
   private readonly wheels: THREE.Group[] = [];
@@ -571,7 +573,8 @@ export class Gt3Model implements Car3d {
     const nutMat = lambert({ color: livery.wings });
 
     this.bodyGeo = bodyGeometry(livery);
-    this.group.add(new THREE.Mesh(this.bodyGeo, this.bodyMat));
+    const bodyMesh = new THREE.Mesh(this.bodyGeo, this.bodyMat);
+    this.group.add(bodyMesh);
     // The painted shell: glossy paint with the livery texture.
     this.shellGeo = shellGeometry();
     if (ghost) this.shellMat = lambert({});
@@ -581,7 +584,8 @@ export class Gt3Model implements Car3d {
       withFresnel(this.shellMat);
       this.mats.push(this.shellMat);
     }
-    this.group.add(new THREE.Mesh(this.shellGeo, this.shellMat));
+    const shellMesh = new THREE.Mesh(this.shellGeo, this.shellMat);
+    this.group.add(shellMesh);
     for (const geo of [this.bodyGeo, this.shellGeo]) this.dentable.push({ geo, base: (geo.getAttribute('position').array as Float32Array).slice() });
 
     // Glass: tinted, see-through from inside and out.
@@ -590,7 +594,9 @@ export class Gt3Model implements Car3d {
     const glassMat = ghost ? this.bodyMat : new THREE.MeshPhongMaterial({ color: '#2b3a48', transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, shininess: 120, specular: '#777777', ...reflective(opts.sky, GLASS_REFLECT) });
     if (!ghost) this.mats.push(glassMat);
     this.glassMat = glassMat;
-    this.group.add(new THREE.Mesh(glassGeo, glassMat));
+    const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+    this.group.add(glassMesh);
+    this.exterior.push(bodyMesh, shellMesh, glassMesh);
 
     shared.scuff ??= new THREE.BoxGeometry(1, 1, 1);
     const carbon = lambert({ color: CARBON });
@@ -644,6 +650,7 @@ export class Gt3Model implements Car3d {
     this.rearWing.position.set(1.95, -0.9, 0);
     this.rearWingMount.add(this.rearWing);
     this.group.add(this.splitterMount, this.rearWingMount);
+    this.exterior.push(this.splitterMount, this.rearWingMount);
 
     // Wheels: tyre, a thin band in the compound's colour, black ten-spoke rims, the brake disc and caliper.
     shared.wheelFront ??= tyreGeometry(0.34, 0.3);

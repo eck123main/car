@@ -193,6 +193,13 @@ alone: DRS free in every zone, ERS, no other cars.
   Right-hand drive cockpit: carbon tub, lying-back seat, harness, switch panel, GT wheel
   (`LMH_COCKPIT`) and a rear-view screen at the top of the windscreen (no rear window). Cameras
   `LMH_CAMS` (roof, low nose, splitter, fin). Wheels, tyres and materials shared with the GT3 model.
+- **Loaded car bodies** (`src/render3d/customBody.ts`, how-to in `public/models/README.md`): drop
+  `public/models/gt3.glb` / `lmh.glb` (e.g. from Sketchfab) to replace the built-in GT3 / Hypercar body
+  in 3D, looks only. Its wheels are hidden (by name) and ours kept; it is turned to face forward (names
+  front/rear, else the wider tyres are the rear), scaled so its axles sit on ours, merged per material,
+  PBR redone as Phong, "paint" materials tinted to the livery. Inside cameras show the built-in body and
+  cockpit; the bolted-on cameras are moved onto the loaded body (`fittedCams` in `view3d.ts`). Optional
+  `models.json` overrides (turn, scale, lift, hide, tint). Draco and Meshopt files load. No file = built-in.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,

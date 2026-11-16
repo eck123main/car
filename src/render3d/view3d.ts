@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Livery } from '../render/livery';
 import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
+import { bodyTopAt, customBodyShape, customBodyVersion, hasCustomBody, loadCustomBodies, withCustomBody, type BodyShape } from './customBody';
 import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
 import { GT3_EYE, Gt3Model } from './gt3Model';
 import { LMH_EYE, LmhModel } from './lmhModel';
@@ -141,12 +142,48 @@ const LMH_LOOK_BACK: CamDef = { eye: [0.1, 1.45, 0], look: [-30, 0.4, 0], fov: 6
 
 /** Looking back from a kind of car. */
 export function lookBackFor(body: CarClassId = 'f1'): CamDef {
+  const shape = customBodyShape(body);
+  if (shape) return fittedCams(body, shape).back;
   return body === 'gt3' ? GT3_LOOK_BACK : body === 'lmh' ? LMH_LOOK_BACK : LOOK_BACK;
 }
 
 /** The cameras for a kind of car. */
 export function camsFor(body: CarClassId = 'f1'): Record<Cam3d, CamDef> {
+  const shape = customBodyShape(body);
+  if (shape) return fittedCams(body, shape).cams;
   return body === 'gt3' ? GT3_CAMS : body === 'lmh' ? LMH_CAMS : CAMS;
+}
+
+const fitted = new Map<BodyShape, { cams: Record<Cam3d, CamDef>; back: CamDef }>();
+
+/**
+ * Cameras for a loaded body (`customBody.ts`): the bolted-on ones are moved onto its surface, as
+ * the built-in car's spots can be inside a body of another shape. Cockpit and chase stay.
+ */
+export function fittedCams(body: CarClassId, shape: BodyShape): { cams: Record<Cam3d, CamDef>; back: CamDef } {
+  let out = fitted.get(shape);
+  if (out) return out;
+  const base = body === 'lmh' ? LMH_CAMS : GT3_CAMS;
+  const length = shape.front - shape.rear;
+  const on = (x: number, above: number): number => bodyTopAt(shape, x) + above;
+  // The roof: the highest point of the middle third.
+  let roofX = 0;
+  for (let x = shape.rear + length / 3; x <= shape.front - length / 3; x += 0.05) if (bodyTopAt(shape, x) > bodyTopAt(shape, roofX)) roofX = x;
+  const bonnetX = shape.front - length * 0.24;
+  const tailX = shape.rear + 0.25;
+  const bumperX = shape.front + 0.06;
+  out = {
+    cams: {
+      ...base,
+      tcam: { ...base.tcam, eye: [roofX, on(roofX, 0.14), 0] },
+      nose: { ...base.nose, eye: [bonnetX, on(bonnetX, 0.12), 0] },
+      wing: { ...base.wing, eye: [bumperX, Math.max(0.3, on(shape.front - 0.15, 0.04)), -0.36] },
+      tail: { ...base.tail, eye: [tailX, Math.max(on(tailX, 0.25), on(roofX, 0.05)), 0] },
+    },
+    back: { eye: [roofX, on(roofX, 0.2), 0], look: [-30, 0.4, 0], fov: 62 },
+  };
+  fitted.set(shape, out);
+  return out;
 }
 
 /** Wider view at top speed (deg), for a sense of speed. */
@@ -320,6 +357,7 @@ export class View3D {
   private readonly groundMat: THREE.MeshLambertMaterial;
 
   constructor(track: Track) {
+    void loadCustomBodies();
     this.canvas = document.createElement('canvas');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
@@ -478,7 +516,7 @@ export class View3D {
     for (const car of [own, ...others]) {
       seen.add(car.id);
       const onboard = car === own && !this.cinema;
-      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}`;
+      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}|${hasCustomBody(car.body) ? customBodyVersion() : 0}`;
       let entry = this.cars.get(car.id);
       if (entry && entry.key !== key) {
         entry.model.group.removeFromParent();
@@ -487,7 +525,8 @@ export class View3D {
       }
       if (!entry) {
         const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
-        const model: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : car.body === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
+        const built: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : car.body === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
+        const model = withCustomBody(built, car.body, car.livery, !!car.ghost);
         if (onboard) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);

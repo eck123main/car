@@ -6,6 +6,7 @@ import { type Biome, type TimeOfDay } from '../../sim/openRoad/biomes';
 import type { Land } from '../../sim/openRoad/land';
 import type { CarClassId } from '../../sim/carClass';
 import { brakeHeat, CarModel, mirrorUv, type Car3d, type WheelInfo } from '../carModel';
+import { customBodyVersion, hasCustomBody, loadCustomBodies, withCustomBody } from '../customBody';
 import { Gt3Model } from '../gt3Model';
 import { LmhModel } from '../lmhModel';
 import { noiseTexture } from '../trackMesh';
@@ -153,6 +154,7 @@ export class OpenRoadView {
     private readonly land: Land,
     private readonly body: CarClassId = 'f1',
   ) {
+    void loadCustomBodies();
     this.canvas = document.createElement('canvas');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
@@ -283,11 +285,12 @@ export class OpenRoadView {
   }
 
   private updateCar(car: RoadCarView, dt: number): Car3d {
-    const key = `${car.livery.body}|${car.livery.wings}`;
+    const key = `${car.livery.body}|${car.livery.wings}|${hasCustomBody(this.body) ? customBodyVersion() : 0}`;
     if (!this.model || key !== this.liveryKey) {
       this.model?.group.removeFromParent();
       this.model?.dispose();
-      this.model = this.body === 'gt3' ? new Gt3Model(car.livery, { sky: 'day' }) : this.body === 'lmh' ? new LmhModel(car.livery, { sky: 'day' }) : new CarModel(car.livery);
+      const built: Car3d = this.body === 'gt3' ? new Gt3Model(car.livery, { sky: 'day' }) : this.body === 'lmh' ? new LmhModel(car.livery, { sky: 'day' }) : new CarModel(car.livery);
+      this.model = withCustomBody(built, this.body, car.livery, false);
       this.model.addSteeringWheel();
       this.model.addMirrorGlass(this.mirrorTarget.texture);
       this.near.add(this.model.group);

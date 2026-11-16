@@ -487,6 +487,8 @@ const shared = {
 
 export class LmhModel implements Car3d {
   readonly group = new THREE.Group();
+  /** The bodywork seen from outside (not wheels, driver or cockpit), so a loaded body can stand in for it. */
+  readonly exterior: THREE.Object3D[] = [];
   wheel: SteeringWheel | null = null;
   private readonly frontWheels: THREE.Group[] = [];
   private readonly wheels: THREE.Group[] = [];
@@ -549,13 +551,16 @@ export class LmhModel implements Car3d {
     }
     const body = bodyGeometry(livery);
     this.owned.push(shell, glass, body);
-    this.group.add(new THREE.Mesh(shell, this.paintMat), new THREE.Mesh(body, this.bodyMat));
+    const shellMesh = new THREE.Mesh(shell, this.paintMat);
+    const bodyMesh = new THREE.Mesh(body, this.bodyMat);
+    this.group.add(shellMesh, bodyMesh);
     for (const geo of [shell, body]) this.dentable.push({ geo, base: (geo.getAttribute('position').array as Float32Array).slice() });
 
     const glassMat = ghost ? this.bodyMat : new THREE.MeshPhongMaterial({ color: '#2b3a48', transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, shininess: 120, specular: '#777777', ...reflective(opts.sky, GLASS_REFLECT) });
     if (!ghost) this.mats.push(glassMat);
     this.glassMat = glassMat;
-    this.group.add(new THREE.Mesh(glass, glassMat));
+    const glassMesh = new THREE.Mesh(glass, glassMat);
+    this.group.add(glassMesh);
 
     const lights = lightsGeometry();
     const numbers = numberGeometry();
@@ -563,7 +568,10 @@ export class LmhModel implements Car3d {
     const lightMat = ghost ? this.bodyMat : new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const numberMat = ghost ? this.bodyMat : lambert({ map: numberTexture(raceNumber(livery)) });
     if (!ghost) this.mats.push(lightMat);
-    this.group.add(new THREE.Mesh(lights, lightMat), new THREE.Mesh(numbers, numberMat));
+    const lightsMesh = new THREE.Mesh(lights, lightMat);
+    const numbersMesh = new THREE.Mesh(numbers, numberMat);
+    this.group.add(lightsMesh, numbersMesh);
+    this.exterior.push(shellMesh, bodyMesh, glassMesh, lightsMesh, numbersMesh);
 
     shared.scuff ??= new THREE.BoxGeometry(1, 1, 1);
     const carbon = lambert({ color: CARBON });
@@ -609,6 +617,7 @@ export class LmhModel implements Car3d {
     wing.position.set(-LMH_WING[0], -LMH_WING[1], 0);
     this.rearWingMount.add(wing);
     this.group.add(this.splitterMount, this.rearWingMount);
+    this.exterior.push(this.splitterMount, this.rearWingMount);
 
     // Wheels: tyre, the compound's band, black spoked rims, brake disc and caliper.
     shared.wheelFront ??= tyreGeometry(WHEEL_R, 0.31);
