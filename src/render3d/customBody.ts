@@ -603,7 +603,7 @@ function toPhong(mat: THREE.Material): THREE.Material {
 // ---- Loading -------------------------------------------------------------------------------
 
 /** Each class's model files (from models.json; by default just gt3.glb / lmh.glb). */
-const specs = new Map<CarClassId, (BodySpec & { name?: string })[]>();
+const specs = new Map<CarClassId, (BodySpec & { name?: string; author?: string })[]>();
 /** Loaded (or failed: null) bodies by file. */
 const prepared = new Map<string, PreparedBody | null>();
 const pending = new Map<string, Promise<void>>();
@@ -643,7 +643,7 @@ function readOwn(body: CarClassId): string | null {
 }
 
 /** The model a car uses: your own choice (remembered), else one picked from the car's id, so a race has a mix. */
-function specFor(body: CarClassId, carId: string, mine: boolean): (BodySpec & { name?: string }) | undefined {
+function specFor(body: CarClassId, carId: string, mine: boolean): (BodySpec & { name?: string; author?: string }) | undefined {
   const list = specs.get(body);
   if (!list?.length) return undefined;
   if (mine) {
@@ -667,7 +667,9 @@ export function cycleOwnModel(body: CarClassId | undefined): string | null {
     /* not remembered */
   }
   version++;
-  return next.name ?? next.file.replace(/^.*\//, '').replace(/\.gl(b|tf)$/i, '').replace(/[_-]+/g, ' ');
+  const name = next.name ?? next.file.replace(/^.*\//, '').replace(/\.gl(b|tf)$/i, '').replace(/[_-]+/g, ' ');
+  // CC BY: the model's author is credited when it's picked (all credits in public/models/CREDITS.md).
+  return next.author ? `${name} · model by ${next.author}` : name;
 }
 
 /** Reads the list of model files once (fine to call every frame); models load when a car needs one. */

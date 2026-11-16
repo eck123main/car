@@ -11,8 +11,6 @@ dist/
 public/sounds/New Audi F1 2026 Onboard Sound Bahrain Test!.mp3
 public/sounds/engine-onboard.wav
 
-# Car models: big files, other people's licences (see public/models/README.md)
-public/models/**/*.glb
-public/models/**/*.gltf
-public/models/**/*.bin
-public/models/models.json
+# Car models: only the shrunk, credited ones in gt3/ and lmh/ are published (public/models/CREDITS.md)
+public/models/*.glb
+public/models/test/
