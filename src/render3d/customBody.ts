@@ -32,11 +32,14 @@ export interface BodySpec {
   lift?: number;
   /** Regex (case-insensitive) on mesh / material names of the parts to hide: the model's wheels. */
   hide?: string;
+  /** Regex on mesh / material names of parts to leave out: the interior (our own cockpit stands in), or "" to keep all. */
+  drop?: string;
   /** Regex on material names painted in the player's colour, or false to keep the model's paint. */
   tint?: string | false;
 }
 
 export const DEFAULT_HIDE = 'wheel|tire|tyre|rim|brake|caliper|disc|rotor|hub|lug|spoke';
+export const DEFAULT_DROP = '^int_|interior|cockpit|seat|belt|harness|steer|dash|display|rollcage|roll_cage|pedal|foam|worldgrid';
 const DEFAULT_TINT = 'paint|carpaint|body_?col|livery';
 
 /** Where our wheels are, per class (car frame: x forward, y up, z right). */
@@ -86,6 +89,7 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   const target = TARGET[body];
   if (!target) return null;
   const hide = new RegExp(spec.hide ?? DEFAULT_HIDE, 'i');
+  const drop = spec.drop === '' ? null : new RegExp(spec.drop ?? DEFAULT_DROP, 'i');
   const tint = spec.tint === false ? null : new RegExp(spec.tint ?? DEFAULT_TINT, 'i');
   scene.updateMatrixWorld(true);
 
@@ -111,6 +115,10 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     } else pieces.push({ geo, mat: mats[0] });
     for (const piece of pieces) {
       const name = `${named(mesh)} ${piece.mat.name}`;
+      if (drop && drop.test(piece.mat.name)) {
+        piece.geo.dispose();
+        continue;
+      }
       if (hide.test(name)) {
         piece.geo.computeBoundingBox();
         wheels.push({ box: piece.geo.boundingBox!.clone(), name });
@@ -184,7 +192,12 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     .multiply(new THREE.Matrix4().makeTranslation(-centreX, -ground, -(box.min.z + box.max.z) / 2));
   for (const k of kept) k.geo.applyMatrix4(place);
 
-  // One mesh per material.
+  // One mesh per material; materials that look the same count as one.
+  const same = new Map<string, THREE.Material>();
+  for (const k of kept) {
+    const key = looks(k.mat);
+    k.mat = same.get(key) ?? (same.set(key, k.mat), k.mat);
+  }
   const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
   for (const k of kept) {
     const list = byMat.get(k.mat) ?? [];
@@ -197,10 +210,34 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     const merged = mergeAll(geos);
     for (const geometry of merged) {
       triangles += (geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3;
-      parts.push({ geometry, material: toPhong(mat), tinted: !!tint && tint.test(mat.name) });
+      // A textured paint is the model's own livery: tinting it would spoil it.
+      const textured = !!(mat as THREE.MeshStandardMaterial).map;
+      parts.push({ geometry, material: toPhong(mat), tinted: !!tint && !textured && tint.test(mat.name) });
     }
   }
   return { parts, fit, triangles: Math.round(triangles), shape: measure(parts) };
+}
+
+/** What a material looks like, so copies with other names can share a draw call. */
+function looks(mat: THREE.Material): string {
+  const m = mat as THREE.MeshStandardMaterial;
+  const tex = (t: THREE.Texture | null | undefined) => (t ? ((t.source?.uuid ?? t.uuid) + t.channel) : '-');
+  return [
+    m.type,
+    m.color?.getHexString(),
+    m.emissive?.getHexString(),
+    m.roughness?.toFixed(2),
+    m.metalness?.toFixed(2),
+    tex(m.map),
+    tex(m.normalMap),
+    tex(m.emissiveMap),
+    tex(m.alphaMap),
+    m.transparent,
+    m.opacity?.toFixed(2),
+    m.alphaTest,
+    m.side,
+    m.vertexColors,
+  ].join('|');
 }
 
 function measure(parts: BodyPart[]): BodyShape {

@@ -13,7 +13,8 @@ Check the license (CC BY = credit the author; skip NonCommercial / NoDerivatives
 What the game does with it (`src/render3d/customBody.ts`):
 - hides the model's own wheels (by mesh/material name) and keeps the game's, so they spin, steer and show the tyre;
 - turns it to face forward and scales it so its axles sit on the game's wheels;
-- merges it into one mesh per material (few draw calls) and paints materials named like "paint" in the player's colour;
+- merges it into one mesh per material (few draw calls) and paints untextured materials named like "paint" in the player's colour (a textured paint is the model's own livery and is kept);
+- leaves out the model's interior (seats, belts, dash...): the game's own cockpit and driver are used;
 - uses the built-in cockpit for the cockpit cameras and puts the roof / bonnet / bumper / rear cams on the new body.
 
 The browser console says how it went: `[models] gt3: gt3.glb, 238000 triangles, 14 draw calls, fitted by axles`.
@@ -33,4 +34,5 @@ Keep models light: aim for under ~100k triangles and a few MB (Blender: Decimate
 - `turn`: degrees, if the car comes out backwards (180) or sideways (90)
 - `scale` / `lift`: nudge size and height after the automatic fit
 - `hide`: which parts are the wheels (regex on mesh and material names)
+- `drop`: parts left out (regex on material names; default: the interior, as the game's own cockpit is used), `""` keeps everything
 - `tint`: which materials take the player's colour (regex), or `false` to keep the model's own paint

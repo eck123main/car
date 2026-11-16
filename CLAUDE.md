@@ -197,7 +197,9 @@ alone: DRS free in every zone, ERS, no other cars.
   `public/models/gt3.glb` / `lmh.glb` (e.g. from Sketchfab) to replace the built-in GT3 / Hypercar body
   in 3D, looks only. Its wheels are hidden (by name) and ours kept; it is turned to face forward (names
   front/rear, else the wider tyres are the rear), scaled so its axles sit on ours, merged per material,
-  PBR redone as Phong, "paint" materials tinted to the livery. Inside cameras show the built-in body and
+  look-alike materials share a draw call, PBR redone as Phong, the interior dropped (`DEFAULT_DROP`), untextured
+  "paint" materials tinted to the livery (a textured one is the model's livery, kept). Model files are gitignored
+  (size, licences); the Porsche 992 GT3 R tried first: 142k triangles, 19 draw calls. Inside cameras show the built-in body and
   cockpit; the bolted-on cameras are moved onto the loaded body (`fittedCams` in `view3d.ts`). Optional
   `models.json` overrides (turn, scale, lift, hide, tint). Draco and Meshopt files load. No file = built-in.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
