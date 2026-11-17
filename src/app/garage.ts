@@ -385,6 +385,12 @@ export function showGarage(v: GarageView): void {
       'div',
       {},
       signedIn ? null : signInPrompt('Sign in to buy skins with coins and unlock medal skins.'),
+      el(
+        'div',
+        { class: 'cars-banner' },
+        el('span', {}, el('b', {}, 'Real cars: '), 'Porsche, Ferrari, McLaren, Lamborghini and more for GT3 and Hypercar races.'),
+        el('button', { class: 'small primary', onclick: () => ((tab = 'cars'), (confirmBuy = null), render()) }, 'See the cars →'),
+      ),
       filters,
       grid.childElementCount ? grid : el('p', { class: 'muted' }, 'Nothing here yet.'),
       el('p', { class: 'muted' }, 'Your skin is shown to everyone in races. Your lobby colour stays on the minimap and your name tag.'),
