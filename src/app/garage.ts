@@ -404,7 +404,7 @@ export function showGarage(v: GarageView): void {
     const driven = w?.cars ?? {};
     const sections: HTMLElement[] = [];
     for (const cls of ['gt3', 'lmh'] as const) {
-      const grid = el('div', { class: 'skin-grid' });
+      const grid = el('div', { class: 'skin-grid car-grid' });
       const builtIn = signedIn && w && !driven[cls];
       grid.append(
         el(
