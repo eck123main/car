@@ -1,4 +1,4 @@
-import { carModelDef, cleanCars } from '../cosmetics/cars';
+import { CAR_MODELS, carModelDef, cleanCars } from '../cosmetics/cars';
 import { isSkinId, TEAM_SKIN } from '../cosmetics/skins';
 import type { CarClassId } from '../sim/carClass';
 import { accounts, type AccountService } from './accounts';
@@ -75,12 +75,13 @@ const carsKey = (account: string) => `f1td.cars.${account}`;
 
 function readCars(): CarCache {
   const account = accounts()?.account();
-  const none: CarCache = { owned: [], driven: {} };
-  if (!account) return none;
+  const none: CarCache = { owned: import.meta.env.DEV ? CAR_MODELS.map((c) => c.id) : [], driven: {} };
+  if (!account && !import.meta.env.DEV) return none;
   try {
-    const raw = JSON.parse(localStorage.getItem(carsKey(account.id)) ?? 'null') as CarCache | null;
+    const raw = JSON.parse(localStorage.getItem(carsKey(account?.id ?? 'dev')) ?? 'null') as CarCache | null;
     if (!raw) return none;
-    const owned = (raw.owned ?? []).filter((id) => carModelDef(id));
+    // Dev server: every car unlocked, to try them without buying.
+    const owned = import.meta.env.DEV ? CAR_MODELS.map((c) => c.id) : (raw.owned ?? []).filter((id) => carModelDef(id));
     const driven: CarCache['driven'] = {};
     for (const [cls, id] of Object.entries(raw.driven ?? {})) if (id && owned.includes(id)) driven[cls as CarClassId] = id;
     return { owned, driven };
@@ -92,7 +93,7 @@ function readCars(): CarCache {
 function writeCars(c: CarCache): void {
   const account = accounts()?.account();
   try {
-    if (account) localStorage.setItem(carsKey(account.id), JSON.stringify(c));
+    if (account || import.meta.env.DEV) localStorage.setItem(carsKey(account?.id ?? 'dev'), JSON.stringify(c));
   } catch {
     // Picked up from the server next time.
   }
