@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { driveCar, drivenCar, ownedCars } from '../net/wallet';
 import { deinterleaveGeometry, mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CarParts } from '../physics/car';
 import type { Livery } from '../render/livery';
@@ -603,7 +604,8 @@ function toPhong(mat: THREE.Material): THREE.Material {
 // ---- Loading -------------------------------------------------------------------------------
 
 /** Each class's model files (from models.json; by default just gt3.glb / lmh.glb). */
-const specs = new Map<CarClassId, (BodySpec & { name?: string; author?: string })[]>();
+type ModelSpec = BodySpec & { id?: string; name?: string; author?: string };
+const specs = new Map<CarClassId, ModelSpec[]>();
 /** Loaded (or failed: null) bodies by file. */
 const prepared = new Map<string, PreparedBody | null>();
 const pending = new Map<string, Promise<void>>();
@@ -612,7 +614,6 @@ const own = new Map<CarClassId, PreparedBody>();
 let listing: Promise<void> | null = null;
 let loader: Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTFLoader> | null = null;
 let version = 0;
-const OWN_KEY = 'f1td.model.';
 
 /** Bumps when a body finishes loading or your choice changes, so the view rebuilds its cars. */
 export function customBodyVersion(): number {
@@ -634,42 +635,37 @@ export function hasCustomBody(body: CarClassId | undefined): boolean {
   return !!body && (specs.get(body)?.length ?? 0) > 0;
 }
 
-function readOwn(body: CarClassId): string | null {
-  try {
-    return localStorage.getItem(OWN_KEY + body);
-  } catch {
-    return null;
-  }
-}
-
-/** The model a car uses: your own choice (remembered), else one picked from the car's id, so a race has a mix. */
-function specFor(body: CarClassId, carId: string, mine: boolean): (BodySpec & { name?: string; author?: string }) | undefined {
+/**
+ * The model a car shows: yours is the car you drive in that class (garage), another player's the
+ * car they picked; bots get one picked from their id, so a race has a mix. None = the built-in car.
+ */
+function specFor(body: CarClassId, carId: string, mine: boolean, choice: string | undefined): ModelSpec | undefined {
   const list = specs.get(body);
   if (!list?.length) return undefined;
-  if (mine) {
-    const chosen = readOwn(body);
-    return list.find((s) => s.file === chosen) ?? list[0];
-  }
+  const wanted = mine ? drivenCar(body) : choice;
+  if (wanted) return list.find((s) => s.id === wanted);
+  if (mine || !carId.startsWith('bot')) return undefined;
   let h = 2166136261;
   for (let i = 0; i < carId.length; i++) h = Math.imul(h ^ carId.charCodeAt(i), 16777619);
   return list[(h >>> 0) % list.length];
 }
 
-/** Your own car's next model (K): its name, or null if there's nothing to pick from. */
+/** K: drive your next car of this class (the ones you own, then the built-in one). Says what changed. */
 export function cycleOwnModel(body: CarClassId | undefined): string | null {
   const list = body ? specs.get(body) : undefined;
-  if (!body || !list || list.length < 2) return null;
-  const at = list.findIndex((s) => s.file === (readOwn(body) ?? list[0].file));
-  const next = list[(at + 1) % list.length];
-  try {
-    localStorage.setItem(OWN_KEY + body, next.file);
-  } catch {
-    /* not remembered */
-  }
+  if (!body || !list?.length) return null;
+  const owned = new Set(ownedCars());
+  const mine = list.filter((s) => s.id && owned.has(s.id));
+  if (!mine.length) return 'UNLOCK REAL CARS IN THE GARAGE';
+  const choices: (ModelSpec | null)[] = [...mine, null];
+  const at = choices.findIndex((s) => (s?.id ?? null) === drivenCar(body));
+  const next = choices[(at + 1) % choices.length];
+  driveCar(body, next?.id ?? null);
   version++;
+  if (!next) return 'CAR: BUILT-IN';
   const name = next.name ?? next.file.replace(/^.*\//, '').replace(/\.gl(b|tf)$/i, '').replace(/[_-]+/g, ' ');
   // CC BY: the model's author is credited when it's picked (all credits in public/models/CREDITS.md).
-  return next.author ? `${name} · model by ${next.author}` : name;
+  return `CAR: ${name}${next.author ? ` · model by ${next.author}` : ''}`;
 }
 
 /** Reads the list of model files once (fine to call every frame); models load when a car needs one. */
@@ -767,7 +763,7 @@ function preloadAll(): void {
   setTimeout(async () => {
     const queue: [CarClassId, BodySpec][] = [];
     for (const body of specs.keys()) {
-      const mine = specFor(body, '', true);
+      const mine = specFor(body, '', true, undefined);
       if (mine) queue.push([body, mine]);
     }
     for (const [body, list] of specs) for (const spec of list) queue.push([body, spec]);
@@ -969,11 +965,15 @@ export class CustomBodyCar implements Car3d {
  * Wraps a GT3 / Hypercar model in a loaded body when there is one (never for ghosts): `carId`
  * picks which, `mine` is your own car (your choice, and the cockpit cameras follow its body).
  */
-export function withCustomBody(model: Car3d & { readonly exterior?: THREE.Object3D[] }, body: CarClassId | undefined, livery: Livery, ghost: boolean, carId: string, mine: boolean): Car3d {
+export function withCustomBody(model: Car3d & { readonly exterior?: THREE.Object3D[] }, body: CarClassId | undefined, livery: Livery, ghost: boolean, carId: string, mine: boolean, choice?: string): Car3d {
   if (!body || ghost || !model.exterior) return model;
-  const spec = specFor(body, carId, mine);
+  const spec = specFor(body, carId, mine, choice);
+  if (!spec) {
+    if (mine) own.delete(body);
+    return model;
+  }
   // While the right model loads, keep the one you had (or any loaded one), never the built-in car.
-  const wanted = spec ? need(body, spec) : null;
+  const wanted = need(body, spec);
   const ready = wanted ?? (mine ? own.get(body) : undefined) ?? anyReady(body);
   if (mine && ready) own.set(body, ready);
   if (!ready) return model;

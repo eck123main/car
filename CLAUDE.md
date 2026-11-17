@@ -205,14 +205,19 @@ alone: DRS free in every zone, ERS, no other cars.
   turns with the game's (whose rim and dash display are hidden; gloves and arms kept), and mirror materials show
   the rear view (`mirrorUvs` remaps their UVs). Without a wheel found: built-in body and cockpit inside. The bolted-on cameras are moved onto the loaded body (`fittedCams` in `view3d.ts`). Optional
   `models.json` overrides (turn, scale, lift, hide, tint). Draco and Meshopt files load. No file = built-in.
-  **Several per class**: `models.json` can list an array per class (files in `gt3/`, `lmh/`); other cars get one by
-  a hash of their id, **K** (3D view, open road) cycles your own (`cycleOwnModel`, `f1td.model.<class>`), each loaded
+  **Several per class**: `models.json` lists an array per class (files in `gt3/`, `lmh/`, each with an `id` from
+  `src/cosmetics/cars.ts`). **They are garage cars** (see Garage): your car is the one you drive in that class (built-in
+  if none), other players show theirs, bots a random one by a hash of their id; **K** (3D view, open road) cycles the
+  cars you own and the built-in one (`cycleOwnModel`), each loaded
   in the background a few seconds after the 3D view opens (one at a time, yours first); until a model is ready a car shows
   one that is (never the built-in body after the first). **Seat** (`seatView`): the solid parts (not glass) are cut by
   the upright plane through the driver's head and, for eye spots on a grid under a roof, the clear pitch band through
   the windscreen is measured; the eye comes from the widest band; the view is framed like a sim (horizon 38% down, bottom edge at the wheel's middle, fov 54-80). Glass (by name, or
   transmission, which Phong lacks) is made clear. Wheels are split into four corners by position (some models merge them into one mesh). Tested
-  with 7 GT3s and 2 Hypercars (local only: most are game rips, not for the public site).
+  with 7 GT3s and 2 Hypercars, **published** with credits (CC BY 4.0 by their Sketchfab authors: `public/models/CREDITS.md`,
+  `author` in `models.json`, named in the K toast). Shrunk 287 -> 35 MB with `npx @gltf-transform/cli@4 resize --width 1024
+  --height 1024`, then `webp`, then `draco`, run separately; never `optimize` (its geometry steps broke the axle fit,
+  ~1.4x too big). Originals kept at `D:/Users/rotem/car-models-original`. Shop pictures: `public/models/thumbs/<id>.webp`.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,
@@ -313,6 +318,11 @@ coin balance shows in the account bar, with a red dot when today's reward or spi
   skins** count a medal towards every lower one: Bronze 10 bronze+, Silver 15 silver+, Gold 20
   gold+, Author 5 author, Perfectionist author on every track (60). They're worked out from the
   board like medals, so the database lets any `medal-*` id be equipped (not checked there).
+- **Cars** tab (`src/cosmetics/cars.ts`): the real GT3 / Hypercar bodies (Loaded car bodies) for 600-2000 coins,
+  one driven per class, free to go back to the built-in car (which wears your skin). Database: `car_shop` table,
+  `wallets.car_gt3` / `car_lmh`, RPCs `buy_car`, `equip_car` (in `economy.sql`, rerun it; bought cars go in `owned`);
+  `cars.test.ts` keeps SQL, TS and `models.json` in sync. Cached per account (`f1td.cars.<id>`), sent in `hello`
+  (`cars`, one per class, `cleanCars`) -> `PlayerInfo.cars` -> `Racer.cars` -> `CarView.model`. Looks only, 3D only.
 - The equipped skin is cached per account (`f1td.skin.<id>`) so a game starts without waiting,
   sent in `hello` (and the host's constructor), checked with `isSkinId`, carried in
   `PlayerInfo.skin` → `Racer.skin`, and drawn by `drawCar(..., { livery })` for everyone. The lobby

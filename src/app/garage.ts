@@ -1,8 +1,9 @@
+import { CAR_MODELS, type CarModelDef } from '../cosmetics/cars';
 import { medalCounts, RARITY_COLORS, RARITY_NAMES, skinDef, SKINS, skinUnlocked, TEAM_SKIN, type MedalCounts, type SkinDef } from '../cosmetics/skins';
 import type { AccountService } from '../net/accounts';
 import { playerId, type Leaderboard } from '../net/leaderboard';
 import { DAILY_REWARDS, prizeText, SPIN_PRIZES, wallet, type Wallet } from '../net/wallet';
-import { F1_CAR } from '../physics/carParams';
+import { F1_CAR, GT3_CAR, HYPERCAR_CAR } from '../physics/carParams';
 import { drawCar } from '../render/drawCar';
 import { formatLapTime } from '../render/hud';
 import { MEDAL_COLORS, MEDAL_NAMES, MEDALS, medalFor, medalTimes, type Medal } from '../sim/medals';
@@ -16,10 +17,11 @@ export interface GarageView {
   onBack: () => void;
 }
 
-type Tab = 'daily' | 'skins' | 'medals';
+type Tab = 'daily' | 'skins' | 'cars' | 'medals';
 const TABS: [Tab, string][] = [
   ['daily', 'Daily'],
   ['skins', 'Skins'],
+  ['cars', 'Cars'],
   ['medals', 'Medals'],
 ];
 
@@ -44,6 +46,33 @@ export function skinPreview(skin: SkinDef, color = '#e10600', width = 150, heigh
     drawCar(ctx, F1_CAR, 0.3, 0, 0, 0.15, color, { compound: 'soft', livery: skin.livery });
   }
   return canvas;
+}
+
+const CLASS_NAMES = { gt3: 'GT3', lmh: 'Hypercar' } as const;
+
+/** A real car's picture (`public/models/thumbs/<id>.webp`), or its class drawn top-down if there is none. */
+function carPreview(car: CarModelDef): HTMLElement {
+  const box = el('div', { class: 'car-preview' });
+  const img = el('img', { src: `${import.meta.env.BASE_URL}models/thumbs/${car.id}.webp`, alt: car.name, loading: 'lazy' }) as HTMLImageElement;
+  img.onerror = () => {
+    const canvas = el('canvas', { class: 'skin-preview' });
+    const dpr = window.devicePixelRatio || 1;
+    const [width, height] = [150, 64];
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const params = car.carClass === 'gt3' ? GT3_CAR : HYPERCAR_CAR;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const scale = (width * 0.8) / (params.length + 1);
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, (width / 2) * dpr, (height / 2) * dpr);
+      drawCar(ctx, params, 0, 0, 0, 0.15, '#e10600', { compound: 'soft', body: car.carClass });
+    }
+    img.replaceWith(canvas);
+  };
+  box.append(img);
+  return box;
 }
 
 /**
@@ -101,6 +130,7 @@ export function showGarage(v: GarageView): void {
     }
     if (tab === 'daily') body.replaceChildren(daily());
     else if (tab === 'skins') body.replaceChildren(skins());
+    else if (tab === 'cars') body.replaceChildren(cars());
     else body.replaceChildren(medals());
   };
 
@@ -358,6 +388,86 @@ export function showGarage(v: GarageView): void {
       filters,
       grid.childElementCount ? grid : el('p', { class: 'muted' }, 'Nothing here yet.'),
       el('p', { class: 'muted' }, 'Your skin is shown to everyone in races. Your lobby colour stays on the minimap and your name tag.'),
+    );
+  };
+
+  // ---------- Cars
+
+  /** Older databases (economy.sql not rerun since cars were added) don't know buy_car / equip_car. */
+  const carError = (err: unknown): Error => {
+    const text = (err as Error).message ?? '';
+    return /buy_car|equip_car|function|schema cache/i.test(text) ? new Error("The car shop isn't open on this server yet.") : (err as Error);
+  };
+
+  const cars = (): HTMLElement => {
+    const owned = w?.owned ?? [];
+    const driven = w?.cars ?? {};
+    const sections: HTMLElement[] = [];
+    for (const cls of ['gt3', 'lmh'] as const) {
+      const grid = el('div', { class: 'skin-grid' });
+      const builtIn = signedIn && w && !driven[cls];
+      grid.append(
+        el(
+          'div',
+          { class: `skin${builtIn ? ' equipped' : ''}` },
+          carPreview({ id: `builtin-${cls}`, name: 'Built-in', carClass: cls, rarity: 'common', price: 0 }),
+          el('b', {}, `Built-in ${CLASS_NAMES[cls]}`),
+          el('span', { class: 'rarity', style: `color:${RARITY_COLORS.common}` }, 'Free · wears your skin'),
+          builtIn
+            ? el('button', { class: 'small equipped', disabled: true }, 'Driving ✓')
+            : el('button', { class: 'small', disabled: !w, onclick: () => run(async () => void (w = await service!.equipCar(cls, null).catch((e) => Promise.reject(carError(e))))) }, 'Drive'),
+        ),
+      );
+      for (const car of CAR_MODELS.filter((c) => c.carClass === cls)) {
+        const have = signedIn && owned.includes(car.id);
+        const driving = have && driven[cls] === car.id;
+        let action: HTMLElement;
+        if (driving) action = el('button', { class: 'small equipped', disabled: true }, 'Driving ✓');
+        else if (have) action = el('button', { class: 'small', disabled: !w, onclick: () => run(async () => void (w = await service!.equipCar(cls, car.id).catch((e) => Promise.reject(carError(e))))) }, 'Drive');
+        else {
+          const confirming = confirmBuy === car.id;
+          action = el(
+            'button',
+            {
+              class: `small${confirming ? ' primary' : ''}`,
+              disabled: !w || w.coins < car.price,
+              title: w && w.coins < car.price ? `You need ${car.price - w.coins} more coins` : '',
+              onclick: () => {
+                if (!confirming) {
+                  confirmBuy = car.id;
+                  render();
+                  return;
+                }
+                confirmBuy = null;
+                void run(async () => {
+                  w = await service!.buyCar(car.id).catch((e) => Promise.reject(carError(e)));
+                  message = { text: `The ${car.name} is yours. You'll drive it in ${CLASS_NAMES[cls]} races (K switches cars in the 3D view).`, ok: true };
+                });
+              },
+            },
+            confirming ? 'Confirm' : 'Buy ',
+            confirming ? null : coins(car.price),
+          );
+        }
+        grid.append(
+          el(
+            'div',
+            { class: `skin${driving ? ' equipped' : ''}${have ? '' : ' locked'}` },
+            carPreview(car),
+            el('b', {}, car.name),
+            el('span', { class: 'rarity', style: `color:${RARITY_COLORS[car.rarity]}` }, RARITY_NAMES[car.rarity]),
+            action,
+          ),
+        );
+      }
+      sections.push(el('h3', {}, cls === 'gt3' ? 'GT3 cars' : 'Hypercars'), grid);
+    }
+    return el(
+      'div',
+      {},
+      signedIn ? null : signInPrompt('Sign in to buy real cars with coins.'),
+      ...sections,
+      el('p', { class: 'muted' }, 'Real cars are 3D bodies: you see them in the 3D view (V), from outside and from their own cockpit. Everyone in the race sees the car you drive. Models are by their authors on Sketchfab (CC BY 4.0).'),
     );
   };
 

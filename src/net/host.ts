@@ -1,4 +1,5 @@
 import { CAR_CLASSES } from '../sim/carClass';
+import { cleanCars } from '../cosmetics/cars';
 import { isSkinId } from '../cosmetics/skins';
 import { botContext, BotDriver, type Difficulty } from '../sim/ai/botDriver';
 import { DEFAULT_SETTINGS, Session, type PlayerInfo, type RaceSettings, type SessionEvent } from '../sim/session';
@@ -91,8 +92,10 @@ export class HostGame {
     private readonly clock: () => number = () => performance.now() / 1000,
     /** The host's car skin. */
     skin?: string,
+    /** The host's real cars (garage). */
+    cars?: string[],
   ) {
-    this.hostPlayer = { id: HostGame.HOST_ID, name: hostName, color: CAR_COLORS[0], skin, host: true };
+    this.hostPlayer = { id: HostGame.HOST_ID, name: hostName, color: CAR_COLORS[0], skin, cars: cleanCars(cars), host: true };
     transport.onConnection((conn) => this.accept(conn));
   }
 
@@ -161,7 +164,7 @@ export class HostGame {
     const def = this.trackDefs(this.settings.trackId);
     if (!def) throw new Error(`Unknown track ${this.settings.trackId}`);
     this.track = new Track(def);
-    const players = this.lobby.players.map(({ id, name, color, skin }) => ({ id, name, color, skin }));
+    const players = this.lobby.players.map(({ id, name, color, skin, cars }) => ({ id, name, color, skin, cars }));
     this.session = new Session(this.track, this.settings, players);
     this.running = { def, players };
     for (const b of this.bots.values()) b.driver = new BotDriver(this.track, b.player.id, b.player.bot!, CAR_CLASSES[this.settings.carClass].params);
@@ -254,7 +257,7 @@ export class HostGame {
         const color = CAR_COLORS.find((c) => !used.has(c)) ?? CAR_COLORS[0];
         const name = (typeof msg.name === 'string' ? msg.name : '').trim().slice(0, 16) || `Driver ${this.nextId - 1}`;
         const skin = isSkinId(msg.skin) ? msg.skin : undefined;
-        joined = { conn, player: { id, name, color, skin, host: false }, queue: [], last: IDLE_INPUT, ack: 0, received: 0, minQueue: Infinity, window: 0, ping: null, relayed: null, pingSent: null };
+        joined = { conn, player: { id, name, color, skin, cars: cleanCars(msg.cars), host: false }, queue: [], last: IDLE_INPUT, ack: 0, received: 0, minQueue: Infinity, window: 0, ping: null, relayed: null, pingSent: null };
         this.remotes.set(id, joined);
         conn.send({ t: 'welcome', id } satisfies HostMessage);
         // Joining while a weekend is on: spectate it now, race in the next one.

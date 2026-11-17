@@ -1,4 +1,5 @@
 import { isCarClassId } from '../sim/carClass';
+import { cleanCars } from '../cosmetics/cars';
 import { isSkinId } from '../cosmetics/skins';
 import { placeItemBoxes, type ItemView } from '../sim/items';
 import { debrisAlive, moveDebris } from '../sim/debris';
@@ -62,12 +63,14 @@ export class ClientGame {
     private readonly clock: () => number,
     /** Our car skin, shown to everyone. */
     skin?: string,
+    /** Our real cars (garage), shown to everyone. */
+    cars?: string[],
   ) {
     conn.onMessage((m) => this.handle(m as HostMessage));
     conn.onClose(() => {
       if (this.status !== 'rejected') this.status = 'closed';
     });
-    conn.send({ t: 'hello', name, version: PROTOCOL_VERSION, skin });
+    conn.send({ t: 'hello', name, version: PROTOCOL_VERSION, skin, cars });
   }
 
   get me(): Racer | undefined {
@@ -168,6 +171,7 @@ export class ClientGame {
         for (const p of msg.players) {
           const r = this.world.addRacer(p.id, p.name, p.color, 'medium', isCarClassId(msg.settings.carClass) ? msg.settings.carClass : 'f1');
           r.skin = isSkinId(p.skin) ? p.skin : undefined;
+          r.cars = cleanCars(p.cars);
           // Only the host makes debris; we get it in each snapshot.
           r.car.onShed = undefined;
         }

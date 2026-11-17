@@ -229,7 +229,7 @@ export class OpenRoadScreen {
     if (k.wasPressed('KeyK') && this.view) {
       void import('../render3d/customBody').then(({ cycleOwnModel }) => {
         const name = cycleOwnModel(this.carClass);
-        if (name) this.say(`CAR: ${name.toUpperCase()}`);
+        if (name) this.say(name.toUpperCase());
       });
     }
     if (k.wasPressed('KeyT') && this.view) {

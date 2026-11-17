@@ -73,6 +73,8 @@ export interface Racer {
   color: string;
   /** Paint from the garage (`src/cosmetics/skins.ts`); none = the colour's team livery. */
   skin?: string;
+  /** Real cars picked in the garage, one per class (`src/cosmetics/cars.ts`); looks only. */
+  cars?: string[];
   /** What kind of car (F1, GT3): its physics, and whether it has DRS and ERS. */
   carClass: CarClassId;
   car: Car;

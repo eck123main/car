@@ -1,3 +1,4 @@
+import { carFor } from '../cosmetics/cars';
 import type { CarClassId } from '../sim/carClass';
 import { gameAudio, loudestSurface } from '../audio/sound';
 import { Keyboard, LocalControls, type Mouse } from '../game/input';
@@ -689,7 +690,7 @@ export class GameScreen {
       const body = this.driver.world()?.racer(this.driver.meId)?.carClass;
       void import('../render3d/customBody').then(({ cycleOwnModel }) => {
         const name = cycleOwnModel(body);
-        if (name) this.toasts.push({ text: `CAR: ${name.toUpperCase()}`, color: '#ffffff', until: this.driver.now() + 2 });
+        if (name) this.toasts.push({ text: name.toUpperCase(), color: '#ffffff', until: this.driver.now() + 2 });
       });
     }
     if (this.keyboard.wasPressed('KeyL')) {
@@ -988,6 +989,7 @@ export class GameScreen {
         compound: racer.tyres.compound,
         livery: skinLivery(racer.skin) ?? liveryFor(racer.color),
         body: racer.carClass,
+        model: carFor(racer.cars, racer.carClass),
         trackIndex: c.trackIndex,
         lost: c.lost,
         speed: c.speed,
@@ -1162,6 +1164,7 @@ export class GameScreen {
         compound: r.tyres.compound,
         livery: skinLivery(r.skin) ?? liveryFor(r.color),
         body: r.carClass,
+        model: carFor(r.cars, r.carClass),
         trackIndex: r.car.trackIndex,
         lost: r.car.lost,
         parts: r.car.parts,

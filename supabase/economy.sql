@@ -34,9 +34,28 @@ insert into public.skin_shop (id, price) values
   ('chrome', 1500), ('carbon', 1500), ('inferno', 1500)
 on conflict (id) do update set price = excluded.price;
 
+-- Real cars (loaded 3D bodies) for the GT3 and Hypercar classes; must match src/cosmetics/cars.ts.
+-- Bought cars go in wallets.owned with the skins (ids start with car-); the one driven per class
+-- is car_gt3 / car_lmh (null = the built-in car).
+alter table public.wallets add column if not exists car_gt3 text;
+alter table public.wallets add column if not exists car_lmh text;
+
+create table if not exists public.car_shop (
+  id text primary key,
+  class text not null check (class in ('gt3', 'lmh')),
+  price int not null check (price > 0)
+);
+
+insert into public.car_shop (id, class, price) values
+  ('car-bmw-m4', 'gt3', 600), ('car-mustang', 'gt3', 800), ('car-amg', 'gt3', 1000),
+  ('car-huracan', 'gt3', 1200), ('car-mclaren', 'gt3', 1200), ('car-porsche', 'gt3', 1500),
+  ('car-ferrari-296', 'gt3', 1500), ('car-cadillac', 'lmh', 1500), ('car-499p', 'lmh', 2000)
+on conflict (id) do update set class = excluded.class, price = excluded.price;
+
 alter table public.wallets enable row level security;
 alter table public.skin_shop enable row level security;
-revoke all on public.wallets, public.skin_shop from anon, authenticated;
+alter table public.car_shop enable row level security;
+revoke all on public.wallets, public.skin_shop, public.car_shop from anon, authenticated;
 
 -- Daily reward by day of the streak's week (day 7 is the weekly bonus).
 create or replace function public.daily_reward(p_streak int) returns int
@@ -80,7 +99,8 @@ language sql stable security definer set search_path = public as $$
     'extraSpins', case when w.last_spin = utc_today() then w.extra_spins else 0 end,
     'resetsIn', extract(epoch from ((utc_today() + 1)::timestamp - (now() at time zone 'utc')))::int,
     'owned', to_json(w.owned),
-    'equipped', w.equipped
+    'equipped', w.equipped,
+    'cars', json_build_object('gt3', w.car_gt3, 'lmh', w.car_lmh)
   );
 $$;
 
@@ -198,6 +218,54 @@ begin
   return wallet_json(w);
 end $$;
 
+-- A car from the shop: paid for, kept, and driven from now on in its class.
+create or replace function public.buy_car(p_token text, p_car text) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  w wallets := wallet_of(p_token);
+  item car_shop;
+begin
+  select * into item from car_shop where id = p_car;
+  if item.id is null then
+    raise exception 'unknown_car';
+  end if;
+  if p_car = any (w.owned) then
+    raise exception 'already_owned';
+  end if;
+  if w.coins < item.price then
+    raise exception 'not_enough_coins';
+  end if;
+  update wallets set coins = coins - item.price, owned = owned || p_car,
+    car_gt3 = case when item.class = 'gt3' then p_car else car_gt3 end,
+    car_lmh = case when item.class = 'lmh' then p_car else car_lmh end
+  where account = w.account returning * into w;
+  return wallet_json(w);
+end $$;
+
+-- The car to drive in a class: one you own, or null for the built-in car.
+create or replace function public.equip_car(p_token text, p_class text, p_car text) returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  w wallets := wallet_of(p_token);
+begin
+  if p_class not in ('gt3', 'lmh') then
+    raise exception 'unknown_car';
+  end if;
+  if p_car is not null then
+    if not exists (select 1 from car_shop where id = p_car and class = p_class) then
+      raise exception 'unknown_car';
+    end if;
+    if not (p_car = any (w.owned)) then
+      raise exception 'not_owned';
+    end if;
+  end if;
+  update wallets set
+    car_gt3 = case when p_class = 'gt3' then p_car else car_gt3 end,
+    car_lmh = case when p_class = 'lmh' then p_car else car_lmh end
+  where account = w.account returning * into w;
+  return wallet_json(w);
+end $$;
+
 revoke execute on function public.wallet_of(text) from public, anon, authenticated;
 revoke execute on function public.wallet_json(public.wallets) from public, anon, authenticated;
 grant execute on function public.get_wallet(text) to anon, authenticated;
@@ -205,3 +273,5 @@ grant execute on function public.claim_daily(text) to anon, authenticated;
 grant execute on function public.daily_spin(text) to anon, authenticated;
 grant execute on function public.buy_skin(text, text) to anon, authenticated;
 grant execute on function public.equip_skin(text, text) to anon, authenticated;
+grant execute on function public.buy_car(text, text) to anon, authenticated;
+grant execute on function public.equip_car(text, text, text) to anon, authenticated;

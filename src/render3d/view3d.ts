@@ -238,6 +238,8 @@ export interface CarView {
   upset?: number;
   /** Lobby colour, for the grid crew's shirts. */
   color?: string;
+  /** The real car this player picked in the garage (`cosmetics/cars.ts`); none = built-in (bots: a random one). */
+  model?: string;
 }
 
 /** The safety car, while it is on track; lights: flashing (deployed, not coming in). */
@@ -525,7 +527,7 @@ export class View3D {
     for (const car of [own, ...others]) {
       seen.add(car.id);
       const onboard = car === own && !this.cinema;
-      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}|${hasCustomBody(car.body) ? customBodyVersion() : 0}`;
+      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}|${hasCustomBody(car.body) ? customBodyVersion() : 0}|${car.model ?? ''}`;
       let entry = this.cars.get(car.id);
       if (entry && entry.key !== key) {
         entry.model.group.removeFromParent();
@@ -535,7 +537,7 @@ export class View3D {
       if (!entry) {
         const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
         const built: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : car.body === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
-        const model = withCustomBody(built, car.body, car.livery, !!car.ghost, car.id, car === own);
+        const model = withCustomBody(built, car.body, car.livery, !!car.ghost, car.id, car === own, car.model);
         if (onboard) {
           model.addSteeringWheel();
           model.addMirrorGlass(this.mirrorTarget.texture);

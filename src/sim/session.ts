@@ -53,6 +53,8 @@ export interface PlayerInfo {
   color: string;
   /** Car skin id; cosmetic only. */
   skin?: string;
+  /** Real cars picked in the garage (one per class); cosmetic only. */
+  cars?: string[];
 }
 
 /**
@@ -177,7 +179,11 @@ export class Session {
   ) {
     this.world = new RaceWorld(track, { drsRule: 'free', wetness: 0, slipstream: false, collisions: false });
     this.items = settings.mode === 'party' ? new ItemSystem(track) : null;
-    for (const p of players) this.world.addRacer(p.id, p.name, p.color, 'medium', settings.carClass).skin = p.skin;
+    for (const p of players) {
+      const r = this.world.addRacer(p.id, p.name, p.color, 'medium', settings.carClass);
+      r.skin = p.skin;
+      r.cars = p.cars;
+    }
     this.world.options.wetness = this.wetnessAt(0);
     this.phase = settings.qualifying ? 'qualifying' : 'grid';
     if (settings.qualifying) this.startQualifying();

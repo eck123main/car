@@ -3,7 +3,7 @@ import { TimeTrialDriver } from './app/timeTrial';
 import { OpenRoadScreen } from './app/openRoad';
 import { OPEN_ROAD_MAPS } from './sim/openRoad/biomes';
 import { showGarage } from './app/garage';
-import { equippedSkin } from './net/wallet';
+import { equippedCars, equippedSkin } from './net/wallet';
 import { boardKey, isCarClassId, type CarClassId } from './sim/carClass';
 import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showOpenRoadMenu, showPracticeMenu, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
@@ -323,7 +323,7 @@ async function host(name: string, offline: boolean, mode: GameMode = 'classic'):
   let hostGame: HostGame;
   try {
     const transport = offline ? new OfflineTransport() : await createHost();
-    hostGame = new HostGame(transport, name, trackDef, undefined, equippedSkin());
+    hostGame = new HostGame(transport, name, trackDef, undefined, equippedSkin(), equippedCars());
     hostGame.updateSettings({ mode, carClass: savedClass() });
     // A bots race starts with a few opponents ready to go.
     if (offline) for (const d of ['hard', 'medium', 'medium', 'easy', 'easy'] as const) hostGame.addBot(d);
@@ -397,7 +397,7 @@ async function join(name: string): Promise<void> {
   let client: ClientGame;
   try {
     const conn = await connectToHost(joinCode!);
-    client = new ClientGame(conn, name, () => performance.now() / 1000, equippedSkin());
+    client = new ClientGame(conn, name, () => performance.now() / 1000, equippedSkin(), equippedCars());
   } catch (err) {
     showMessage("Couldn't join", (err as Error).message, { label: 'Back', onClick: home });
     return;

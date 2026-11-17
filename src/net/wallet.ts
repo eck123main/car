@@ -1,4 +1,6 @@
+import { carModelDef, cleanCars } from '../cosmetics/cars';
 import { isSkinId, TEAM_SKIN } from '../cosmetics/skins';
+import type { CarClassId } from '../sim/carClass';
 import { accounts, type AccountService } from './accounts';
 
 /**
@@ -20,6 +22,8 @@ export interface Wallet {
   resetsIn: number;
   owned: string[];
   equipped: string;
+  /** The real car driven per class (null = the built-in one). Missing until economy.sql is rerun. */
+  cars?: Partial<Record<CarClassId, string | null>>;
 }
 
 /** Daily reward by day of the streak's week; day 7 is the weekly bonus. Same as `daily_reward` in SQL. */
@@ -62,6 +66,63 @@ export function equippedSkin(): string | undefined {
   }
 }
 
+/** Your cars, kept here like the skin: what you own and drive per class. */
+interface CarCache {
+  owned: string[];
+  driven: Partial<Record<CarClassId, string | null>>;
+}
+const carsKey = (account: string) => `f1td.cars.${account}`;
+
+function readCars(): CarCache {
+  const account = accounts()?.account();
+  const none: CarCache = { owned: [], driven: {} };
+  if (!account) return none;
+  try {
+    const raw = JSON.parse(localStorage.getItem(carsKey(account.id)) ?? 'null') as CarCache | null;
+    if (!raw) return none;
+    const owned = (raw.owned ?? []).filter((id) => carModelDef(id));
+    const driven: CarCache['driven'] = {};
+    for (const [cls, id] of Object.entries(raw.driven ?? {})) if (id && owned.includes(id)) driven[cls as CarClassId] = id;
+    return { owned, driven };
+  } catch {
+    return none;
+  }
+}
+
+function writeCars(c: CarCache): void {
+  const account = accounts()?.account();
+  try {
+    if (account) localStorage.setItem(carsKey(account.id), JSON.stringify(c));
+  } catch {
+    // Picked up from the server next time.
+  }
+}
+
+/** Real cars you own, by id (signed in; from the last wallet seen). */
+export function ownedCars(): string[] {
+  return readCars().owned;
+}
+
+/** The car you drive in a class, or null for the built-in one. */
+export function drivenCar(carClass: CarClassId | undefined): string | null {
+  return (carClass && readCars().driven[carClass]) || null;
+}
+
+/** Your cars to show other players (one per class), sent when joining a race. */
+export function equippedCars(): string[] | undefined {
+  return cleanCars(Object.values(readCars().driven));
+}
+
+/** Drive another car you own in a class (null = the built-in one): here at once, saved to your account in the background. */
+export function driveCar(carClass: CarClassId, id: string | null): void {
+  const c = readCars();
+  c.driven[carClass] = id;
+  writeCars(c);
+  void wallet()
+    ?.equipCar(carClass, id)
+    .catch(() => undefined);
+}
+
 function remember(w: Wallet): Wallet {
   const account = accounts()?.account();
   try {
@@ -69,6 +130,7 @@ function remember(w: Wallet): Wallet {
   } catch {
     // Picked up from the server next time.
   }
+  writeCars({ owned: w.owned.filter((id) => carModelDef(id)), driven: { ...(w.cars ?? readCars().driven) } });
   return w;
 }
 
@@ -103,6 +165,14 @@ export class WalletService {
 
   async equip(skin: string): Promise<Wallet> {
     return remember(await this.service.rpc<Wallet>('equip_skin', { p_token: this.token(), p_skin: skin }));
+  }
+
+  async buyCar(car: string): Promise<Wallet> {
+    return remember(await this.service.rpc<Wallet>('buy_car', { p_token: this.token(), p_car: car }));
+  }
+
+  async equipCar(carClass: CarClassId, car: string | null): Promise<Wallet> {
+    return remember(await this.service.rpc<Wallet>('equip_car', { p_token: this.token(), p_class: carClass, p_car: car }));
   }
 }
 

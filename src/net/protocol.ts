@@ -140,7 +140,7 @@ export interface SessionSnap {
 export type PackedInput = [number, number, number, number, number, number];
 
 export type ClientMessage =
-  | { t: 'hello'; name: string; version: number; skin?: string }
+  | { t: 'hello'; name: string; version: number; skin?: string; cars?: string[] }
   /**
    * The latest inputs, plus a few older ones the host hasn't acknowledged yet, so a lost
    * packet costs nothing (inputs go over the fast channel, which never resends).
