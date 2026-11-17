@@ -202,6 +202,29 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   degrees += spec.turn ?? 0;
   const turn = turned();
   for (const k of [...kept, ...inside, ...steer]) k.geo.applyMatrix4(turn);
+  // The wheel itself, without a steering column that some models also call "steer" (long along
+  // the car, narrow across it): with the column the wheel's centre came out ~0.15 m too far forward.
+  const rimPieces = steer.filter((p) => {
+    p.geo.computeBoundingBox();
+    const b = p.geo.boundingBox!;
+    return b.max.x - b.min.x <= 1.5 * (b.max.z - b.min.z);
+  });
+  // Parts lying wholly inside the wheel turn with it, whatever they're called (the BMW's and the
+  // Ferrari 296's displays, LEDs and knobs hang under other nodes and stayed put as the rim turned).
+  if (rimPieces.length) {
+    const rim = new THREE.Box3();
+    for (const p of rimPieces) rim.union(p.geo.boundingBox!);
+    const reach = rim.clone().expandByScalar(rim.getSize(new THREE.Vector3()).length() * 0.06);
+    for (const list of [kept, inside]) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        list[i].geo.computeBoundingBox();
+        if (!reach.containsBox(list[i].geo.boundingBox!)) continue;
+        const [piece] = list.splice(i, 1);
+        steer.push(piece);
+        rimPieces.push(piece);
+      }
+    }
+  }
   const placedQuads = corners(turn);
   const hubs = placedQuads.map((q) => q.box.getCenter(new THREE.Vector3()));
   const wheelBottoms = placedQuads.map((q) => q.box.min.y);
@@ -242,7 +265,7 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   // The game's own wheel replaces the model's (it turns, with the driver's arms on it); without one
   // found, the model's interior isn't used and the built-in cockpit stays.
   const shapeNow = measure(toParts(kept, null).parts);
-  const found = findCockpit(steer.map((p) => p.geo), shapeNow);
+  const found = findCockpit((rimPieces.length ? rimPieces : steer).map((p) => p.geo), shapeNow);
   const cockpit = found && seatView(found, [...kept, ...inside, ...steer], shapeNow);
   if (cockpit) for (const p of steer) p.geo.translate(-cockpit.wheel[0], -cockpit.wheel[1], -cockpit.wheel[2]);
   else for (const p of [...inside, ...steer]) p.geo.dispose();

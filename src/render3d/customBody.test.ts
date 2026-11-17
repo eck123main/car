@@ -110,6 +110,31 @@ describe('loaded car bodies', () => {
     expect(box.min.y).toBeCloseTo(0.1 * scale, 3);
   });
 
+  it('finds the steering wheel without its column, and turns the parts inside it with it', () => {
+    const car = fakeCar();
+    const black = new THREE.MeshStandardMaterial({ name: 'Black' });
+    // Wheel 0.34 m across, upright, facing the driver, 0.8 m ahead of the axles' midpoint.
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.02, 6, 24), black);
+    rim.name = 'Steering_Wheel';
+    rim.position.set(-0.35, 0.9, 0.9);
+    // A column also called steer, running 0.4 m forward into the dash (it pulled the centre forward).
+    const column = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.4), black);
+    column.name = 'Steer_Column';
+    column.position.set(-0.35, 0.9, 1.12);
+    // The wheel's display, under another name (it stayed put while the rim turned).
+    const display = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.02), new THREE.MeshStandardMaterial({ name: 'Display' }));
+    display.position.set(-0.35, 0.95, 0.9);
+    car.add(rim, column, display);
+    const ready = prepareBody(car, {}, 'gt3')!;
+    const scale = (FRONT_AXLE - REAR_AXLE) / 3;
+    expect(ready.cockpit).not.toBeNull();
+    expect(ready.cockpit!.wheel[0]).toBeCloseTo((FRONT_AXLE + REAR_AXLE) / 2 + 0.8 * scale, 2);
+    // The display went with the wheel, not into the interior that stays still.
+    expect(ready.interior).toHaveLength(0);
+    const verts = (parts: { geometry: THREE.BufferGeometry }[]) => parts.reduce((n, p) => n + p.geometry.getAttribute('position').count, 0);
+    expect(verts(ready.steering)).toBe(rim.geometry.getAttribute('position').count + column.geometry.getAttribute('position').count + display.geometry.getAttribute('position').count);
+  });
+
   it('has nothing for the F1 car', () => {
     expect(prepareBody(fakeCar(), {}, 'f1')).toBeNull();
   });
