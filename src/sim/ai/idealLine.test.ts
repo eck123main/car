@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { Track } from '../../track/track';
 import { TRACKS } from '../../tracks';
 import IDEAL from '../../tracks/ideal-lines.json';
+import IDEAL_GT3 from '../../tracks/ideal-lines-gt3.json';
+import IDEAL_LMH from '../../tracks/ideal-lines-lmh.json';
+import type { CarClassId } from '../carClass';
 import { TimeTrial } from '../timeTrial';
 import { boxQP, COARSE, idealLine, LineDriver, type IdealRecord } from './idealLine';
 import { racingLine } from './racingLine';
 
 const RECORDS = IDEAL as Record<string, IdealRecord>;
+const CLASS_RECORDS = { gt3: IDEAL_GT3, lmh: IDEAL_LMH } as Record<'gt3' | 'lmh', Record<string, IdealRecord>>;
 const DT = 1 / 120;
 
 describe('ideal line', () => {
@@ -68,5 +72,37 @@ describe('ideal line', () => {
       if (tt.me.timer.lapStart !== null) expect(tt.invalidAt).toBeNull();
     }
     expect(lap).toBeCloseTo(RECORDS[id].time, 2);
+  });
+
+  it.each(['gt3', 'lmh'] as const)('has its own line for most tracks in the %s, inside the track', (cls) => {
+    const recs = CLASS_RECORDS[cls];
+    expect(Object.keys(recs).length).toBeGreaterThan(50);
+    for (const [id, rec] of Object.entries(recs)) {
+      const track = new Track(TRACKS[id]);
+      expect(rec.offsets.length, id).toBe(Math.floor(track.samples.length / COARSE));
+      const ideal = idealLine(track, id, cls);
+      expect(ideal.time, id).toBe(rec.time);
+      ideal.line.offset.forEach((o, i) => expect(Math.abs(o), id).toBeLessThanOrEqual(track.samples[i].halfWidth));
+    }
+  });
+
+  it.each([
+    ['gt3', 'silverstone'],
+    ['gt3', 'bahrain'],
+    ['lmh', 'monza'],
+    ['lmh', 'spa'],
+  ] as [CarClassId, string][])('drives a clean %s lap at %s in the stored time', (cls, id) => {
+    const rec = CLASS_RECORDS[cls as 'gt3' | 'lmh'][id];
+    expect(rec, id).toBeDefined();
+    const track = new Track(TRACKS[id]);
+    const tt = new TimeTrial(track, id, 'Ideal', 'red', cls);
+    const driver = new LineDriver(track, idealLine(track, id, cls), 'me');
+    let lap: number | null = null;
+    tt.onLap = (l) => (lap = l.time);
+    for (let t = 0; t < 240 && lap === null; t += DT) {
+      tt.step(DT, driver.drive(tt.world));
+      if (tt.me.timer.lapStart !== null) expect(tt.invalidAt).toBeNull();
+    }
+    expect(lap).toBeCloseTo(rec.time, 2);
   });
 });

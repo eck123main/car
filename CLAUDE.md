@@ -148,8 +148,8 @@ alone: DRS free in every zone, ERS, no other cars.
   time trial category: laps, ghosts and "driven" are kept under `boardKey` (F1: the track id as before, others
   `track@gt3`, no database change), and GT3 medals are in `src/tracks/medals-gt3.json` (F1 author x
   the Hard bot's GT3/F1 lap ratio, 1.34-1.52x, close to the real ~1.35x since the GT3 got 20% more grip (redone for every track then); redone again after the downforce was doubled; the GT3 laps set before each change were cleared (board: `supabase/gt3_grip_reset.sql` then `supabase/gt3_aero_reset.sql`, each run once; browsers: `CLEARS` in `adjustTimes.ts`); `npx tsx scripts/class-medals.ts gt3`; compare with
-  `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line keeps the
-  F1-searched line with the class's own speeds. Drawn top-down by `src/render/drawGt3.ts`.
+  `scripts/class-laps.ts`). Garage medal counts and medal skins stay F1 only. The ideal line is searched per
+  class (see Ideal racing line). Drawn top-down by `src/render/drawGt3.ts`.
   **GT3 driving** (`CarParams.dynamics`, `Car.tyreStep`; F1 keeps the simple grip model): a real two-axle
   tyre model with slip angles, a tyre curve that peaks then falls off, weight transfer, load sensitivity,
   slip-based ABS and traction control, a six-speed gearbox with a power curve (`Car.gear`, `Car.revs`, used
@@ -299,6 +299,11 @@ brake. Off by default (`Settings.idealLine`), any mode.
   Imola, Sochi, Jeddah, Miami beat them): good players still beat it, but it is far quicker than the
   bots' line (Silverstone 45.3 vs ~51 s). Eleven tracks (Mosport the latest) only got a clean lap with the gentler fallback
   settings (1.4-2 m margin, 90-94% grip), so their lines keep further from the edges.
+- **Per class** (`--class gt3|lmh`, files `ideal-lines-gt3.json` / `-lmh.json`; `--out` lets several runs go side by
+  side, merged afterwards): searched in that car's physics with its own grid (margins 0.6-1.4 m, corner 0.9-1.05,
+  **brake 0.5-0.8**: with the tyre model the robot needs to plan braking much earlier than the F1, and the F1's
+  settings ran off on 47 of 60 tracks in the GT3, 24 in the Hypercar). GT3 58/60 clean (Mexico and Adelaide fall
+  back to the F1 line at GT3 speeds), Hypercar 60/60; robot laps median 11% (GT3) / 7% (Hypercar) off the author medals.
 
 ## Garage (coins, skins, medals)
 

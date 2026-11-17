@@ -3,6 +3,8 @@ import type { PlayerInput, RaceWorld } from '../world';
 import { IDLE_INPUT } from '../world';
 import { TRACKS } from '../../tracks';
 import IDEAL from '../../tracks/ideal-lines.json';
+import IDEAL_GT3 from '../../tracks/ideal-lines-gt3.json';
+import IDEAL_LMH from '../../tracks/ideal-lines-lmh.json';
 import type { CarParams } from '../../physics/carParams';
 import { racingLine, speedProfile, type RacingLine } from './racingLine';
 import { CAR_CLASSES, type CarClassId } from '../carClass';
@@ -37,21 +39,28 @@ export interface IdealLine {
   time: number | null;
 }
 
-const RECORDS = IDEAL as Record<string, IdealRecord>;
+/** Searched per class (in that car's physics); a track a class has no line for uses the F1 one. */
+const RECORDS: Record<CarClassId, Record<string, IdealRecord>> = {
+  f1: IDEAL as Record<string, IdealRecord>,
+  gt3: IDEAL_GT3 as Record<string, IdealRecord>,
+  lmh: IDEAL_LMH as Record<string, IdealRecord>,
+};
 const cache = new WeakMap<Track, Map<CarClassId, IdealLine>>();
 
 /**
- * The ideal line for a track (the bots' line where the search hasn't been run yet). The line
- * was searched with the F1 car; other classes drive the same line at their own speeds.
+ * The ideal line for a track (the bots' line where the search hasn't been run yet), searched
+ * for each class of car. A class without a line on that track drives the F1 one at its own speeds.
  */
 export function idealLine(track: Track, trackId = idOf(track), cls: CarClassId = 'f1'): IdealLine {
   let byClass = cache.get(track);
   if (!byClass) cache.set(track, (byClass = new Map()));
   const cached = byClass.get(cls);
   if (cached) return cached;
-  const rec = trackId ? RECORDS[trackId] : undefined;
-  const ideal = rec?.offsets.length === Math.floor(track.samples.length / COARSE)
-    ? { ...buildIdeal(track, rec, rec.offsets, cls), time: cls === 'f1' ? rec.time : null }
+  const fits = (r: IdealRecord | undefined): r is IdealRecord => r?.offsets.length === Math.floor(track.samples.length / COARSE);
+  const own = trackId ? RECORDS[cls]?.[trackId] : undefined;
+  const rec = fits(own) ? own : trackId ? RECORDS.f1[trackId] : undefined;
+  const ideal = fits(rec)
+    ? { ...buildIdeal(track, rec, rec.offsets, cls), time: rec === own || cls === 'f1' ? rec.time : null }
     : fallback(track, cls);
   byClass.set(cls, ideal);
   return ideal;

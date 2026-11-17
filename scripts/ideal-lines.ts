@@ -4,7 +4,11 @@
  * DRS everywhere, ERS). A lap only counts if it stays on track and never touches a wall, so the
  * line is one a player can copy lap after lap.
  *
- *   npx tsx scripts/ideal-lines.ts [trackId ...]
+ *   npx tsx scripts/ideal-lines.ts [--class gt3|lmh] [trackId ...]
+ *
+ * F1 writes src/tracks/ideal-lines.json; another class its own file (ideal-lines-gt3.json, ...),
+ * searched in that car's physics. The GT3 and Hypercar (real tyre model) need earlier braking
+ * and more room from the edges than the F1, so they get their own grid.
  *
  * Per track: the minimum-curvature line for a few edge margins (how close to the edge it goes:
  * onto the kerbs, or a little short of them), then the share of grip used in corners and under
@@ -13,23 +17,30 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildIdeal, COARSE, LineDriver, solveMinimumCurvature, type IdealRecord, type IdealSettings } from '../src/sim/ai/idealLine';
+import type { CarClassId } from '../src/sim/carClass';
 import { TimeTrial } from '../src/sim/timeTrial';
 import { Track } from '../src/track/track';
 import { REAL_TRACK_IDS, TRACKS } from '../src/tracks';
 import MEDALS from '../src/tracks/medals.json';
+import MEDALS_GT3 from '../src/tracks/medals-gt3.json';
+import MEDALS_LMH from '../src/tracks/medals-lmh.json';
 
-const OUT = 'src/tracks/ideal-lines.json';
+const args = process.argv.slice(2);
+const at = args.indexOf('--class');
+const CLS = (at >= 0 ? args.splice(at, 2)[1] : 'f1') as CarClassId;
+const outAt = args.indexOf('--out');
+/** --out: write somewhere else (several runs side by side, merged afterwards). */
+const OUT = outAt >= 0 ? args.splice(outAt, 2)[1] : CLS === 'f1' ? 'src/tracks/ideal-lines.json' : `src/tracks/ideal-lines-${CLS}.json`;
 const DT = 1 / 120;
-const MARGINS = [0.2, 0.6, 1.0];
-const CORNER = [0.97, 1, 1.03];
-const BRAKE = [0.9, 1, 1.1];
-/** Tried when nothing above gives a clean lap: further from the edges, and gentler. */
-const FALLBACK = { margins: [1.4, 2.0], corner: [0.9, 0.94], brake: [0.8, 0.9] };
+/** Edge margins, corner and brake shares tried; then the fallback when nothing gives a clean lap. */
+const GRID = CLS === 'f1'
+  ? { margins: [0.2, 0.6, 1.0], corner: [0.97, 1, 1.03], brake: [0.9, 1, 1.1], fallback: { margins: [1.4, 2.0], corner: [0.9, 0.94], brake: [0.8, 0.9] } }
+  : { margins: [0.6, 1.0, 1.4], corner: [0.9, 0.95, 1, 1.05], brake: [0.5, 0.6, 0.7, 0.8], fallback: { margins: [2.0, 2.6], corner: [0.8, 0.86, 0.92], brake: [0.5, 0.6] } };
 
 /** The ideal driver's first flying lap on this line, or null if it wasn't clean. */
 function idealLap(track: Track, id: string, s: IdealSettings, coarse: number[]): number | null {
-  const tt = new TimeTrial(track, id, 'Ideal', 'red');
-  const driver = new LineDriver(track, buildIdeal(track, s, coarse), 'me');
+  const tt = new TimeTrial(track, id, 'Ideal', 'red', CLS);
+  const driver = new LineDriver(track, buildIdeal(track, s, coarse, CLS), 'me');
   let lap: number | null = null;
   tt.onLap = (l) => (lap = l.time);
   for (let t = 0; t < 240; t += DT) {
@@ -43,7 +54,7 @@ function idealLap(track: Track, id: string, s: IdealSettings, coarse: number[]):
 }
 
 function search(id: string): IdealRecord | null {
-  return searchWith(id, MARGINS, CORNER, BRAKE) ?? searchWith(id, FALLBACK.margins, FALLBACK.corner, FALLBACK.brake);
+  return searchWith(id, GRID.margins, GRID.corner, GRID.brake) ?? searchWith(id, GRID.fallback.margins, GRID.fallback.corner, GRID.fallback.brake);
 }
 
 function searchWith(id: string, margins: number[], corners: number[], brakes: number[]): IdealRecord | null {
@@ -61,9 +72,9 @@ function searchWith(id: string, margins: number[], corners: number[], brakes: nu
   return best;
 }
 
-const ids = process.argv.slice(2).length ? process.argv.slice(2) : REAL_TRACK_IDS;
+const ids = args.length ? args : REAL_TRACK_IDS;
 const table: Record<string, IdealRecord> = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : {};
-const medals = MEDALS as Record<string, { author: number }>;
+const medals = (CLS === 'gt3' ? MEDALS_GT3 : CLS === 'lmh' ? MEDALS_LMH : MEDALS) as Record<string, { author: number }>;
 for (const id of ids) {
   const t0 = Date.now();
   const rec = search(id);
