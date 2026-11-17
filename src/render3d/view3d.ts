@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Livery } from '../render/livery';
 import type { Compound } from '../sim/tyres';
 import type { Track } from '../track/track';
-import { bodyTopAt, customBodyCockpit, customBodyShape, customBodyVersion, hasCustomBody, loadCustomBodies, withCustomBody, type BodyShape } from './customBody';
+import { bodyTopAt, customBodyCockpit, customBodyKey, customBodyShape, loadCustomBodies, withCustomBody, type BodyShape } from './customBody';
 import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
 import { GT3_EYE, Gt3Model } from './gt3Model';
 import { LMH_EYE, LmhModel } from './lmhModel';
@@ -527,7 +527,7 @@ export class View3D {
     for (const car of [own, ...others]) {
       seen.add(car.id);
       const onboard = car === own && !this.cinema;
-      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}|${hasCustomBody(car.body) ? customBodyVersion() : 0}|${car.model ?? ''}`;
+      const key = `${car.body ?? 'f1'}|${car.livery.body}|${car.livery.wings}|${car.ghost ?? ''}|${car.ghostOpacity ?? ''}|${onboard}|${customBodyKey(car.body, car.id, car === own, car.model, !!car.ghost)}`;
       let entry = this.cars.get(car.id);
       if (entry && entry.key !== key) {
         entry.model.group.removeFromParent();

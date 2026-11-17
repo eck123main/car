@@ -208,9 +208,12 @@ alone: DRS free in every zone, ERS, no other cars.
   **Several per class**: `models.json` lists an array per class (files in `gt3/`, `lmh/`, each with an `id` from
   `src/cosmetics/cars.ts`). **They are garage cars** (see Garage): your car is the one you drive in that class (built-in
   if none), other players show theirs, bots a random one by a hash of their id; **K** (3D view, open road) cycles the
-  cars you own and the built-in one (`cycleOwnModel`), each loaded
-  in the background a few seconds after the 3D view opens (one at a time, yours first); until a model is ready a car shows
-  one that is (never the built-in body after the first). **Seat** (`seatView`): the solid parts (not glass) are cut by
+  cars you own and the built-in one (`cycleOwnModel`), only the classes on screen are loaded
+  in the background, a few seconds after the 3D view opens (one at a time, yours first, 0.8 s apart: each takes 0.06-0.23 s
+  to prepare on the main thread); until a model is ready a car shows one that is (never the built-in body after the first).
+  **A car is rebuilt only when its own model changes** (`customBodyKey` in the view's key): rebuilding every car whenever
+  any model loaded froze a full grid for over a second. Far cars (>45 m, `THREE.LOD`) draw only parts over 0.6 m (a few
+  fewer draw calls). A 10-car GT3 grid: ~250-320 draw calls, ~0.8-0.96 M triangles, 60 fps on the dev PC. **Seat** (`seatView`): the solid parts (not glass) are cut by
   the upright plane through the driver's head and, for eye spots on a grid under a roof, the clear pitch band through
   the windscreen is measured; the eye comes from the widest band; the view is framed like a sim (horizon 38% down, bottom edge at the wheel's middle, fov 54-80). Glass (by name, or
   transmission, which Phong lacks) is made clear. Wheels are split into four corners by position (some models merge them into one mesh). Tested

@@ -53,7 +53,14 @@ export interface BodyPart {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
   tinted: boolean;
+  /** Big enough to be drawn on a car far away (`FAR_FROM`). */
+  far?: boolean;
 }
+
+/** Parts at least this big (bounding sphere radius, m) are drawn from afar; the rest only close up. */
+const FAR_PART = 0.6;
+/** Beyond this distance from the camera (m), a car shows only its big parts. */
+const FAR_FROM = 45;
 
 /** The loaded body's outline in the car frame, to put the bolted-on cameras on it. */
 export interface BodyShape {
@@ -264,7 +271,8 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
 
   // The game's own wheel replaces the model's (it turns, with the driver's arms on it); without one
   // found, the model's interior isn't used and the built-in cockpit stays.
-  const shapeNow = measure(toParts(kept, null).parts);
+  // Measured from the pieces as they are: merging them just for this cost a second full merge.
+  const shapeNow = measure(kept.map((k) => ({ geometry: k.geo, material: k.mat, tinted: false })));
   const found = findCockpit((rimPieces.length ? rimPieces : steer).map((p) => p.geo), shapeNow);
   const cockpit = found && seatView(found, [...kept, ...inside, ...steer], shapeNow);
   if (cockpit) for (const p of steer) p.geo.translate(-cockpit.wheel[0], -cockpit.wheel[1], -cockpit.wheel[2]);
@@ -273,6 +281,12 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   const inner = cockpit ? toParts(inside, null) : { parts: [], triangles: 0 };
   const steering = cockpit ? toParts(steer, null).parts : [];
   for (const p of [...outer.parts, ...inner.parts]) if (MIRROR.test(p.material.name)) mirrorUvs(p.geometry);
+  // Seen from afar only the big parts are drawn: badges, lights, vents and the like are draw calls
+  // (12-38 a car) that nobody can see beyond a few car lengths.
+  for (const p of outer.parts) {
+    p.geometry.computeBoundingSphere();
+    p.far = p.geometry.boundingSphere!.radius >= FAR_PART;
+  }
   return { parts: outer.parts, interior: inner.parts, steering, cockpit, fit, triangles: outer.triangles, shape: measure(outer.parts) };
 }
 
@@ -634,6 +648,8 @@ const prepared = new Map<string, PreparedBody | null>();
 const pending = new Map<string, Promise<void>>();
 /** The body your own car uses per class, for the cockpit and bolted-on cameras. */
 const own = new Map<CarClassId, PreparedBody>();
+/** Classes with cars on screen: only their models are loaded in the background. */
+const shown = new Set<CarClassId>();
 let listing: Promise<void> | null = null;
 let loader: Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTFLoader> | null = null;
 let version = 0;
@@ -651,6 +667,22 @@ export function customBodyCockpit(body: CarClassId | undefined): ModelCockpit | 
 /** Your own car's loaded body's shape for a class. */
 export function customBodyShape(body: CarClassId | undefined): BodyShape | undefined {
   return body ? own.get(body)?.shape : undefined;
+}
+
+/**
+ * What a car shows, as a key that changes only when that car's own model changes (its pick, or the
+ * pick finishing loading). The view rebuilds a car when its key changes: rebuilding every car
+ * whenever any model loaded (9 of them in the background) froze a full grid for over a second.
+ */
+export function customBodyKey(body: CarClassId | undefined, carId: string, mine: boolean, choice: string | undefined, ghost: boolean): string {
+  if (!body || ghost || !hasCustomBody(body)) return '';
+  shown.add(body);
+  const spec = specFor(body, carId, mine, choice);
+  if (!spec) return 'built-in';
+  const ready = prepared.get(spec.file);
+  // Waiting: a stand-in (yours: the one you had) or the built-in car, whichever there is now.
+  if (ready === undefined) return `${spec.file}:wait:${(mine && own.has(body)) || anyReady(body) ? 'stand-in' : 'built-in'}`;
+  return spec.file;
 }
 
 /** There are model files for this class. */
@@ -763,7 +795,7 @@ function load(body: CarClassId, spec: BodySpec): Promise<void> {
       const l = await gltfLoader();
       const gltf = await l.loadAsync(base + spec.file);
       result = prepareBody(gltf.scene, spec, body);
-      if (result) console.info(`[models] ${body}: ${spec.file}, ${result.triangles} triangles, ${result.parts.length} draw calls, fitted by ${result.fit}, ${result.cockpit ? (result.cockpit.whole ? 'own interior' : 'own interior, game wheel rim') : 'built-in cockpit'}`, result.cockpit ? JSON.stringify({ wheel: result.cockpit.wheel.map((v) => +v.toFixed(2)), eye: result.cockpit.eye.map((v) => +v.toFixed(2)), look: result.cockpit.look.map((v) => +v.toFixed(2)), fov: Math.round(result.cockpit.fov) }) : '');
+      if (result) console.info(`[models] ${body}: ${spec.file}, ${result.triangles} triangles, ${result.parts.length} draw calls (${result.parts.filter((p) => p.far).length} from afar), fitted by ${result.fit}, ${result.cockpit ? (result.cockpit.whole ? 'own interior' : 'own interior, game wheel rim') : 'built-in cockpit'}`, result.cockpit ? JSON.stringify({ wheel: result.cockpit.wheel.map((v) => +v.toFixed(2)), eye: result.cockpit.eye.map((v) => +v.toFixed(2)), look: result.cockpit.look.map((v) => +v.toFixed(2)), fov: Math.round(result.cockpit.fov) }) : '');
     } catch (e) {
       console.warn(`[models] ${body}: could not load ${spec.file}`, e);
     }
@@ -776,21 +808,31 @@ function load(body: CarClassId, spec: BodySpec): Promise<void> {
 }
 
 /**
- * Loads every model in the background, one at a time (your own choices first), a few seconds after
- * the 3D view opens, so K switches at once and a race's grid doesn't wait for its models.
+ * Loads the models of the classes on screen in the background, one at a time (your own choices
+ * first) with a pause between them, a few seconds after the 3D view opens, so K switches at once
+ * and a race's grid doesn't wait. Each one takes 0.1-0.25 s to prepare, so they're spread out.
  */
 let preloading = false;
 function preloadAll(): void {
   if (preloading) return;
   preloading = true;
   setTimeout(async () => {
-    const queue: [CarClassId, BodySpec][] = [];
-    for (const body of specs.keys()) {
-      const mine = specFor(body, '', true, undefined);
-      if (mine) queue.push([body, mine]);
+    const next = (): [CarClassId, BodySpec] | null => {
+      for (const body of shown) {
+        const mine = specFor(body, '', true, undefined);
+        if (mine && !prepared.has(mine.file)) return [body, mine];
+      }
+      for (const body of shown) for (const spec of specs.get(body) ?? []) if (!prepared.has(spec.file)) return [body, spec];
+      return null;
+    };
+    // Classes can appear later (a new race): keep looking while the game runs.
+    for (;;) {
+      const job = next();
+      if (job) {
+        await load(job[0], job[1]);
+        await new Promise((r) => setTimeout(r, 800));
+      } else await new Promise((r) => setTimeout(r, 2000));
     }
-    for (const [body, list] of specs) for (const spec of list) queue.push([body, spec]);
-    for (const [body, spec] of queue) await load(body, spec);
   }, 3000);
 }
 
@@ -811,12 +853,16 @@ function anyReady(body: CarClassId): PreparedBody | null {
  * wheel (when one was found; else the built-in cockpit, shown only from the inside cameras).
  */
 export class CustomBodyCar implements Car3d {
-  private readonly body = new THREE.Group();
+  /** Near: every part; far (`FAR_FROM`): the big ones only. Three.js picks per camera as it draws. */
+  private readonly body = new THREE.LOD();
+  private readonly near = new THREE.Group();
+  private readonly far = new THREE.Group();
   /** The built-in cockpit (own car, model without a usable interior), only for the inside cameras. */
   private readonly cockpit = new THREE.Group();
   /** The model's interior and the game's wheel on it (own car). */
   private readonly interior = new THREE.Group();
   private readonly meshes: THREE.Mesh[] = [];
+  private readonly farMeshes: THREE.Mesh[] = [];
   private readonly ownMats: THREE.Material[] = [];
   private readonly overlay: THREE.MeshLambertMaterial;
   /** Built-in parts the built-in cockpit hid for good (the small stand-in wheel). */
@@ -833,7 +879,18 @@ export class CustomBodyCar implements Car3d {
     private readonly ready: PreparedBody,
     private readonly livery: Livery,
   ) {
-    for (const part of ready.parts) this.body.add(this.meshFor(part));
+    for (const part of ready.parts) {
+      const mesh = this.meshFor(part);
+      this.near.add(mesh);
+      if (part.far) {
+        // Same geometry and material: no extra memory, just fewer draw calls.
+        const copy = new THREE.Mesh(mesh.geometry, mesh.material);
+        this.farMeshes.push(copy);
+        this.far.add(copy);
+      }
+    }
+    this.body.addLevel(this.near, 0);
+    if (this.far.children.length) this.body.addLevel(this.far, FAR_FROM);
     this.overlay = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
     this.ownMats.push(this.overlay);
     inner.group.add(this.body);
@@ -902,7 +959,7 @@ export class CustomBodyCar implements Car3d {
       this.overlay.emissive.set(color).multiplyScalar(0.45);
     }
     // Rainbow item etc.: the whole loaded body takes the colour, then gets its materials back.
-    for (const m of this.body.children as THREE.Mesh[]) {
+    for (const m of [...(this.near.children as THREE.Mesh[]), ...this.farMeshes]) {
       m.userData.mat ??= m.material;
       m.material = color ? this.overlay : m.userData.mat;
     }
@@ -990,6 +1047,7 @@ export class CustomBodyCar implements Car3d {
  */
 export function withCustomBody(model: Car3d & { readonly exterior?: THREE.Object3D[] }, body: CarClassId | undefined, livery: Livery, ghost: boolean, carId: string, mine: boolean, choice?: string): Car3d {
   if (!body || ghost || !model.exterior) return model;
+  shown.add(body);
   const spec = specFor(body, carId, mine, choice);
   if (!spec) {
     if (mine) own.delete(body);
