@@ -5,7 +5,7 @@ import { COMPOUNDS } from '../sim/tyres';
 import { frontWingGeometry, rearWingGeometry } from './carModel';
 import { gt3RearWingGeometry, gt3SplitterGeometry } from './gt3Model';
 import { LMH_SPLITTER_X, LMH_WING, lmhRearWingGeometry, lmhSplitterGeometry } from './lmhModel';
-import type { CarClassId } from '../sim/carClass';
+import { drawnAs, type CarClassId } from '../sim/carClass';
 
 const CARBON = '#1c1d20';
 const TYRE = '#161616';
@@ -66,7 +66,8 @@ export class Debris3d {
     }
   }
 
-  private make(p: Debris, livery: Livery, body: CarClassId): Piece {
+  private make(p: Debris, livery: Livery, cls: CarClassId): Piece {
+    const body = drawnAs(cls);
     const object = new THREE.Group();
     if (p.kind === 'frontWing' || p.kind === 'rearWing') {
       const key = `${body}|${p.kind}|${livery.wings}|${livery.endplates}`;

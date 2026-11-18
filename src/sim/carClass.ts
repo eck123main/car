@@ -1,10 +1,10 @@
-import { F1_CAR, GT3_CAR, HYPERCAR_CAR, type CarParams } from '../physics/carParams';
+import { DRIFT_CAR, F1_CAR, GT3_CAR, HYPERCAR_CAR, type CarParams } from '../physics/carParams';
 
 /**
  * Kinds of car. Each one is its own category in time trial (own leaderboard, ghosts and medals):
  * an F1 lap and a GT3 lap are never compared.
  */
-export type CarClassId = 'f1' | 'gt3' | 'lmh';
+export type CarClassId = 'f1' | 'gt3' | 'lmh' | 'drift';
 
 export interface CarClass {
   id: CarClassId;
@@ -17,6 +17,8 @@ export interface CarClass {
   ers: boolean;
   /** ERS only deploys above this speed (m/s): a Hypercar's front-axle hybrid, from 190 km/h. */
   ersFrom?: number;
+  /** Space pulls a handbrake instead of opening DRS (the drift car). */
+  handbrake?: boolean;
 }
 
 export const CAR_CLASSES: Record<CarClassId, CarClass> = {
@@ -45,9 +47,27 @@ export const CAR_CLASSES: Record<CarClassId, CarClass> = {
     ers: true,
     ersFrom: 190 / 3.6,
   },
+  drift: {
+    id: 'drift',
+    name: 'Drift',
+    blurb: '600 kW pro drift car that loves to slide: power or handbrake (Space) to kick the tail out. No DRS, no ERS.',
+    params: DRIFT_CAR,
+    drs: false,
+    ers: false,
+    handbrake: true,
+  },
 };
 
-export const CAR_CLASS_ORDER: CarClassId[] = ['f1', 'gt3', 'lmh'];
+export const CAR_CLASS_ORDER: CarClassId[] = ['f1', 'gt3', 'lmh', 'drift'];
+
+/**
+ * The body a class is drawn with, where it has none of its own yet: the drift car is a widebody
+ * coupe like the GT3, so it borrows the GT3's 2D and 3D car, cameras and debris (but never the
+ * GT3's garage cars: those are chosen by the class itself).
+ */
+export function drawnAs<T extends CarClassId | undefined>(cls: T): T | 'gt3' {
+  return cls === 'drift' ? 'gt3' : cls;
+}
 
 export function isCarClassId(v: unknown): v is CarClassId {
   return typeof v === 'string' && v in CAR_CLASSES;

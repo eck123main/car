@@ -56,6 +56,13 @@ export interface TyreDynamics {
   shiftTime: number;
   /** Engine braking on the rear axle at high revs (N). */
   engineBrake: number;
+  /**
+   * A handbrake (the drift car, on Space): pulled, it locks the rear wheels, and a locked tyre keeps
+   * only this share of its sideways grip, so the tail swings out. Missing: no handbrake.
+   */
+  handbrake?: number;
+  /** Stability assist: how early (s) the steering unwinds as a slide straightens, so it doesn't snap the other way. Missing: 0. */
+  unwind?: number;
 }
 
 /** Tunable car parameters. SI units (kg, m, s, N, W) unless noted. */
@@ -294,5 +301,84 @@ export const HYPERCAR_CAR: CarParams = {
     gears: [27.8, 38.9, 50, 61.1, 72.2, 83.3, 95.8],
     wheelMass: 50,
     engineBrake: 1400,
+  },
+};
+
+/**
+ * A pro drift car (Formula Drift style): a widebody coupe with ~600 kW, a huge steering lock and
+ * not much downforce. The rear lets go on the power, the lift or the handbrake (Space), and the
+ * stability assist (on by default) lets it slide to big angles, catching it only near a spin;
+ * the front wheels follow the slide on their own, which is the counter-steer. Not quick: sliding
+ * is slower than gripping, as in real life.
+ */
+export const DRIFT_CAR: CarParams = {
+  mass: 1250,
+  // Near 50/50, a short wheelbase: it rotates easily.
+  cgToFront: 1.35,
+  cgToRear: 1.3,
+  length: 4.6,
+  width: 2.0,
+  inertia: 1900,
+
+  mu: 1.65,
+
+  power: 600_000,
+  maxDriveForce: 13_000,
+  combinedGripPenalty: 0.55,
+  brakeGrip: 0.95,
+
+  dragCoef: 0.72,
+  downforceCoef: 0.8,
+  aeroBalanceFront: 0.45,
+  rollingResistance: 0.015,
+
+  minTurnRadius: 5,
+  turnGripUse: 1,
+  yawResponse: 6.5,
+  steerRate: 6,
+  steerReturnRate: 9,
+  wheelAngleVisual: 0.6,
+  throttleRate: 7,
+  brakeRate: 7,
+
+  reverseForce: 6000,
+  maxReverseSpeed: 8,
+
+  wallRestitution: 0.25,
+  wallFriction: 0.5,
+  damageThreshold: 4,
+  crashSpeed: 27,
+  damagePerSpeed: 0.02,
+  maxDamage: 0.8,
+
+  dynamics: {
+    ...GT3_CAR.dynamics!,
+    cgHeight: 0.45,
+    peakSlip: 0.13,
+    slideGrip: 0.85,
+    rearGrip: 1.05,
+    maxSteer: 0.95,
+    steerSlip: 0.5,
+    selfAlign: 0.9,
+    balance: 1.6,
+    // With the steering held into the corner, the assist lets the rear slide to ~35 degrees before
+    // it catches it (less as the keys let go, see `Car.catchAt`), and unwinds early as it straightens.
+    catchFrom: 4.5,
+    catchGain: 2.5,
+    unwind: 0.08,
+    // Bots plan for less: the rear lets go on the power (tested on every track, `driftCar.test.ts`).
+    planGrip: 0.75,
+    surfaceDrag: 0.6,
+    // A five-speed: 90 / 130 / 170 / 215 / 265 km/h at the limiter.
+    gears: [25, 36, 47.2, 59.7, 73.6],
+    spinPeak: 2.5,
+    spinLateral: 0.45,
+    // Traction control: high is for grip (bots, lap times), low lets it slide on the power, off is a full drift.
+    tcSlip: [Infinity, 3, 0.8],
+    // Its cuts go deeper than the GT3's: with 600 kW, 85% of the power still spins the tyres.
+    tcCutPower: 0.5,
+    tcHookUp: 0.8,
+    engineBrake: 2200,
+    handbrake: 0.3,
   },
 };

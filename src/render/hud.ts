@@ -85,7 +85,8 @@ export function drawHud(
   ctx.textAlign = 'left';
   ctx.font = '13px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillText(`${trackName}    WASD/Arrows drive · Space DRS · Shift ERS · P pit limiter · 1-5 next tyres · R reset · C camera`, 20, 28);
+  const space = car.params.dynamics?.handbrake !== undefined ? 'Space handbrake' : 'Space DRS · Shift ERS';
+  ctx.fillText(`${trackName}    WASD/Arrows drive · ${space} · P pit limiter · 1-5 next tyres · R reset · C camera`, 20, 28);
 }
 
 /** Small track map in the top-right corner. */

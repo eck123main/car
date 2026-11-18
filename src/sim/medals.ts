@@ -1,6 +1,7 @@
 import MEDAL_TABLE from '../tracks/medals.json';
 import GT3_MEDAL_TABLE from '../tracks/medals-gt3.json';
 import LMH_MEDAL_TABLE from '../tracks/medals-lmh.json';
+import DRIFT_MEDAL_TABLE from '../tracks/medals-drift.json';
 import FULL_MEDAL_TABLE from '../tracks/medals-full.json';
 import { parseLengthKey } from '../track/fullLength';
 import { parseBoardKey, type CarClassId } from './carClass';
@@ -39,6 +40,7 @@ const TABLE = MEDAL_TABLE as Record<string, MedalTimes>;
 const CLASS_TABLES: Partial<Record<CarClassId, Record<string, MedalTimes>>> = {
   gt3: GT3_MEDAL_TABLE as Record<string, MedalTimes>,
   lmh: LMH_MEDAL_TABLE as Record<string, MedalTimes>,
+  drift: DRIFT_MEDAL_TABLE as Record<string, MedalTimes>,
 };
 
 /** Full length medal times per class, by track (scripts/full-medals.ts): kept apart, so medal skins count the normal tracks only. */

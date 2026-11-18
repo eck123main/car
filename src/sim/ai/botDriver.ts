@@ -117,6 +117,8 @@ export class BotDriver {
   private itemSince = 0;
   private usedLast = false;
 
+  private readonly handbrake: boolean;
+
   constructor(
     private readonly track: Track,
     readonly id: string,
@@ -125,6 +127,8 @@ export class BotDriver {
     params: CarParams = F1_CAR,
   ) {
     this.skill = SKILL[difficulty];
+    // Space is the drift car's handbrake: bots never pull it.
+    this.handbrake = params.dynamics?.handbrake !== undefined;
     this.line = racingLine(track);
     this.profile = speedProfile(track, this.line, params, this.skill.pace);
     this.scProfile = safetyCarProfile(track, params);
@@ -318,7 +322,7 @@ export class BotDriver {
     const want = ctx.phase === 'race' && this.wantsItem(me, world, q.index);
     const useItem = want && !this.usedLast;
     this.usedLast = useItem;
-    return { ...base, throttle, brake, steer, drs: true, ers: useErs, useItem };
+    return { ...base, throttle, brake, steer, drs: !this.handbrake, ers: useErs, useItem };
   }
 
   /**

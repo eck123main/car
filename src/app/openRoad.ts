@@ -443,7 +443,7 @@ export class OpenRoadScreen {
     if (this.clock < HELP_TIME) {
       ctx.globalAlpha = Math.min(1, HELP_TIME - this.clock);
       ctx.fillText('No track, no timer. Just drive.', 18, 76);
-      ctx.fillText('Space DRS · Shift ERS · F autopilot · C camera · T time of day', 18, 95);
+      ctx.fillText(`${CAR_CLASSES[this.carClass].handbrake ? 'Space handbrake' : 'Space DRS · Shift ERS'} · F autopilot · C camera · T time of day`, 18, 95);
       ctx.fillText('N music · H hide this · R back on the road · Esc menu', 18, 114);
       ctx.globalAlpha = 1;
     }

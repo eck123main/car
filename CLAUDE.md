@@ -193,6 +193,21 @@ alone: DRS free in every zone, ERS, no other cars.
   Right-hand drive cockpit: carbon tub, lying-back seat, harness, switch panel, GT wheel
   (`LMH_COCKPIT`) and a rear-view screen at the top of the windscreen (no rear window). Cameras
   `LMH_CAMS` (roof, low nose, splitter, fin). Wheels, tyres and materials shared with the GT3 model.
+- **Drift** (class `drift`, `DRIFT_CAR` in `carParams.ts`): a pro drift car (Formula Drift style), just another
+  class: lap times, own boards and medals (`medals-drift.json`, full length in `medals-full.json`), any mode. 1250 kg,
+  600 kW, five speeds to ~265 km/h, little downforce, 0.95 rad of steering lock. **Space is a handbrake** (`CarClass.handbrake`,
+  `TyreDynamics.handbrake`: rear wheels lock, no drive, the rear keeps 30% of its side grip); `RaceWorld` maps the DRS
+  button to it, so no protocol change; bots, Auto DRS and the line robot never pull it. The GT3's tyre model with a
+  **drift assist** (only for cars with `unwind`, the GT3 / Hypercar are unchanged): the stability assist lets the rear
+  slide as far as the steering asks (`Car.catchAt`: `catchFrom` 4.5 x peak slip, ~35 degrees, held full lock; less as
+  the keys let go, so letting go straightens it), unwinds the counter-steer early as a slide straightens (`unwind`,
+  using the last step's signed slip, synced as the 10th `TyreState` value) so it doesn't snap the other way, eases the
+  power past that angle, and lets the front ask 3x more while the handbrake is pulled. TC: high = grip (bots, laps),
+  low slides on the power, off = full drift; its cuts go deeper than the GT3's (600 kW). Held flat at full lock it
+  swings between drift and grip every ~1.7 s (a driver feathers it). Hard bots are clean on all 60 tracks, ~9% slower
+  than the GT3 (`planGrip` 0.75). Tests: `src/physics/driftCar.test.ts`. **Drawn as the GT3** for now
+  (`drawnAs` in `carClass.ts`: 2D, 3D model, cameras, debris; but never the GT3's garage cars); no ideal line
+  searched (the F1 line at its speeds).
 - **Loaded car bodies** (`src/render3d/customBody.ts`, how-to in `public/models/README.md`): drop
   `public/models/gt3.glb` / `lmh.glb` (e.g. from Sketchfab) to replace the built-in GT3 / Hypercar body
   in 3D, looks only. Its wheels are hidden (by name) and ours kept; it is turned to face forward (names
@@ -594,7 +609,7 @@ No handbrake: F1 cars don't have one, and drifting comes from overdriving the gr
 | Action | Key | Notes |
 |---|---|---|
 | Throttle / brake / steer | **W A S D** and **arrow keys** (both work) | Keyboard is on/off, so throttle and steering ramp smoothly in code |
-| DRS | **Space** | Press once (or hold): opens in a DRS zone when allowed (within 1 s at detection in races) and stays open to the end of the zone or until you brake. A press up to 0.75 s before the zone counts. The HUD says why when it isn't allowed |
+| DRS (drift car: handbrake) | **Space** | Drift car: hold for the handbrake. Others: press once (or hold): opens in a DRS zone when allowed (within 1 s at detection in races) and stays open to the end of the zone or until you brake. A press up to 0.75 s before the zone counts. The HUD says why when it isn't allowed |
 | ERS boost | **Shift** (hold) | Extra power from a battery meter that drains while used and recharges under braking |
 | Pit limiter | **P** | Forced on by the pit autopilot anyway; no speeding penalty |
 | Tyre choice | **1-5** (Soft / Medium / Hard / Inter / Wet) | Next tyres for the pit stop; on the grid it picks starting tyres |

@@ -47,7 +47,7 @@ const BUMP_BOUNCE = 0.3;
 const CALM_STEER_RATE = 10;
 const CALM_STEER_SHARE = 0.2;
 /** Cars with less grip have less to soften: much the same turn at full lock as the F1 at top speed. */
-const CALM_STEER_SHARES: Record<CarClassId, number> = { f1: CALM_STEER_SHARE, gt3: 0.85, lmh: 0.55 };
+const CALM_STEER_SHARES: Record<CarClassId, number> = { f1: CALM_STEER_SHARE, gt3: 0.85, lmh: 0.55, drift: 1 };
 const CALM_FROM = 25;
 const CALM_TO = 85;
 
@@ -282,7 +282,7 @@ export class OpenRoadDrive implements CarWorld {
     car.extraPower = this.ersActive ? ERS_POWER : 0;
     const x0 = car.x;
     const y0 = car.y;
-    const driver: DriverInput = { throttle: input.throttle, brake: input.brake, steer: this.calmSteer(input.steer, dt) };
+    const driver: DriverInput = { throttle: input.throttle, brake: input.brake, steer: this.calmSteer(input.steer, dt), handbrake: !!CAR_CLASSES[this.carClass].handbrake && input.drs };
     car.step(driver, dt, this);
     this.distance += Math.hypot(car.x - x0, car.y - y0);
     this.hitFences();
@@ -300,8 +300,8 @@ export class OpenRoadDrive implements CarWorld {
 const PILOT_SCAN = 150;
 const PILOT_BRAKING = 16;
 /** Other cars' share of the F1 car's grip and their braking (m/s^2), for the autopilot's plans. */
-const PILOT_GRIP: Record<CarClassId, number> = { f1: 1, gt3: 0.45, lmh: 0.65 };
-const PILOT_BRAKINGS: Record<CarClassId, number> = { f1: PILOT_BRAKING, gt3: 7, lmh: 10 };
+const PILOT_GRIP: Record<CarClassId, number> = { f1: 1, gt3: 0.45, lmh: 0.65, drift: 0.35 };
+const PILOT_BRAKINGS: Record<CarClassId, number> = { f1: PILOT_BRAKING, gt3: 7, lmh: 10, drift: 6.5 };
 
 /**
  * Hands off: follows the middle of its lane at a calm pace. Also what the tests drive with,

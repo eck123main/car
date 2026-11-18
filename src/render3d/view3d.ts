@@ -6,7 +6,7 @@ import { bodyTopAt, customBodyCockpit, customBodyKey, customBodyShape, loadCusto
 import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
 import { GT3_EYE, Gt3Model } from './gt3Model';
 import { LMH_EYE, LmhModel } from './lmhModel';
-import type { CarClassId } from '../sim/carClass';
+import { drawnAs, type CarClassId } from '../sim/carClass';
 import { Items3d, type ItemsFrame } from './items3d';
 import { Debris3d } from './debris3d';
 import type { Debris } from '../sim/debris';
@@ -91,7 +91,8 @@ export const LMH_CAM_NAMES: Record<Cam3d, string> = {
 };
 
 /** Camera names for a kind of car. */
-export function camNames(body: CarClassId = 'f1'): Record<Cam3d, string> {
+export function camNames(cls: CarClassId = 'f1'): Record<Cam3d, string> {
+  const body = drawnAs(cls);
   return body === 'gt3' ? GT3_CAM_NAMES : body === 'lmh' ? LMH_CAM_NAMES : CAM3D_NAMES;
 }
 
@@ -141,16 +142,18 @@ export const LMH_CAMS: Record<Cam3d, CamDef> = {
 const LMH_LOOK_BACK: CamDef = { eye: [0.1, 1.45, 0], look: [-30, 0.4, 0], fov: 62 };
 
 /** Looking back from a kind of car. */
-export function lookBackFor(body: CarClassId = 'f1'): CamDef {
-  const shape = customBodyShape(body);
-  if (shape) return fittedCams(body, shape).back;
+export function lookBackFor(cls: CarClassId = 'f1'): CamDef {
+  const shape = customBodyShape(cls);
+  if (shape) return fittedCams(cls, shape).back;
+  const body = drawnAs(cls);
   return body === 'gt3' ? GT3_LOOK_BACK : body === 'lmh' ? LMH_LOOK_BACK : LOOK_BACK;
 }
 
 /** The cameras for a kind of car. */
-export function camsFor(body: CarClassId = 'f1'): Record<Cam3d, CamDef> {
-  const shape = customBodyShape(body);
-  if (shape) return fittedCams(body, shape).cams;
+export function camsFor(cls: CarClassId = 'f1'): Record<Cam3d, CamDef> {
+  const shape = customBodyShape(cls);
+  if (shape) return fittedCams(cls, shape).cams;
+  const body = drawnAs(cls);
   return body === 'gt3' ? GT3_CAMS : body === 'lmh' ? LMH_CAMS : CAMS;
 }
 
@@ -536,7 +539,8 @@ export class View3D {
       }
       if (!entry) {
         const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
-        const built: Car3d = car.body === 'gt3' ? new Gt3Model(car.livery, opts) : car.body === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
+        const shape = drawnAs(car.body);
+        const built: Car3d = shape === 'gt3' ? new Gt3Model(car.livery, opts) : shape === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
         const model = withCustomBody(built, car.body, car.livery, !!car.ghost, car.id, car === own, car.model);
         if (onboard) {
           model.addSteeringWheel();

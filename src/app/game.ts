@@ -1,6 +1,6 @@
 import { carFor, shownCarModel } from '../cosmetics/cars';
 import { drivenCar } from '../net/wallet';
-import type { CarClassId } from '../sim/carClass';
+import { CAR_CLASSES, type CarClassId } from '../sim/carClass';
 import { gameAudio, loudestSurface } from '../audio/sound';
 import { Keyboard, LocalControls, type Mouse } from '../game/input';
 import type { ClientGame, Pose } from '../net/client';
@@ -610,7 +610,8 @@ export class GameScreen {
     if (!world || !me) return input;
     return {
       ...input,
-      drs: input.drs || drs,
+      // Auto DRS holds Space: in the drift car that is the handbrake.
+      drs: input.drs || (drs && !CAR_CLASSES[me.carClass].handbrake),
       ers: input.ers || (ers && autoErs(world.track, idealLine(world.track, undefined, me.carClass), me, input)),
     };
   }

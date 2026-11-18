@@ -115,8 +115,8 @@ function settingsPanel(): HTMLElement {
       ['0', 'Off'],
     ].map(([v, label]) => el('option', { value: v, selected: s.tc === Number(v) }, label)),
   );
-  box.append(el('span', {}, 'GT3 traction control (low: more wheelspin)'), tc);
-  check('GT3 stability assist (off: loose and oversteery, can spin)', 'assist');
+  box.append(el('span', {}, 'Traction control, GT3 / Hypercar / Drift (low: more wheelspin; Drift: off for big slides)'), tc);
+  check('Stability assist, GT3 / Hypercar / Drift (off: loose and oversteery, can spin)', 'assist');
   return box;
 }
 

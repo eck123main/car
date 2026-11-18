@@ -44,6 +44,8 @@ const RECORDS: Record<CarClassId, Record<string, IdealRecord>> = {
   f1: IDEAL as Record<string, IdealRecord>,
   gt3: IDEAL_GT3 as Record<string, IdealRecord>,
   lmh: IDEAL_LMH as Record<string, IdealRecord>,
+  // Not searched yet: the F1 line at the drift car's speeds.
+  drift: {},
 };
 const cache = new WeakMap<Track, Map<CarClassId, IdealLine>>();
 
@@ -416,6 +418,6 @@ export class LineDriver {
     const throttle = lift ? 0 : err > 0.2 ? 1 : err > -0.2 ? 0.5 : 0;
     const brake = err < -0.5 && speed > 1 ? Math.min(1, -err / 1.5) : 0;
     const straight = Math.abs(line.curvature[q.index]) < 1 / 250;
-    return { ...IDLE_INPUT, throttle, brake, steer, drs: true, ers: straight && throttle === 1 && speed > 30 };
+    return { ...IDLE_INPUT, throttle, brake, steer, drs: !CAR_CLASSES[me.carClass].handbrake, ers: straight && throttle === 1 && speed > 30 };
   }
 }

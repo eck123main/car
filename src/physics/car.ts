@@ -11,6 +11,8 @@ export interface DriverInput {
   tc?: number;
   /** Stability assist (cars with the tyre model, on by default): off = no help keeping the rear in line. */
   assist?: boolean;
+  /** Handbrake pulled (cars with one, `TyreDynamics.handbrake`): locks the rear wheels. */
+  handbrake?: boolean;
 }
 
 /** What the car needs to know about the world around it. */
@@ -26,6 +28,8 @@ export interface CarWorld {
 }
 
 const G = 9.81;
+/** Pulling the handbrake asks for rotation on purpose: the assist lets the front ask this much more. */
+const HB_FREEDOM = 3;
 /** A wall hit unsettles the car less than a car hit (it bounces off rather than being shoved). */
 const WALL_UPSET = 0.6;
 /** What hit the car: walls are forgiving (only a wreck takes a wheel off). */
@@ -112,7 +116,8 @@ export function enginePower(revs: number): number {
 
 /** What the rest of `Car.step` has worked out, for the tyre model. */
 /** Gear, shift cut, weight transfer, longitudinal g, front and rear slip, wheelspin, TC cut, TC light. */
-export type TyreState = [number, number, number, number, number, number, number, number, number];
+/** Gear, shift cut, long. acceleration, long. g, front and rear slip, wheelspin, TC cut and light, then (optional) the rear's signed slip. */
+export type TyreState = [number, number, number, number, number, number, number, number, number, number?];
 
 interface TyreInputs {
   vx: number;
@@ -179,6 +184,8 @@ export class Car {
   /** Last step's slip angles, as multiples of the tyres' peak (for ABS and traction control). */
   private lastSlipF = 0;
   private lastSlipR = 0;
+  /** The rear's slip angle last step, with its sign (rad): how fast a slide is growing or unwinding. */
+  private slipRSigned = 0;
   /** How much faster the driven wheels turn than the car moves (m/s at the tread): wheelspin. */
   wheelspin = 0;
   /** Traction control: seconds left of a power cut, and of its light on the dash. */
@@ -245,7 +252,7 @@ export class Car {
     this.vx = this.vy = this.yawRate = 0;
     this.steer = this.throttle = this.brake = 0;
     this.gear = 0;
-    this.shiftCut = this.longAcc = this.lastSlipF = this.lastSlipR = 0;
+    this.shiftCut = this.longAcc = this.lastSlipF = this.lastSlipR = this.slipRSigned = 0;
     this.wheelspin = this.tcCut = this.tcLight = 0;
   }
 
@@ -403,7 +410,7 @@ export class Car {
    */
   /** What the tyre model remembers between steps, for a client predicting this car. */
   tyreState(): TyreState {
-    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR, this.wheelspin, this.tcCut, this.tcLight];
+    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR, this.wheelspin, this.tcCut, this.tcLight, this.slipRSigned];
   }
 
   restoreTyreState(s: TyreState): void {
@@ -411,8 +418,19 @@ export class Car {
     this.wheelspin = s[6] ?? 0;
     this.tcCut = s[7] ?? 0;
     this.tcLight = s[8] ?? 0;
+    this.slipRSigned = s[9] ?? 0;
     const gears = this.params.dynamics?.gears;
     if (gears && this.gear > 0) this.revs = (Math.abs(this.vx) + this.wheelspin) / gears[Math.min(this.gear, gears.length) - 1];
+  }
+
+  /**
+   * Rear slip (share of the peak) from where the stability assist catches a slide. A drift car
+   * (`unwind`) lets it go as far as the steering asks: held into the corner it keeps the drift
+   * (`catchFrom`), let go it straightens up.
+   */
+  private catchAt(d: TyreDynamics, input: DriverInput): number {
+    if (d.unwind === undefined) return d.catchFrom;
+    return Math.max(1, d.catchFrom * Math.min(1, Math.abs(input.steer)));
   }
 
   private tyreStep(d: TyreDynamics, input: DriverInput, t: TyreInputs, dt: number): [number, number] {
@@ -471,6 +489,9 @@ export class Car {
         const revs = Math.max(0.35, Math.min(1, this.revs));
         const power = (p.power * (1 - 0.12 * dmg.rearWing) + this.extraPower) * enginePower(revs);
         engine = Math.min(p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
+        // Drift assist: past the slide the steering asks for, the power eases off so the car
+        // doesn't power round into a spin (a keyboard can't feather the throttle).
+        if (d.unwind !== undefined && input.assist !== false) engine *= Math.max(0.15, 1 - (this.lastSlipR - this.catchAt(d, input)) / 1.5);
       }
       // The most drive the rear tyres can give, after what they are using to turn. Past their
       // peak sideways they count as fully used. At walking pace slip angles mean nothing.
@@ -510,6 +531,13 @@ export class Car {
       }
     }
     const dir = Math.sign(vx);
+    // Handbrake: the rear wheels lock (the clutch goes in, so no drive) and slide.
+    const handbrake = !!input.handbrake && d.handbrake !== undefined && Math.abs(vx) > 1 && !reversing;
+    if (handbrake) {
+      driveR = 0;
+      this.wheelspin = 0;
+      brakeR = Math.max(brakeR, Math.min(capR * d.slideGrip, (m * Math.abs(vx)) / dt / 2));
+    }
     const fxF = clampAbs(-dir * brakeF, capF);
     const fxR = clampAbs(driveR - dir * brakeR, capR);
 
@@ -517,7 +545,7 @@ export class Car {
     const latF = Math.sqrt(Math.max(capF * capF - fxF * fxF, 0.0625 * capF * capF)) * (1 - 0.65 * upset) * (1 - 0.4 * dmg.frontWing);
     // A spinning rear tyre has little left to hold the car sideways: power oversteer.
     const spinning = Math.min(1, this.wheelspin / d.spinPeak);
-    const latR = Math.sqrt(Math.max(capR * capR - fxR * fxR, 0.0625 * capR * capR)) * (1 - 0.65 * upset) * (1 - d.spinLateral * spinning);
+    const latR = Math.sqrt(Math.max(capR * capR - fxR * fxR, 0.0625 * capR * capR)) * (1 - 0.65 * upset) * (1 - d.spinLateral * spinning) * (handbrake ? d.handbrake! : 1);
 
     // Steering: the input asks for a share of the tightest turn the tyres can hold.
     const forward = Math.abs(vx);
@@ -536,9 +564,13 @@ export class Car {
     // With the stability assist off, the wheels go where the keys say: a loose car that can spin.
     let delta = clampAbs(asked, d.maxSteer);
     if (input.assist !== false) {
-      const most = d.peakSlip * slipForShare(Math.min(1, (d.balance * b * latR) / (a * latF)));
-      const over = Math.sign(slipR) * Math.max(0, Math.abs(slipR) - d.catchFrom * d.peakSlip);
-      const centre = -d.catchGain * over * (1 - upset);
+      // Pulling the handbrake asks for the rotation on purpose: the front isn't held back then.
+      const most = d.peakSlip * slipForShare(Math.min(1, (d.balance * (handbrake ? HB_FREEDOM : 1) * b * latR) / (a * latF)));
+      const over = Math.sign(slipR) * Math.max(0, Math.abs(slipR) - this.catchAt(d, input) * d.peakSlip);
+      // Unwinding a slide, the hands come back early (the car's spin would carry it the other way).
+      const unwinding = (slipR - this.slipRSigned) / dt;
+      const damp = Math.sign(unwinding) !== Math.sign(slipR) ? -(d.unwind ?? 0) * unwinding : 0;
+      const centre = (-d.catchGain * over + damp) * (1 - upset);
       delta = clampAbs(flowF + Math.max(centre - most, Math.min(centre + most, asked - flowF)), d.maxSteer);
     }
 
@@ -549,6 +581,7 @@ export class Car {
     const fyR = lateral(slipR, latR);
     this.lastSlipF = Math.abs(slipF) / d.peakSlip;
     this.lastSlipR = Math.abs(slipR) / d.peakSlip;
+    this.slipRSigned = slipR;
     const cosD = Math.cos(delta);
     const sinD = Math.sin(delta);
     const sideF = fxF * sinD + fyF * cosD;

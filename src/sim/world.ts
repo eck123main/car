@@ -340,7 +340,8 @@ export class RaceWorld {
 
     const x0 = car.x;
     const y0 = car.y;
-    car.step(input, dt, this.track);
+    // The drift car's Space is its handbrake (it has no DRS).
+    car.step(cls.handbrake ? { ...input, handbrake: input.drs } : input, dt, this.track);
     const offTrack = ['grass', 'gravel'].includes(car.surfaceFront) || ['grass', 'gravel'].includes(car.surfaceRear);
     const life = tyreLife(r.tyres.compound, this.options.raceLaps ?? null, this.options.tyreWear !== false);
     r.tyres.update(Math.hypot(car.x - x0, car.y - y0), this.track.length, this.options.wetness, car.tyreLoad, car.sliding, offTrack, life);

@@ -32,7 +32,7 @@ export function carSnap(r: Racer, ack: number): CarSnap {
     ret: c.retired,
     ...(c.lost ? { lost: c.lost } : {}),
     ...(c.upset > 0 ? { up: round(c.upset) } : {}),
-    ...(c.params.dynamics ? { ty: c.tyreState().map((v) => round(v, 4)) as TyreState } : {}),
+    ...(c.params.dynamics ? { ty: c.tyreState().map((v) => round(v ?? 0, 4)) as TyreState } : {}),
     frozen: r.frozen,
     grip: round(c.gripFactor, 4),
     drag: round(c.dragFactor, 4),
