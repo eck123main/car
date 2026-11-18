@@ -21,6 +21,7 @@ import { circuitSvg, icon, randomTrack } from './home';
 import { boardKey, CAR_CLASS_ORDER, CAR_CLASSES, type CarClassId } from '../sim/carClass';
 import { drawCar } from '../render/drawCar';
 import { REAL_TRACK_IDS, TRACKS } from '../tracks';
+import { lengthKey } from '../track/fullLength';
 
 const root = document.getElementById('ui') as HTMLDivElement;
 
@@ -935,6 +936,10 @@ export interface TimeTrialMenu {
   carClass: CarClassId;
   /** Picked another car: the menu is shown again for it. */
   onClass: (cls: CarClassId, track: string) => void;
+  /** Full length (real size) circuits: their own leaderboards, ghosts and medals. */
+  full: boolean;
+  /** Switched between normal and full length: the menu is shown again for it. */
+  onLength: (full: boolean, track: string) => void;
   board: Leaderboard;
   /** Signed in: medals are earned (and shown as won). */
   signedIn: boolean;
@@ -1060,7 +1065,7 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
   // The track list: a stand-in for a <select> (`select.value`), which can't show badges.
   const select = { value: m.tracks.some((t) => t.id === m.track) ? m.track : (m.tracks[0]?.id ?? '') };
   /** Where this car's laps on a track are kept. */
-  const key = (track: string) => boardKey(track, m.carClass);
+  const key = (track: string) => boardKey(lengthKey(track, TRACKS[track], m.full), m.carClass);
   const cls = CAR_CLASSES[m.carClass];
   const carPicker = carChoices(m.carClass, (id) => id !== m.carClass && m.onClass(id, select.value));
   const driven = drivenTracks();
@@ -1217,6 +1222,20 @@ export function showTimeTrialMenu(m: TimeTrialMenu): void {
         ),
         el('h2', {}, 'Car'),
         carPicker,
+        el('h2', {}, 'Track length'),
+        el(
+          'div',
+          { class: 'chips', style: 'margin:0 0 6px' },
+          el('button', { class: `chip${m.full ? '' : ' active'}`, onclick: () => m.full && m.onLength(false, select.value) }, 'Normal'),
+          el('button', { class: `chip${m.full ? ' active' : ''}`, onclick: () => !m.full && m.onLength(true, select.value) }, 'Full length'),
+        ),
+        el(
+          'p',
+          { class: 'muted', style: 'margin:0 0 8px' },
+          m.full
+            ? 'Real size circuits: about twice as long, laps of 1-2 minutes, real straights and corners. Own leaderboard and medals.'
+            : 'Compact circuits (about half size) for quick laps of 30-60 s.',
+        ),
         el('div', { class: 'invite', style: 'align-items:center' }, search, chips),
         list,
         listNote,

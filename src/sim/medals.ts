@@ -1,6 +1,8 @@
 import MEDAL_TABLE from '../tracks/medals.json';
 import GT3_MEDAL_TABLE from '../tracks/medals-gt3.json';
 import LMH_MEDAL_TABLE from '../tracks/medals-lmh.json';
+import FULL_MEDAL_TABLE from '../tracks/medals-full.json';
+import { parseLengthKey } from '../track/fullLength';
 import { parseBoardKey, type CarClassId } from './carClass';
 
 /**
@@ -39,15 +41,20 @@ const CLASS_TABLES: Partial<Record<CarClassId, Record<string, MedalTimes>>> = {
   lmh: LMH_MEDAL_TABLE as Record<string, MedalTimes>,
 };
 
+/** Full length medal times per class, by track (scripts/full-medals.ts): kept apart, so medal skins count the normal tracks only. */
+const FULL_TABLES = FULL_MEDAL_TABLE as Partial<Record<CarClassId, Record<string, MedalTimes>>>;
+
 /** How many tracks have F1 medals (the medal skins count F1 medals only). */
 export const MEDAL_TRACK_COUNT = Object.keys(TABLE).length;
 
 /**
- * Medal times for a leaderboard key (a track id for F1, `track@class` for other classes; see
- * `boardKey`), or null if it has none (the test circuit, editor tracks).
+ * Medal times for a leaderboard key (a track id for F1, `track@class` for other classes,
+ * `track~full` for full length; see `boardKey`, `lengthKey`), or null if it has none (the test circuit, editor tracks).
  */
 export function medalTimes(key: string): MedalTimes | null {
   const { track, cls } = parseBoardKey(key);
+  const { id, full } = parseLengthKey(track);
+  if (full) return FULL_TABLES[cls]?.[id] ?? null;
   return (cls === 'f1' ? TABLE : CLASS_TABLES[cls])?.[track] ?? null;
 }
 

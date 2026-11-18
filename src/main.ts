@@ -5,6 +5,7 @@ import { OPEN_ROAD_MAPS } from './sim/openRoad/biomes';
 import { showGarage } from './app/garage';
 import { equippedCars, equippedSkin } from './net/wallet';
 import { boardKey, isCarClassId, type CarClassId } from './sim/carClass';
+import { fullLengthDef, lengthKey } from './track/fullLength';
 import { clearUi, markTrackDriven, showLobby, showMessage, showPauseMenu, showResults, showOpenRoadMenu, showPracticeMenu, showTimeTrialMenu, showTyrePicker, showWelcome, updateLobbyNet } from './app/ui';
 import { leaderboard } from './net/leaderboard';
 import { accounts } from './net/accounts';
@@ -273,15 +274,19 @@ function driveOpenRoad(mapId: string): void {
 
 const TT_TRACK_KEY = 'f1td.tt.track';
 const TT_CLASS_KEY = 'f1td.tt.class';
+const TT_LENGTH_KEY = 'f1td.tt.length';
 
-function timeTrial(name: string, track?: string, carClass?: CarClassId): void {
+function timeTrial(name: string, track?: string, carClass?: CarClassId, fullLength?: boolean): void {
   let last = DEFAULT_TRACK;
   let cls: CarClassId = 'f1';
+  let full = false;
   try {
     last = track ?? localStorage.getItem(TT_TRACK_KEY) ?? DEFAULT_TRACK;
     const saved = carClass ?? localStorage.getItem(TT_CLASS_KEY);
     if (isCarClassId(saved)) cls = saved;
     localStorage.setItem(TT_CLASS_KEY, cls);
+    full = fullLength ?? localStorage.getItem(TT_LENGTH_KEY) === 'full';
+    localStorage.setItem(TT_LENGTH_KEY, full ? 'full' : 'normal');
   } catch {
     // Default track and car then.
   }
@@ -291,7 +296,9 @@ function timeTrial(name: string, track?: string, carClass?: CarClassId): void {
     tracks: realTracks(),
     track: TRACKS[last] ? last : DEFAULT_TRACK,
     carClass: cls,
-    onClass: (c, t) => timeTrial(name, t, c),
+    onClass: (c, t) => timeTrial(name, t, c, full),
+    full,
+    onLength: (f, t) => timeTrial(name, t, cls, f),
     board: leaderboard(),
     signedIn: leaderboard().global && !!accounts()?.account(),
     onBack: home,
@@ -301,13 +308,14 @@ function timeTrial(name: string, track?: string, carClass?: CarClassId): void {
       } catch {
         // Remembering the track is a convenience only.
       }
-      const key = boardKey(id, cls);
+      const key = boardKey(lengthKey(id, TRACKS[id], full), cls);
       markTrackDriven(key);
-      const driver = new TimeTrialDriver(new Track(TRACKS[id]), key, name, leaderboard(), ghost);
+      const def = full ? fullLengthDef(TRACKS[id]) : TRACKS[id];
+      const driver = new TimeTrialDriver(new Track(def), key, name, leaderboard(), ghost);
       driver.tt.me.skin = equippedSkin();
       runGame(driver, {
         menuNote: 'Time trial (paused). R or ENTER restarts the lap, G switches the ghost.',
-        onLeave: () => timeTrial(name, id, cls),
+        onLeave: () => timeTrial(name, id, cls, full),
         leaveLabel: 'Change track',
         extra: { label: 'Restart lap', onClick: () => (driver.restartRequested = true) },
       });

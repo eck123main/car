@@ -3,6 +3,11 @@ export interface TrackDef {
   name: string;
   /** Full track width in metres. */
   width: number;
+  /**
+   * How much the real circuit was scaled down to make this one (0.5 = half size; laps of 30-60 s).
+   * Time trial's "Full length" scales it back up (`fullLengthDef`). Missing: drawn at real size.
+   */
+  scale?: number;
   /** Closed centreline control points [x, y], in driving order. The first point is the start/finish line. */
   points: [number, number][];
   /** Optional DRS zones; found automatically on the longest straights when missing. */

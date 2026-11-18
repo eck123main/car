@@ -8,18 +8,19 @@ import { CAR_CLASS_ORDER, CAR_CLASSES, type CarClassId } from '../src/sim/carCla
 import { TimeTrial } from '../src/sim/timeTrial';
 import { Track } from '../src/track/track';
 import { REAL_TRACK_IDS, TRACKS } from '../src/tracks';
+import type { TrackDef } from '../src/track/types';
 
 const DT = 1 / 120;
 
-/** The Hard bot's first valid flying lap in time trial, and its top speed (km/h). */
-export function botLap(id: string, cls: CarClassId): { time: number | null; top: number } {
-  const track = new Track(TRACKS[id]);
+/** The Hard bot's first valid flying lap in time trial (on `def`, default the track itself), and its top speed (km/h). */
+export function botLap(id: string, cls: CarClassId, def: TrackDef = TRACKS[id]): { time: number | null; top: number } {
+  const track = new Track(def);
   const tt = new TimeTrial(track, id, 'Bot', 'red', cls);
   const bot = new BotDriver(track, 'me', 'hard', CAR_CLASSES[cls].params);
   let lap: number | null = null;
   let top = 0;
   tt.onLap = (l) => (lap = l.time);
-  for (let t = 0; t < 300 && lap === null; t += DT) {
+  for (let t = 0; t < 600 && lap === null; t += DT) {
     tt.step(DT, bot.drive(tt.world, { phase: 'practice', raceStart: 0, laps: null, mandatoryStop: false }, DT));
     top = Math.max(top, tt.me.car.speed * 3.6);
   }

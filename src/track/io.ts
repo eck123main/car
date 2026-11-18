@@ -19,6 +19,7 @@ export function parseTrackDef(data: unknown): TrackDef {
   if (points.length < 4) throw new Error('Track needs at least 4 points');
   if (points.length > 2000) throw new Error('Track has too many points (max 2000)');
   const def: TrackDef = { name, width, points };
+  if (typeof d.scale === 'number' && d.scale >= 0.2 && d.scale <= 1) def.scale = d.scale;
   if (Array.isArray(d.drsZones)) {
     def.drsZones = [];
     for (const z of d.drsZones as Record<string, unknown>[]) {
@@ -93,7 +94,7 @@ export function trackToJson(def: TrackDef): string {
   const drs = def.drsZones ? `,\n  "drsZones": ${JSON.stringify(def.drsZones)}` : '';
   const scenery = def.scenery ? `,\n  "scenery": ${JSON.stringify(def.scenery)}` : '';
   const elevation = def.elevation ? `,\n  "elevation": ${JSON.stringify(def.elevation)}` : '';
-  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}${scenery}${elevation}\n}\n`;
+  return `{\n  "name": ${JSON.stringify(def.name)},\n  "width": ${def.width},${def.scale ? `\n  "scale": ${def.scale},` : ''}\n  "points": [\n${rows.join(',\n')}\n  ]${drs}${pit}${scenery}${elevation}\n}\n`;
 }
 
 /**
@@ -116,7 +117,7 @@ export function trackFromGeoJson(data: unknown, scale: number, fallbackName = 'I
   pts = simplifyClosed(pts, 0.6);
   const props = findProperties(data);
   const name = typeof props?.Name === 'string' ? props.Name : fallbackName;
-  return { name, width: 21, points: pts.map(([x, y]) => [round1(x), round1(y)]) };
+  return { name, width: 21, scale, points: pts.map(([x, y]) => [round1(x), round1(y)]) };
 }
 
 function findLineString(data: unknown): Pt[] | null {

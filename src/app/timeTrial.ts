@@ -9,6 +9,7 @@ import { ghostDelta, ghostPose, ghostTrace, type Ghost } from '../sim/ghost';
 import type { SessionEvent } from '../sim/session';
 import { TimeTrial, type TimeTrialLap } from '../sim/timeTrial';
 import { CAR_CLASSES, parseBoardKey } from '../sim/carClass';
+import { parseLengthKey } from '../track/fullLength';
 import type { PlayerInput, Racer } from '../sim/world';
 import type { Track } from '../track/track';
 import type { GameDriver, GhostCar } from './game';
@@ -236,7 +237,7 @@ export class TimeTrialDriver implements GameDriver {
       me: this.player,
       state: this.boardState,
       global: this.store.global,
-      trackName: this.tt.carClass === 'f1' ? this.track.name : `${this.track.name} · ${CAR_CLASSES[this.tt.carClass].name}`,
+      trackName: [this.track.name + (parseLengthKey(parseBoardKey(this.trackId).track).full ? ' full' : ''), this.tt.carClass === 'f1' ? '' : CAR_CLASSES[this.tt.carClass].name].filter(Boolean).join(' · '),
       ghost: this.ghostLabel(),
     });
     if (this.medals) drawMedals(ctx, bottom + 8, { times: this.medals, best: this.best, signedIn: this.signedIn });

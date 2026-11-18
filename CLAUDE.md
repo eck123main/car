@@ -228,6 +228,16 @@ alone: DRS free in every zone, ERS, no other cars.
   until it loads. Who shows which car is one function for 2D and 3D (`shownCarModel` in `cars.ts`; bots by a hash
   of their id). Models are prepared a few ms at a time between frames (`prepareBodySliced`): preparing in one go
   froze the game 130-255 ms per car; now under ~80 ms.
+- **Full length** (`src/track/fullLength.ts`): the menu's "Track length: Normal / Full length" (remembered,
+  `f1td.tt.length`) drives the circuit at its real size. Each track file says how much it was scaled down
+  (`"scale"`: 0.5 mostly, 0.6-0.8 for some, Monaco 1), and `fullLengthDef` scales the centreline, DRS zones,
+  pit lane and heights back up (heights too, so gradients stay real). **Width stays the game's** (21 m mostly),
+  as do the scenery and landmarks (placed by share of the lap). Laps are 1-2 minutes; the F1 reaches ~360 km/h.
+  Its own leaderboards, ghosts and "driven" under `track~full` (`lengthKey`; then `@gt3` as usual, no database
+  change); Monaco is already real size, so it keeps one board. Medals in `src/tracks/medals-full.json` per class
+  (`npx tsx scripts/full-medals.ts <class>`: the normal author time x the Hard bot's full/normal lap ratio, 1.3-1.8x),
+  kept apart so medal skins and counts stay on the normal tracks. No ideal lines searched yet at full length
+  (the bots' line is used). Time trial only for now; races could follow as a lobby setting.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,
