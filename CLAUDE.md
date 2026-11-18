@@ -221,6 +221,13 @@ alone: DRS free in every zone, ERS, no other cars.
   `author` in `models.json`, named in the K toast). Shrunk 287 -> 35 MB with `npx @gltf-transform/cli@4 resize --width 1024
   --height 1024`, then `webp`, then `draco`, run separately; never `optimize` (its geometry steps broke the axle fit,
   ~1.4x too big). Originals kept at `D:/Users/rotem/car-models-original`. Shop pictures: `public/models/thumbs/<id>.webp`.
+  **Top-down too**: each car has a picture from straight above (`public/models/top/<id>.webp`, + `sprites.json`),
+  rendered from the model fitted to our axles by the dev page `/car-sprites.html` (`src/tools/carSprites.ts`, saved
+  through a dev-server-only route in `vite.config.ts`; **rerun it after adding or changing a model**). `drawCar`
+  draws it (`look.model`, `src/render/carSprites.ts`) over the game's own steering wheels, the built-in GT3 / Hypercar
+  until it loads. Who shows which car is one function for 2D and 3D (`shownCarModel` in `cars.ts`; bots by a hash
+  of their id). Models are prepared a few ms at a time between frames (`prepareBodySliced`): preparing in one go
+  froze the game 130-255 ms per car; now under ~80 ms.
 - **Track list** (time trial menu, `showTimeTrialMenu`): a searchable list instead of a dropdown,
   with filters All / Not driven / Driven. A track counts as **driven** if you have a lap on the
   board (`bestsOf`, any device, guests too) or started it in this browser (`markTrackDriven`,

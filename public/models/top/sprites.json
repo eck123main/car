@@ -1,0 +1,29 @@
+{
+  "car-porsche": {
+    "mask": false
+  },
+  "car-mclaren": {
+    "mask": false
+  },
+  "car-ferrari-296": {
+    "mask": false
+  },
+  "car-amg": {
+    "mask": false
+  },
+  "car-mustang": {
+    "mask": false
+  },
+  "car-huracan": {
+    "mask": false
+  },
+  "car-bmw-m4": {
+    "mask": false
+  },
+  "car-499p": {
+    "mask": false
+  },
+  "car-cadillac": {
+    "mask": false
+  }
+}

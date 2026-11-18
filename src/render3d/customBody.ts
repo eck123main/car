@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { driveCar, drivenCar, ownedCars } from '../net/wallet';
+import { shownCarModel } from '../cosmetics/cars';
 import { deinterleaveGeometry, mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CarParts } from '../physics/car';
 import type { Livery } from '../render/livery';
@@ -114,6 +115,35 @@ export interface PreparedBody {
 
 /** Turns a loaded scene into a few merged parts in the car's frame, fitted to the class's wheels. */
 export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>, body: CarClassId): PreparedBody | null {
+  const steps = prepareSteps(scene, spec, body);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Longest stretch of preparing (ms) before giving the browser a frame. */
+const SLICE_MS = 6;
+
+/**
+ * As `prepareBody`, but a few milliseconds at a time between frames: preparing a model is
+ * 0.1-0.25 s of work, which froze the game for that long as each car loaded.
+ */
+export async function prepareBodySliced(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>, body: CarClassId): Promise<PreparedBody | null> {
+  const steps = prepareSteps(scene, spec, body);
+  let start = performance.now();
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+    if (performance.now() - start > SLICE_MS) {
+      await new Promise((ok) => setTimeout(ok, 0));
+      start = performance.now();
+    }
+  }
+}
+
+/** The work of `prepareBody`, yielding wherever it may pause. */
+function* prepareSteps(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>, body: CarClassId): Generator<void, PreparedBody | null> {
   const target = TARGET[body];
   if (!target) return null;
   const hide = new RegExp(spec.hide ?? DEFAULT_HIDE, 'i');
@@ -132,9 +162,13 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     for (let p: THREE.Object3D | null = o; p; p = p.parent) s += ` ${p.name}`;
     return s;
   };
+  const meshes: THREE.Mesh[] = [];
   scene.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.visible) return;
+    if (mesh.isMesh && mesh.visible) meshes.push(mesh);
+  });
+  for (const mesh of meshes) {
+    yield;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const geo = mesh.geometry.clone();
     deinterleaveGeometry(geo);
@@ -166,8 +200,9 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
         piece.geo.dispose();
       } else kept.push(piece);
     }
-  });
+  }
   if (!kept.length) return null;
+  yield;
 
   // Point it along +x: the long side is the length; glTF cars usually face +z.
   const box = new THREE.Box3();
@@ -208,7 +243,10 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
   if (vote > 0 || (vote === 0 && quadsAhead.length && quadsBehind.length && width(quadsAhead) > width(quadsBehind) * 1.03)) degrees += 180;
   degrees += spec.turn ?? 0;
   const turn = turned();
-  for (const k of [...kept, ...inside, ...steer]) k.geo.applyMatrix4(turn);
+  for (const k of [...kept, ...inside, ...steer]) {
+    k.geo.applyMatrix4(turn);
+    yield;
+  }
   // The wheel itself, without a steering column that some models also call "steer" (long along
   // the car, narrow across it): with the column the wheel's centre came out ~0.15 m too far forward.
   const rimPieces = steer.filter((p) => {
@@ -267,19 +305,25 @@ export function prepareBody(scene: THREE.Object3D, spec: Omit<BodySpec, 'file'>,
     .makeTranslation((target.front + target.rear) / 2, spec.lift ?? 0, 0)
     .multiply(new THREE.Matrix4().makeScale(scale, scale, scale))
     .multiply(new THREE.Matrix4().makeTranslation(-centreX, -ground, -(box.min.z + box.max.z) / 2));
-  for (const k of [...kept, ...inside, ...steer]) k.geo.applyMatrix4(place);
+  for (const k of [...kept, ...inside, ...steer]) {
+    k.geo.applyMatrix4(place);
+    yield;
+  }
 
   // The game's own wheel replaces the model's (it turns, with the driver's arms on it); without one
   // found, the model's interior isn't used and the built-in cockpit stays.
   // Measured from the pieces as they are: merging them just for this cost a second full merge.
   const shapeNow = measure(kept.map((k) => ({ geometry: k.geo, material: k.mat, tinted: false })));
+  yield;
   const found = findCockpit((rimPieces.length ? rimPieces : steer).map((p) => p.geo), shapeNow);
+  yield;
   const cockpit = found && seatView(found, [...kept, ...inside, ...steer], shapeNow);
+  yield;
   if (cockpit) for (const p of steer) p.geo.translate(-cockpit.wheel[0], -cockpit.wheel[1], -cockpit.wheel[2]);
   else for (const p of [...inside, ...steer]) p.geo.dispose();
-  const outer = toParts(kept, tint);
-  const inner = cockpit ? toParts(inside, null) : { parts: [], triangles: 0 };
-  const steering = cockpit ? toParts(steer, null).parts : [];
+  const outer = yield* toParts(kept, tint);
+  const inner = cockpit ? yield* toParts(inside, null) : { parts: [], triangles: 0 };
+  const steering = cockpit ? (yield* toParts(steer, null)).parts : [];
   for (const p of [...outer.parts, ...inner.parts]) if (MIRROR.test(p.material.name)) mirrorUvs(p.geometry);
   // Seen from afar only the big parts are drawn: badges, lights, vents and the like are draw calls
   // (12-38 a car) that nobody can see beyond a few car lengths.
@@ -337,7 +381,7 @@ function mirrorUvs(geo: THREE.BufferGeometry): void {
 const STEER = /steer|volante|lenkrad|(^|[ _.])sw_/i;
 
 /** One mesh per material; materials that look the same count as one. */
-function toParts(pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[], tint: RegExp | null): { parts: BodyPart[]; triangles: number } {
+function* toParts(pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[], tint: RegExp | null): Generator<void, { parts: BodyPart[]; triangles: number }> {
   const same = new Map<string, THREE.Material>();
   const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
   for (const k of pieces) {
@@ -350,6 +394,7 @@ function toParts(pieces: { geo: THREE.BufferGeometry; mat: THREE.Material }[], t
   const parts: BodyPart[] = [];
   let triangles = 0;
   for (const [mat, geos] of byMat) {
+    yield;
     for (const geometry of mergeAll(geos)) {
       triangles += (geometry.index ? geometry.index.count : geometry.getAttribute('position').count) / 3;
       // A textured paint is the model's own livery: tinting it would spoil it.
@@ -697,12 +742,9 @@ export function hasCustomBody(body: CarClassId | undefined): boolean {
 function specFor(body: CarClassId, carId: string, mine: boolean, choice: string | undefined): ModelSpec | undefined {
   const list = specs.get(body);
   if (!list?.length) return undefined;
-  const wanted = mine ? drivenCar(body) : choice;
-  if (wanted) return list.find((s) => s.id === wanted);
-  if (mine || !carId.startsWith('bot')) return undefined;
-  let h = 2166136261;
-  for (let i = 0; i < carId.length; i++) h = Math.imul(h ^ carId.charCodeAt(i), 16777619);
-  return list[(h >>> 0) % list.length];
+  // The same pick as the top-down view (`shownCarModel`), so a car is the same car in both.
+  const id = shownCarModel(body, carId, mine, mine ? drivenCar(body) : choice);
+  return id ? list.find((s) => s.id === id) : undefined;
 }
 
 /** K: drive your next car of this class (the ones you own, then the built-in one). Says what changed. */
@@ -794,7 +836,7 @@ function load(body: CarClassId, spec: BodySpec): Promise<void> {
     try {
       const l = await gltfLoader();
       const gltf = await l.loadAsync(base + spec.file);
-      result = prepareBody(gltf.scene, spec, body);
+      result = await prepareBodySliced(gltf.scene, spec, body);
       if (result) console.info(`[models] ${body}: ${spec.file}, ${result.triangles} triangles, ${result.parts.length} draw calls (${result.parts.filter((p) => p.far).length} from afar), fitted by ${result.fit}, ${result.cockpit ? (result.cockpit.whole ? 'own interior' : 'own interior, game wheel rim') : 'built-in cockpit'}`, result.cockpit ? JSON.stringify({ wheel: result.cockpit.wheel.map((v) => +v.toFixed(2)), eye: result.cockpit.eye.map((v) => +v.toFixed(2)), look: result.cockpit.look.map((v) => +v.toFixed(2)), fov: Math.round(result.cockpit.fov) }) : '');
     } catch (e) {
       console.warn(`[models] ${body}: could not load ${spec.file}`, e);

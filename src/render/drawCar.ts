@@ -5,6 +5,7 @@ import { liveryFor, type Livery } from './livery';
 import type { CarClassId } from '../sim/carClass';
 import { drawGt3Body } from './drawGt3';
 import { drawLmhBody } from './drawLmh';
+import { carSprite, SPRITE_FRAME } from './carSprites';
 
 export interface CarLook {
   /** DRS flap open: the rear wing lights up green. */
@@ -23,6 +24,8 @@ export interface CarLook {
   parts?: CarParts;
   /** The kind of car (default F1): a GT3 and a Hypercar have closed bodies. */
   body?: CarClassId;
+  /** A real car from the garage (`shownCarModel`): drawn from its top-down picture once loaded. */
+  model?: string;
 }
 
 /** Damage this small doesn't show. */
@@ -83,6 +86,14 @@ export function drawCar(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
+  if ((look.body === 'gt3' || look.body === 'lmh') && look.model) {
+    const sprite = carSprite(look.model, liv.body);
+    if (sprite) {
+      drawSpriteCar(ctx, p, sprite, steer, lost, toe, !!look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0);
+      ctx.restore();
+      return;
+    }
+  }
   if (look.body === 'gt3' || look.body === 'lmh') {
     const draw = look.body === 'gt3' ? drawGt3Body : drawLmhBody;
     draw(ctx, p, steer, liv, lost, dmg, toe, (d) => drawBodyDamage(ctx, d), !!look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0);
@@ -349,4 +360,36 @@ export function drawRearWing(ctx: CanvasRenderingContext2D, liv: Livery, back: n
     ctx.fillRect(back + 0.05, side * 0.45 - 0.04, 0.35, 0.08);
   }
   ctx.restore();
+}
+
+/** A real car's top-down picture (already in the car's frame), over the game's own wheels so steering still shows. */
+function drawSpriteCar(
+  ctx: CanvasRenderingContext2D,
+  p: CarParams,
+  sprite: CanvasImageSource,
+  steer: number,
+  lost: number,
+  toe: (side: number, front: boolean) => number,
+  rainLight: boolean,
+): void {
+  const hw = p.width / 2;
+  const wheel = (wx: number, wy: number, angle: number) => {
+    ctx.save();
+    ctx.translate(wx, wy);
+    ctx.rotate(angle);
+    ctx.fillStyle = TYRE;
+    ctx.fillRect(-0.34, -0.17, 0.68, 0.34);
+    ctx.restore();
+  };
+  if (!(lost & LOST_WHEEL_FL)) wheel(p.cgToFront, -hw + 0.2, steer + toe(-1, true));
+  if (!(lost & LOST_WHEEL_FR)) wheel(p.cgToFront, hw - 0.2, steer + toe(1, true));
+  if (!(lost & LOST_WHEEL_RL)) wheel(-p.cgToRear, -hw + 0.2, toe(-1, false));
+  if (!(lost & LOST_WHEEL_RR)) wheel(-p.cgToRear, hw - 0.2, toe(1, false));
+  const l = SPRITE_FRAME.length;
+  const w = SPRITE_FRAME.width;
+  ctx.drawImage(sprite, -l / 2, -w / 2, l, w);
+  if (rainLight) {
+    ctx.fillStyle = '#ff2a2a';
+    ctx.fillRect(-p.length / 2 - 0.05, -0.12, 0.12, 0.24);
+  }
 }

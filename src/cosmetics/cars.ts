@@ -50,3 +50,19 @@ export function cleanCars(cars: unknown): string[] | undefined {
 export function carFor(cars: readonly string[] | undefined, carClass: CarClassId | undefined): string | undefined {
   return cars?.find((id) => BY_ID.get(id)?.carClass === carClass);
 }
+
+/**
+ * The real car a car shows in a class, in 2D and 3D alike: yours is the one you drive (`wanted` =
+ * your driven car), another player's the one they picked (`wanted` = their pick); bots get one
+ * picked from their id, so a race has a mix. Undefined = the built-in car.
+ */
+export function shownCarModel(carClass: CarClassId | undefined, carId: string, mine: boolean, wanted: string | null | undefined): string | undefined {
+  if (!carClass) return undefined;
+  if (wanted) return BY_ID.get(wanted)?.carClass === carClass ? wanted : undefined;
+  if (mine || !carId.startsWith('bot')) return undefined;
+  const list = CAR_MODELS.filter((c) => c.carClass === carClass);
+  if (!list.length) return undefined;
+  let h = 2166136261;
+  for (let i = 0; i < carId.length; i++) h = Math.imul(h ^ carId.charCodeAt(i), 16777619);
+  return list[(h >>> 0) % list.length].id;
+}

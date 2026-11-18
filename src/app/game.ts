@@ -1,4 +1,5 @@
-import { carFor } from '../cosmetics/cars';
+import { carFor, shownCarModel } from '../cosmetics/cars';
+import { drivenCar } from '../net/wallet';
 import type { CarClassId } from '../sim/carClass';
 import { gameAudio, loudestSurface } from '../audio/sound';
 import { Keyboard, LocalControls, type Mouse } from '../game/input';
@@ -1322,6 +1323,8 @@ export class GameScreen {
       drawCar(ctx, r.car.params, p.x, p.y, p.heading, r.car.steer * r.car.params.wheelAngleVisual, paint, {
         livery: rainbow ? null : skinLivery(r.skin),
         body: r.carClass,
+        // The same real car the 3D view shows (yours: the one you drive, K changes it).
+        model: shownCarModel(r.carClass, r.id, r === me, r === me ? drivenCar(r.carClass) : carFor(r.cars, r.carClass)),
         drsOpen: r.drsOpen,
         compound: r.tyres.compound,
         lost: r.car.lost,
