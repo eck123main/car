@@ -118,6 +118,10 @@ export class BotDriver {
   private usedLast = false;
 
   private readonly handbrake: boolean;
+  /** Tyre-model cars: how much throttle the rear tyres will take right now (0-1). */
+  private feed = 1;
+  /** Share of grip the speeds are planned with. */
+  private readonly pace: number;
 
   constructor(
     private readonly track: Track,
@@ -130,7 +134,9 @@ export class BotDriver {
     // Space is the drift car's handbrake: bots never pull it.
     this.handbrake = params.dynamics?.handbrake !== undefined;
     this.line = racingLine(track);
-    this.profile = speedProfile(track, this.line, params, this.skill.pace);
+    // Cars on the tyre model have their own paces per level (see `TyreDynamics.botPace`).
+    this.pace = params.dynamics?.botPace[DIFFICULTIES.indexOf(difficulty)] ?? this.skill.pace;
+    this.profile = speedProfile(track, this.line, params, this.pace);
     this.scProfile = safetyCarProfile(track, params);
     const [lo, hi] = this.skill.reaction;
     this.reaction = lo + (hi - lo) * hash01(id);
@@ -311,7 +317,16 @@ export class BotDriver {
     const boosted = me.items.boost > 0 || me.items.star > 0;
     if (boosted && this.straightAhead(q.index, 40)) target = Math.max(target, speed + 1);
     const err = target - speed;
-    const throttle = err > 0.3 ? 1 : err > -0.3 ? 0.4 : 0;
+    let throttle = err > 0.3 ? 1 : err > -0.3 ? 0.4 : 0;
+    const d = p.dynamics;
+    if (d) {
+      // Cars on real tyres: feed the power in like a driver, backing off as the rears start to
+      // spin (before traction control has to cut it) or the tail slides past the tyres' best.
+      const spinOk = Math.min(d.spinPeak, d.tcSlip[2]) * 0.8;
+      if (car.wheelspin > spinOk || car.rearSlip > 1) this.feed = Math.max(0.15, this.feed - dt * 5);
+      else this.feed = Math.min(1, this.feed + dt * 3);
+      throttle = Math.min(throttle, this.feed);
+    }
     // Never brake at a standstill: that would reverse.
     const brake = err < -0.8 && speed > 1 ? Math.min(1, -err / 2.5) : 0;
 
@@ -331,7 +346,7 @@ export class BotDriver {
    */
   private avoidDebris(world: RaceWorld, s: number, index: number, wanted: number, speed: number): number {
     // Hard and medium bots spot it from further away.
-    const range = 30 + speed * (this.skill.pace > 0.8 ? 1.6 : 1.1);
+    const range = 30 + speed * (this.difficulty !== 'easy' ? 1.6 : 1.1);
     const lineHere = this.line.offset[index];
     let nearest: { gap: number; d: number; index: number } | null = null;
     for (const p of world.debris) {

@@ -197,6 +197,11 @@ export class Car {
     return this.tcLight > 0;
   }
 
+  /** The rear tyres' slip angle last step, as a multiple of their peak (past 1 the rear is sliding; tyre-model cars only). */
+  get rearSlip(): number {
+    return this.lastSlipR;
+  }
+
   /** Traction control has the ignition cut at this moment. */
   get tcCutting(): boolean {
     return this.tcCut > 0;

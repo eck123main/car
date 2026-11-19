@@ -35,6 +35,12 @@ export interface TyreDynamics {
   catchGain: number;
   /** Share of `mu` the front axle really gives in a steady corner: what bots and the ideal line plan with. */
   planGrip: number;
+  /**
+   * Bot pace (share of grip planned) for Easy / Medium / Hard in this car. Tyre-model cars stop getting
+   * faster near the limit, so the F1's 0.74 / 0.86 / 0.95 left Medium and Hard level: these put Easy
+   * ~10% and Medium ~4% off Hard, like the F1 (`npx tsx scripts/bot-skill.ts`).
+   */
+  botPace: [number, number, number];
   /** Grass and gravel's drag on this car, against the F1's (it has far less traction to pull through them). */
   surfaceDrag: number;
   /** Road speed at the rev limit in each gear (m/s). */
@@ -230,6 +236,7 @@ export const GT3_CAR: CarParams = {
     catchFrom: 1.1,
     catchGain: 2,
     planGrip: 0.96,
+    botPace: [0.66, 0.81, 0.95],
     surfaceDrag: 0.55,
     // A six-speed sequential: 100 / 140 / 180 / 220 / 260 / 310 km/h at the limiter.
     gears: [27.8, 38.9, 50, 61.1, 72.2, 86.1],
@@ -297,6 +304,7 @@ export const HYPERCAR_CAR: CarParams = {
     cgHeight: 0.34,
     peakSlip: 0.1,
     surfaceDrag: 0.65,
+    botPace: [0.7, 0.84, 1.0],
     // A seven-speed sequential: 100 / 140 / 180 / 220 / 260 / 300 / 345 km/h at the limiter.
     gears: [27.8, 38.9, 50, 61.1, 72.2, 83.3, 95.8],
     wheelMass: 50,
@@ -368,6 +376,7 @@ export const DRIFT_CAR: CarParams = {
     unwind: 0.08,
     // Bots plan for less: the rear lets go on the power (tested on every track, `driftCar.test.ts`).
     planGrip: 0.75,
+    botPace: [0.68, 0.8, 0.95],
     surfaceDrag: 0.6,
     // A five-speed: 90 / 130 / 170 / 215 / 265 km/h at the limiter.
     gears: [25, 36, 47.2, 59.7, 73.6],
