@@ -37,9 +37,9 @@ function run(params: CarParams, kmh: number, phases: [number, DriverInput][]): {
 const power: DriverInput = { throttle: 1, brake: 0, steer: 1 };
 
 describe('Drift car', () => {
-  it('slides into a big power drift on keys, with the assist, and never spins', () => {
+  it('slides into a big power drift on keys with TC low or off, with the assist, and never spins', () => {
     // Held flat out at full lock it swings between drift and grip (a driver would feather it).
-    for (const tc of [0, 1, 2]) {
+    for (const tc of [0, 1]) {
       const car = new Car(DRIFT_CAR, 'red');
       car.vx = 60 / 3.6;
       let max = 0;
@@ -53,21 +53,33 @@ describe('Drift car', () => {
           n++;
         }
       }
-      expect(max, `tc ${tc}`).toBeGreaterThan(35);
+      expect(max, `tc ${tc}`).toBeGreaterThan(tc === 0 ? 30 : 24);
       expect(max, `tc ${tc}`).toBeLessThan(65);
-      expect(sum / n, `tc ${tc}`).toBeGreaterThan(12);
+      expect(sum / n, `tc ${tc}`).toBeGreaterThan(10);
     }
+  });
+
+  it('with TC high it only slides a little, so it can be driven on keys', () => {
+    // Every tap of a key is full lock: the assist keeps it near a grip car (players found it hard).
+    const car = new Car(DRIFT_CAR, 'red');
+    car.vx = 60 / 3.6;
+    let max = 0;
+    for (let t = 0; t < 6; t += DT) {
+      car.step({ ...power, tc: 2 }, DT, flat);
+      max = Math.max(max, Math.abs(slide(car)));
+    }
+    expect(max).toBeLessThan(25);
   });
 
   it('straightens up when the keys are let go, without snapping the other way', () => {
     const car = new Car(DRIFT_CAR, 'red');
     car.vx = 70 / 3.6;
-    for (let t = 0; t < 3; t += DT) car.step(power, DT, flat);
+    for (let t = 0; t < 3; t += DT) car.step({ ...power, tc: 0 }, DT, flat);
     const held = slide(car);
     expect(Math.abs(held)).toBeGreaterThan(20);
     let other = 0;
     for (let t = 0; t < 2.5; t += DT) {
-      car.step({ throttle: 0.6, brake: 0, steer: 0 }, DT, flat);
+      car.step({ throttle: 0.6, brake: 0, steer: 0, tc: 0 }, DT, flat);
       other = Math.max(other, Math.sign(-held) * slide(car));
     }
     expect(other).toBeLessThan(15);

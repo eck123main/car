@@ -117,7 +117,7 @@ export function enginePower(revs: number): number {
 /** What the rest of `Car.step` has worked out, for the tyre model. */
 /** Gear, shift cut, weight transfer, longitudinal g, front and rear slip, wheelspin, TC cut, TC light. */
 /** Gear, shift cut, long. acceleration, long. g, front and rear slip, wheelspin, TC cut and light, then (optional) the rear's signed slip. */
-export type TyreState = [number, number, number, number, number, number, number, number, number, number?];
+export type TyreState = [number, number, number, number, number, number, number, number, number, number?, number?];
 
 interface TyreInputs {
   vx: number;
@@ -186,6 +186,8 @@ export class Car {
   private lastSlipR = 0;
   /** The rear's slip angle last step, with its sign (rad): how fast a slide is growing or unwinding. */
   private slipRSigned = 0;
+  /** Drift cars: how much steering is being held, eased off slowly so tapped keys count as held. */
+  private steerHeld = 0;
   /** How much faster the driven wheels turn than the car moves (m/s at the tread): wheelspin. */
   wheelspin = 0;
   /** Traction control: seconds left of a power cut, and of its light on the dash. */
@@ -257,7 +259,7 @@ export class Car {
     this.vx = this.vy = this.yawRate = 0;
     this.steer = this.throttle = this.brake = 0;
     this.gear = 0;
-    this.shiftCut = this.longAcc = this.lastSlipF = this.lastSlipR = this.slipRSigned = 0;
+    this.shiftCut = this.longAcc = this.lastSlipF = this.lastSlipR = this.slipRSigned = this.steerHeld = 0;
     this.wheelspin = this.tcCut = this.tcLight = 0;
   }
 
@@ -415,7 +417,7 @@ export class Car {
    */
   /** What the tyre model remembers between steps, for a client predicting this car. */
   tyreState(): TyreState {
-    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR, this.wheelspin, this.tcCut, this.tcLight, this.slipRSigned];
+    return [this.gear, this.shiftCut, this.longAcc, this.longG, this.lastSlipF, this.lastSlipR, this.wheelspin, this.tcCut, this.tcLight, this.slipRSigned, this.steerHeld];
   }
 
   restoreTyreState(s: TyreState): void {
@@ -424,6 +426,7 @@ export class Car {
     this.tcCut = s[7] ?? 0;
     this.tcLight = s[8] ?? 0;
     this.slipRSigned = s[9] ?? 0;
+    this.steerHeld = s[10] ?? 0;
     const gears = this.params.dynamics?.gears;
     if (gears && this.gear > 0) this.revs = (Math.abs(this.vx) + this.wheelspin) / gears[Math.min(this.gear, gears.length) - 1];
   }
@@ -435,10 +438,13 @@ export class Car {
    */
   private catchAt(d: TyreDynamics, input: DriverInput): number {
     if (d.unwind === undefined) return d.catchFrom;
-    return Math.max(1, d.catchFrom * Math.min(1, Math.abs(input.steer)));
+    const most = d.driftAngle?.[Math.max(0, Math.min(2, Math.round(input.tc ?? 2)))] ?? d.catchFrom;
+    return Math.max(1, most * this.steerHeld);
   }
 
   private tyreStep(d: TyreDynamics, input: DriverInput, t: TyreInputs, dt: number): [number, number] {
+    // A tap on a key counts as held for a moment; let go, the slide allowed shrinks over ~0.6 s.
+    this.steerHeld = Math.max(Math.min(1, Math.abs(input.steer)), this.steerHeld - dt * 1.6);
     const p = this.params;
     const { vx, vy, speed, upset } = t;
     const m = p.mass;
@@ -496,7 +502,7 @@ export class Car {
         engine = Math.min(p.maxDriveForce, (this.throttle * power) / (revs * top[this.gear - 1]));
         // Drift assist: past the slide the steering asks for, the power eases off so the car
         // doesn't power round into a spin (a keyboard can't feather the throttle).
-        if (d.unwind !== undefined && input.assist !== false) engine *= Math.max(0.15, 1 - (this.lastSlipR - this.catchAt(d, input)) / 1.5);
+        if (d.unwind !== undefined && input.assist !== false) engine *= Math.max(0.15, Math.min(1, 1 - (this.lastSlipR - this.catchAt(d, input)) / 1.2));
       }
       // The most drive the rear tyres can give, after what they are using to turn. Past their
       // peak sideways they count as fully used. At walking pace slip angles mean nothing.

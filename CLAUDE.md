@@ -203,7 +203,11 @@ alone: DRS free in every zone, ERS, no other cars.
   the keys let go, so letting go straightens it), unwinds the counter-steer early as a slide straightens (`unwind`,
   using the last step's signed slip, synced as the 10th `TyreState` value) so it doesn't snap the other way, eases the
   power past that angle, and lets the front ask 3x more while the handbrake is pulled. TC: high = grip (bots, laps),
-  low slides on the power, off = full drift; its cuts go deeper than the GT3's (600 kW). Held flat at full lock it
+  low slides on the power, off = full drift; **the assist's largest slide follows the TC setting** (`driftAngle`:
+  ~12 / 19 / 26 degrees high / low / off; on keys every tap is full lock, so asking for the full angle on every tap
+  made it hard to drive: players said so), and a tapped key counts as held for a moment (`Car.steerHeld`, synced as the
+  11th `TyreState` value). The assist's power ease is capped at 1 (it used to multiply the drive up to 4x below the
+  angle, lighting up the rears); its cuts go deeper than the GT3's (600 kW). Held flat at full lock it
   swings between drift and grip every ~1.7 s (a driver feathers it). Hard bots are clean on all 60 tracks, ~9% slower
   than the GT3 (`planGrip` 0.75). Tests: `src/physics/driftCar.test.ts`. **Its own look**, built on the GT3's
   shell and cockpit: 2D `src/render/drawDrift.ts`; 3D `Gt3Model` with `{ drift: true }` (riveted carbon overfenders

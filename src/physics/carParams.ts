@@ -69,6 +69,12 @@ export interface TyreDynamics {
   handbrake?: number;
   /** Stability assist: how early (s) the steering unwinds as a slide straightens, so it doesn't snap the other way. Missing: 0. */
   unwind?: number;
+  /**
+   * Drift cars (`unwind`): the most slide the assist allows (share of `peakSlip`) per traction control
+   * setting, off / low / high, used in place of `catchFrom`. High keeps it near a grip car so it can be
+   * driven on keys, where every tap is full lock; off is the full drift.
+   */
+  driftAngle?: [number, number, number];
 }
 
 /** Tunable car parameters. SI units (kg, m, s, N, W) unless noted. */
@@ -374,6 +380,8 @@ export const DRIFT_CAR: CarParams = {
     catchFrom: 4.5,
     catchGain: 2.5,
     unwind: 0.08,
+    // ~33 / 22 / 12 degrees: TC off is a full drift, high a car that slides a little.
+    driftAngle: [3.6, 2.6, 1.6],
     // Bots plan for less: the rear lets go on the power (tested on every track, `driftCar.test.ts`).
     planGrip: 0.75,
     botPace: [0.68, 0.8, 0.95],
