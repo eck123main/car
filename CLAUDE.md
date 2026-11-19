@@ -404,6 +404,14 @@ exactly the same as the top-down game. The 2D canvas stays on top and keeps the 
   `view3d.ts`): cockpit (halo, steering wheel with a live speed / DRS / ERS display), cockpit
   without the halo (its centre bar blocks the view), T-cam above the airbox, nose cam, front-wing
   cam, rear-wing cam, chase cam, far chase cam.
+- **Cockpit kit** (`src/render3d/cockpitKit.ts`, shared by every car): each steering wheel is one rounded
+  vertex-coloured mesh (F1: shaped body, rubber grips, buttons and rotaries; GT: suede rim, carbon plate, lit
+  buttons), gloves with rounded fingers, blade paddles, and a **carbon weave** on everything painted `CARBON`
+  (`carbonWeave`: a shader tweak on the body materials, fades out with distance, no extra draw calls). Switch
+  panels are labelled textures (`switchPanel`: GT3/drift on the console, Hypercar left of the wheel); the F1
+  has head pads, a harness and the bulkhead (`f1CockpitGeometry`). The drift car has a **hydraulic handbrake**
+  (`Cockpit.handbrake`, `WheelInfo.handbrake`): Space moves the right hand off the wheel to yank the lever.
+  Cockpit draw calls: F1 ~33, Hypercar ~47, GT3/drift ~52.
 - **Driver's hands** (`SteeringWheel` in `carModel.ts`, own car only): arms in the team colour
   and white gloves that never leave the grips. The wheel angle follows the radius the car is
   really turning (`wheelAngle`: yaw rate / speed, plus a little input), so a hairpin is ~2 rad and
@@ -954,7 +962,11 @@ connect, and a "Controller connected" bar bottom centre while one is (`showBar`)
 - **Bots** (`src/sim/ai/`): the host adds them in the lobby (Easy / Medium / Hard), or uses
   "Race against bots" on the welcome screen (offline, starts with 5 bots). They follow a
   minimum-curvature racing line with a planned speed profile (pace: Easy 74%, Medium 86%,
-  Hard 95% of grip), follow by braking distance (as close as they could still stop from, so equal cars race
+  Hard 95% of grip in the F1; cars on the tyre model have their own, `TyreDynamics.botPace`: GT3 66/81/95%,
+  Hypercar 70/84/100%, drift 68/80/95%, as near the limit they stop getting faster and Medium drove like Hard;
+  every class has Easy ~10% and Medium ~3-5% off Hard, checked by `npx tsx scripts/bot-skill.ts` and
+  `botSkill.test.ts`; Hard and Medium clean on all 60 tracks in every class). In those cars bots also
+  feed the throttle in (`feed`), backing off when the rears spin up or slide (`Car.rearSlip`) before TC has to cut, follow by braking distance (as close as they could still stop from, so equal cars race
   within DRS range), keep safe gaps (measured directly, not just along the track, so hairpins work), overtake
   when there is room (never starting a pass once braking for a corner: no dive-bombs),
   never box from the grid, never steer towards a car alongside (more room the faster they're

@@ -20,6 +20,7 @@ import {
   type Cockpit,
   type V3,
 } from './carModel';
+import { carbonWeave, shifterGeometry, switchPanel } from './cockpitKit';
 import {
   FRONT_AXLE,
   GLASS_TOP,
@@ -71,6 +72,12 @@ export const GT3_COCKPIT: Cockpit = {
   style: 'gt',
   display: [0.2, 0.97, D],
 };
+
+/** The drift car: the GT3's seat and wheel, and a hydraulic handbrake on the tunnel by the right hand. */
+export const DRIFT_COCKPIT: Cockpit = { ...GT3_COCKPIT, handbrake: [-0.12, 0.5, -0.15] };
+
+/** The centre console's top: from (x0, y0) at the back to (x1, y1) at the front, its middle and width across. */
+const CONSOLE = { x0: -0.12, y0: 0.62, x1: 0.4, y1: 0.78, z: 0.02, width: 0.34 };
 
 /** The parts that aren't painted shell: floor, skirts, diffuser, wheel wells, pillars, mirrors, roof scoop, lights. */
 function bodyGeometry(l: Livery, drift = false): THREE.BufferGeometry {
@@ -390,7 +397,7 @@ export function driftSpokeGeometry(): THREE.BufferGeometry {
  * The cockpit (own car): dash, the display's hood, the steering column, switch panel, door foam,
  * bucket seat, harness. One vertex-coloured mesh.
  */
-function cockpitGeometry(l: Livery): THREE.BufferGeometry {
+function cockpitGeometry(l: Livery, drift = false): THREE.BufferGeometry {
   const q = new QuadBuilder();
   // Headliner under the roof (the roof itself is painted).
   q.quad([-1.02, 1.265, -0.64], [-0.12, 1.265, -0.64], [-0.12, 1.265, 0.64], [-1.02, 1.265, 0.64], '#2a2b30');
@@ -405,24 +412,28 @@ function cockpitGeometry(l: Livery): THREE.BufferGeometry {
     tbox(q, 0.185, 0.2, 0.09, 0.09, 0.64, 0.73, 0.64, 0.73, '#f2f2f2', z);
     tbox(q, 0.17, 0.19, 0.055, 0.055, 0.66, 0.71, 0.66, 0.71, c, z);
   }
-  // Switch panel on the centre console: rows of lit switches.
-  tbox(q, -0.12, 0.4, 0.34, 0.34, 0.14, 0.62, 0.14, 0.78, CARBON, 0.02);
-  const lit = ['#e8262b', '#27b34a', '#ffcf1f', '#2f6dff', '#f2f2f2', '#ff7a1a'];
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 3; j++) {
-      const x = -0.06 + i * 0.11;
-      const top = 0.62 + ((x + 0.12) / 0.52) * 0.16;
-      tbox(q, x, x + 0.05, 0.05, 0.05, top, top + 0.02, top, top + 0.02, lit[(i + j * 2) % lit.length], 0.02 + (j - 1) * 0.09);
-    }
+  // Centre console (its switch panel is a textured plate on top, see `addSteeringWheel`), with a
+  // brushed alloy edge round the panel.
+  tbox(q, CONSOLE.x0, CONSOLE.x1, CONSOLE.width, CONSOLE.width, 0.14, CONSOLE.y0, 0.14, CONSOLE.y1, CARBON, CONSOLE.z);
+  for (const side of [-1, 1]) {
+    tbox(q, CONSOLE.x0, CONSOLE.x1, 0.012, 0.012, CONSOLE.y0 - 0.01, CONSOLE.y0 + 0.012, CONSOLE.y1 - 0.01, CONSOLE.y1 + 0.012, '#8d9097', CONSOLE.z + side * (CONSOLE.width / 2 - 0.006));
+  }
+  // Gauges in a binnacle beside the display: oil, water, fuel pressure (white faces, red needles).
+  for (const [z, a] of [[D + 0.2, 0.6], [D + 0.27, -0.3], [D + 0.34, 0.2]] as const) {
+    tbox(q, 0.235, 0.26, 0.06, 0.06, 0.885, 0.945, 0.875, 0.935, '#0b0b0d', z);
+    tbox(q, 0.228, 0.236, 0.048, 0.048, 0.89, 0.94, 0.888, 0.938, '#e9ebef', z);
+    strut(q, [0.226, 0.915, z], [0.226, 0.915 + 0.02 * Math.cos(a), z + 0.02 * Math.sin(a)], 0.004, '#e3141c');
   }
   // Traction control, ABS and brake bias: three rotary knobs with white pointers.
   for (const z of [-0.08, 0.02, 0.12]) {
     tbox(q, 0.33, 0.39, 0.05, 0.05, 0.79, 0.825, 0.8, 0.835, '#26272b', z);
     tbox(q, 0.355, 0.39, 0.008, 0.008, 0.826, 0.83, 0.836, 0.84, '#f2f2f2', z);
   }
-  // Brake bias lever on the tunnel, by the driver's right hand.
-  strut(q, [-0.1, 0.62, -0.12], [-0.06, 0.74, -0.12], 0.018, '#c9ccd1');
-  tbox(q, -0.09, -0.03, 0.035, 0.035, 0.74, 0.78, 0.74, 0.78, '#e8262b', -0.12);
+  // Brake bias lever on the tunnel, by the driver's right hand (the drift car has its handbrake there).
+  if (!drift) {
+    strut(q, [-0.1, 0.62, -0.12], [-0.06, 0.74, -0.12], 0.018, '#c9ccd1');
+    tbox(q, -0.09, -0.03, 0.035, 0.035, 0.74, 0.78, 0.74, 0.78, '#e8262b', -0.12);
+  }
   // Electronics on the bare passenger side: ECU and power box on a tray, orange wiring loom.
   tbox(q, -0.72, -0.1, 0.42, 0.42, 0.14, 0.18, 0.14, 0.18, CARBON, 0.46);
   tbox(q, -0.68, -0.38, 0.22, 0.22, 0.18, 0.3, 0.18, 0.3, '#3a3d44', 0.36);
@@ -664,6 +675,7 @@ export class Gt3Model implements Car3d {
   private wornStep = 0;
   /** How far the front wheels turn at full steer (the drift car has a huge lock). */
   private readonly lock: number;
+  private readonly drift: boolean;
 
   constructor(
     private readonly livery: Livery,
@@ -671,6 +683,7 @@ export class Gt3Model implements Car3d {
   ) {
     const drift = !!opts.drift;
     this.lock = drift ? 0.6 : 0.38;
+    this.drift = drift;
     const ghost = opts.ghost;
     this.ghost = !!ghost;
     const opacity = opts.opacity ?? 0.35;
@@ -680,7 +693,7 @@ export class Gt3Model implements Car3d {
       return m;
     };
     const lambert = this.lambert;
-    this.bodyMat = lambert({ vertexColors: true });
+    this.bodyMat = carbonWeave(lambert({ vertexColors: true }));
     this.tyreMat = lambert({ color: TYRE });
     this.bandMat = lambert({ color: '#ffffff', map: sidewallTexture(), transparent: true, alphaTest: 0.25, depthWrite: false });
     this.discMat = lambert({ color: DISC_DARK });
@@ -962,8 +975,21 @@ export class Gt3Model implements Car3d {
 
   /** Your own car: the full cockpit, the GT wheel with the display on the dash, and the arms. */
   addSteeringWheel(): SteeringWheel {
-    const cockpit = cockpitGeometry(this.livery);
+    const cockpit = cockpitGeometry(this.livery, this.drift);
     const { cage, padding } = cageGeometry();
+    // The switch panel lying on the console, read from the seat.
+    const panel = switchPanel('console', CONSOLE.width - 0.03, Math.hypot(CONSOLE.x1 - CONSOLE.x0, CONSOLE.y1 - CONSOLE.y0) - 0.03);
+    panel.geometry.rotateZ(Math.atan2(CONSOLE.y1 - CONSOLE.y0, CONSOLE.x1 - CONSOLE.x0));
+    panel.position.set((CONSOLE.x0 + CONSOLE.x1) / 2, (CONSOLE.y0 + CONSOLE.y1) / 2 + 0.004, CONSOLE.z);
+    this.owned.push(panel.geometry);
+    this.mats.push(panel.material as THREE.Material);
+    this.group.add(panel);
+    if (this.drift) {
+      // A sequential shifter ahead of the handbrake.
+      const shifter = shifterGeometry([0.1, 0.7, -0.1]);
+      this.owned.push(shifter);
+      this.group.add(new THREE.Mesh(shifter, this.bodyMat));
+    }
     this.owned.push(cockpit, cage, padding);
     this.group.add(new THREE.Mesh(cockpit, this.bodyMat));
     this.group.add(new THREE.Mesh(cage, this.lambert({ color: CAGE })));
@@ -987,7 +1013,7 @@ export class Gt3Model implements Car3d {
     this.group.add(new THREE.Mesh(netGeo, netMat));
     this.ownedTextures.push(net);
 
-    this.wheel = new SteeringWheel(this.livery, GT3_COCKPIT);
+    this.wheel = new SteeringWheel(this.livery, this.drift ? DRIFT_COCKPIT : GT3_COCKPIT);
     this.miniWheel.visible = false;
     this.group.add(this.wheel.group, this.wheel.arms, this.wheel.dash);
     return this.wheel;

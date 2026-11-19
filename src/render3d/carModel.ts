@@ -4,6 +4,7 @@ import type { Livery } from '../render/livery';
 import { engineRpm, gearFor } from '../audio/sound';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { QuadBuilder } from './trackMesh';
+import { CARBON, carbonWeave, f1WheelGeometry, gloveGeometries, gtWheelGeometry, handbrakeGeometry } from './cockpitKit';
 
 /**
  * A low-poly F1 car. Local frame: x forward (centre of the car at 0, nose at +2.8), z to the
@@ -13,7 +14,7 @@ import { QuadBuilder } from './trackMesh';
 
 export type V3 = [number, number, number];
 
-export const CARBON = '#1c1d20';
+export { CARBON };
 export const TYRE = '#161616';
 export const WORN_TYRE = new THREE.Color('#4d463f');
 const DRS_GREEN = '#2ecc40';
@@ -109,6 +110,41 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
   return q.build();
 }
 
+/**
+ * Inside an F1 cockpit (own car only): the head pads either side and behind the helmet, a rubber
+ * edge round the opening, the carbon tub lining, the dash bulkhead ahead with a fire switch and
+ * the pedal box cover in the car's colour.
+ */
+function f1CockpitGeometry(l: Livery): THREE.BufferGeometry {
+  const q = new QuadBuilder();
+  const pad = '#20232b';
+  // Carbon lining inside the cockpit sides, and the floor.
+  for (const side of [-1, 1]) tbox(q, -0.78, 0.2, 0.01, 0.01, 0.12, 0.62, 0.12, 0.62, CARBON, side * 0.275);
+  // Head pads: the side ones rising to the shoulders, one behind the head.
+  for (const side of [-1, 1]) {
+    q.box(
+      [[-0.8, 0.5, side * 0.27], [-0.32, 0.5, side * 0.27], [-0.32, 0.5, side * 0.2], [-0.8, 0.5, side * 0.2]],
+      [[-0.8, 0.72, side * 0.27], [-0.32, 0.66, side * 0.27], [-0.32, 0.64, side * 0.22], [-0.8, 0.7, side * 0.22]],
+      pad,
+    );
+  }
+  tbox(q, -0.84, -0.76, 0.42, 0.42, 0.5, 0.88, 0.5, 0.86, pad);
+  // A rubber edge round the opening.
+  for (const side of [-1, 1]) tbox(q, -0.78, 0.2, 0.03, 0.03, 0.635, 0.66, 0.635, 0.66, '#0c0c0e', side * 0.34);
+  tbox(q, 0.18, 0.22, 0.7, 0.7, 0.62, 0.66, 0.62, 0.66, '#0c0c0e');
+  // The bulkhead ahead of the driver's legs, a fire switch on it, the pedal box cover.
+  tbox(q, 0.2, 0.26, 0.5, 0.5, 0.15, 0.6, 0.15, 0.6, CARBON);
+  tbox(q, 0.185, 0.2, 0.06, 0.06, 0.48, 0.54, 0.48, 0.54, '#f2f2f2', 0.17);
+  tbox(q, 0.175, 0.19, 0.04, 0.04, 0.49, 0.53, 0.49, 0.53, '#e8262b', 0.17);
+  tbox(q, 0.26, 0.9, 0.3, 0.3, 0.12, 0.3, 0.12, 0.36, l.wings);
+  // Harness straps over the shoulders, to the buckle on the chest.
+  for (const side of [-1, 1]) {
+    strut(q, [-0.8, 0.74, side * 0.09], [-0.42, 0.7, side * 0.1], 0.04, '#d0202e');
+    strut(q, [-0.42, 0.7, side * 0.1], [-0.25, 0.46, side * 0.03], 0.04, '#d0202e');
+  }
+  return q.build();
+}
+
 /** Front wing (two elements and endplates), in the car's frame; it can be knocked off. */
 export function frontWingGeometry(l: Livery): THREE.BufferGeometry {
   const q = new QuadBuilder();
@@ -191,12 +227,12 @@ const SCUFFS: Scuff[] = [
 
 /** Halo: the hoop round the driver's head, the centre pillar and the rear legs. */
 function haloParts(): THREE.BufferGeometry[] {
-  const hoop = new THREE.TorusGeometry(0.32, 0.028, 6, 18, Math.PI);
+  const hoop = new THREE.TorusGeometry(0.32, 0.028, 12, 40, Math.PI);
   hoop.rotateX(-Math.PI / 2);
   hoop.rotateY(-Math.PI / 2);
   hoop.translate(-0.42, 1.06, 0);
   const bar = (p: THREE.Vector3, r: THREE.Vector3, radius: number) => {
-    const g = new THREE.CylinderGeometry(radius, radius, p.distanceTo(r), 6);
+    const g = new THREE.CylinderGeometry(radius, radius * 1.25, p.distanceTo(r), 12);
     g.translate(0, p.distanceTo(r) / 2, 0);
     // Cylinder axis is y; aim it from p to r.
     const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), r.clone().sub(p).normalize());
@@ -320,7 +356,7 @@ export class CarModel implements Car3d {
     const lambert = (p: THREE.MeshLambertMaterialParameters) =>
       new THREE.MeshLambertMaterial(ghost ? { color: ghost, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide } : { side: THREE.DoubleSide, ...p });
     this.mats = {
-      body: lambert({ vertexColors: true }),
+      body: carbonWeave(lambert({ vertexColors: true })),
       carbon: lambert({ color: CARBON }),
       tyre: lambert({ color: TYRE }),
       ring: lambert({ color: '#ffffff' }) as THREE.MeshLambertMaterial,
@@ -566,6 +602,10 @@ export class CarModel implements Car3d {
 
   /** Add the steering wheel and the driver's arms on it (own car only). */
   addSteeringWheel(): SteeringWheel {
+    // Your own car: the padding round the cockpit opening and the dash panel ahead of the wheel.
+    const cockpit = f1CockpitGeometry(this.livery);
+    this.owned.push(cockpit);
+    this.group.add(new THREE.Mesh(cockpit, this.mats.body));
     this.wheel = new SteeringWheel(this.livery);
     this.miniWheel.visible = false;
     this.group.add(this.wheel.group, this.wheel.arms);
@@ -646,6 +686,8 @@ export interface Cockpit {
   style: 'f1' | 'gt';
   /** GT: the dash display's centre (car frame), facing the driver. */
   display?: V3;
+  /** A hydraulic handbrake's pivot on the tunnel (car frame): the right hand pulls it. */
+  handbrake?: V3;
 }
 
 export const F1_COCKPIT: Cockpit = { wheel: WHEEL_POS, tilt: WHEEL_TILT, shoulder: SHOULDER, style: 'f1' };
@@ -699,6 +741,8 @@ export interface WheelInfo {
   flag?: LedFlag;
   /** Took the flag: the right hand comes off the wheel (win: a fist pump; else a wave). */
   celebrate?: 'win' | 'wave' | null;
+  /** The drift car's handbrake is pulled (the right hand goes to the lever). */
+  handbrake?: boolean;
 }
 
 export type LedFlag = 'yellow' | 'green' | null;
@@ -783,6 +827,10 @@ export class SteeringWheel {
   private readonly ledCtx: CanvasRenderingContext2D;
   private readonly ledTex: THREE.CanvasTexture;
   private lit = '';
+  /** The handbrake lever (drift car), and how far it is pulled (0-1). */
+  private lever: THREE.Group | null = null;
+  private leverLength = 0;
+  private pull = 0;
 
   constructor(
     livery?: Livery,
@@ -793,28 +841,13 @@ export class SteeringWheel {
     const inner = this.inner;
     inner.rotation.z = cockpit.tilt;
     this.group.add(inner);
-    const mat = new THREE.MeshLambertMaterial({ color: '#202124' });
-    const grip = new THREE.MeshLambertMaterial({ color: '#0e0e0f' });
-    this.disposables.push(mat, grip);
-    if (cockpit.style === 'gt') this.buildGtWheel(mat, grip, livery);
-    else {
-      const body = new THREE.BoxGeometry(0.04, 0.13, 0.24);
-      const handle = new THREE.BoxGeometry(0.05, 0.17, 0.05);
-      this.disposables.push(body, handle);
-      inner.add(new THREE.Mesh(body, mat));
-      // Trim along the top of the wheel, in the car's colours.
-      const trimGeo = new THREE.BoxGeometry(0.043, 0.012, 0.24);
-      const trimMat = new THREE.MeshLambertMaterial({ color: livery?.wings ?? '#50525a' });
-      this.disposables.push(trimGeo, trimMat);
-      const trim = new THREE.Mesh(trimGeo, trimMat);
-      trim.position.y = 0.068;
-      inner.add(trim);
-      for (const z of [-0.14, 0.14]) {
-        const h = new THREE.Mesh(handle, grip);
-        h.position.set(0, -0.01, z);
-        inner.add(h);
-      }
-    }
+    // The whole wheel is one vertex-coloured mesh (carbon with a weave, rubber grips, buttons, dials).
+    const trim = livery?.wings ?? '#50525a';
+    const wheelGeo = cockpit.style === 'gt' ? gtWheelGeometry(trim) : f1WheelGeometry(trim);
+    const wheelMat = carbonWeave(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    this.disposables.push(wheelGeo, wheelMat);
+    inner.add(new THREE.Mesh(wheelGeo, wheelMat));
+    if (cockpit.handbrake) this.buildHandbrake(cockpit.handbrake, wheelMat);
     this.canvas.width = 256;
     this.canvas.height = 128;
     this.ctx = this.canvas.getContext('2d')!;
@@ -865,52 +898,23 @@ export class SteeringWheel {
     this.dash.add(holder);
   }
 
-  /**
-   * A GT wheel: a round rim with a flat bottom, a carbon centre full of buttons and two rotary
-   * knobs (traction control, ABS), grips where the hands go (z = +-0.15, as on the F1 wheel).
-   */
-  private buildGtWheel(mat: THREE.Material, grip: THREE.Material, livery?: Livery): void {
-    const inner = this.inner;
-    // Rim: most of a circle round the sides and top, closed by a straight bar at the bottom.
-    const rimGeo = new THREE.TorusGeometry(0.155, 0.019, 6, 24, Math.PI * 1.55);
-    rimGeo.rotateZ(-Math.PI * 0.275);
-    rimGeo.rotateY(Math.PI / 2);
-    const barGeo = new THREE.BoxGeometry(0.036, 0.034, 0.24);
-    const centreGeo = new THREE.BoxGeometry(0.03, 0.13, 0.2);
-    const spokeGeo = new THREE.BoxGeometry(0.022, 0.03, 0.1);
-    const knobGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.02, 10).rotateZ(Math.PI / 2);
-    const buttonGeo = new THREE.BoxGeometry(0.012, 0.018, 0.024);
-    const markGeo = new THREE.BoxGeometry(0.04, 0.03, 0.02);
-    const trimMat = new THREE.MeshLambertMaterial({ color: livery?.wings ?? '#50525a' });
-    this.disposables.push(rimGeo, barGeo, centreGeo, spokeGeo, knobGeo, buttonGeo, markGeo, trimMat);
-    inner.add(new THREE.Mesh(rimGeo, grip));
-    const bar = new THREE.Mesh(barGeo, grip);
-    bar.position.y = -0.124;
-    inner.add(bar);
-    inner.add(new THREE.Mesh(centreGeo, mat));
-    for (const side of [-1, 1]) {
-      const spoke = new THREE.Mesh(spokeGeo, mat);
-      spoke.position.set(0, 0, side * 0.1);
-      inner.add(spoke);
-    }
-    // A strip of the car's colour at the top, to see how far the wheel is turned.
-    const mark = new THREE.Mesh(markGeo, trimMat);
-    mark.position.y = 0.155;
-    inner.add(mark);
-    // Lit buttons in two rows, and the two knobs below them.
-    const colours = ['#e8262b', '#27b34a', '#2f6dff', '#ffcf1f', '#f2f2f2', '#ff7a1a'];
-    colours.forEach((c, i) => {
-      const m = new THREE.MeshBasicMaterial({ color: c });
-      this.disposables.push(m);
-      const b = new THREE.Mesh(buttonGeo, m);
-      b.position.set(-0.018, i < 3 ? 0.042 : 0.012, (i % 3) * 0.04 - 0.04);
-      inner.add(b);
-    });
-    for (const z of [-0.045, 0.045]) {
-      const knob = new THREE.Mesh(knobGeo, trimMat);
-      knob.position.set(-0.022, -0.035, z);
-      inner.add(knob);
-    }
+  /** The drift car's hydraulic handbrake on the tunnel, swinging back towards the driver when pulled. */
+  private buildHandbrake(at: V3, mat: THREE.Material): void {
+    const { lever, base, length } = handbrakeGeometry();
+    this.disposables.push(lever, base);
+    const foot = new THREE.Mesh(base, mat);
+    foot.position.set(...at);
+    this.lever = new THREE.Group();
+    this.lever.position.set(...at);
+    this.lever.add(new THREE.Mesh(lever, mat));
+    this.leverLength = length;
+    this.dash.add(foot, this.lever);
+  }
+
+  /** Where the hand holds the handbrake's grip now (car frame). */
+  private leverGrip(): THREE.Vector3 {
+    const lever = this.lever!;
+    return new THREE.Vector3(0, this.leverLength + 0.01, 0).applyAxisAngle(new THREE.Vector3(0, 0, 1), lever.rotation.z).add(lever.position);
   }
 
   private buildHands(livery?: Livery): void {
@@ -919,15 +923,22 @@ export class SteeringWheel {
     const glove = new THREE.MeshLambertMaterial({ color: new THREE.Color('#e9e9ec').lerp(new THREE.Color(livery?.helmet ?? '#e9e9ec'), 0.4) });
     const accent = new THREE.MeshLambertMaterial({ color: livery?.helmet ?? '#333333' });
     const paddleMat = new THREE.MeshLambertMaterial({ color: '#3a3b40' });
-    const palmGeo = new THREE.BoxGeometry(0.075, 0.1, 0.07);
-    const fingerGeo = new THREE.BoxGeometry(0.03, 0.09, 0.062);
-    const thumbGeo = new THREE.BoxGeometry(0.026, 0.028, 0.06);
-    const knuckleGeo = new THREE.BoxGeometry(0.012, 0.075, 0.04);
-    const paddleGeo = new THREE.BoxGeometry(0.008, 0.07, 0.07);
+    const gloves = gloveGeometries();
+    const palmGeo = gloves.hand;
+    const fingerGeo = gloves.fingers;
+    const thumbGeo = gloves.thumb;
+    const knuckleGeo = gloves.strap;
+    // Carbon shift paddles, shaped like a blade.
+    const paddleShape = new THREE.Shape();
+    paddleShape.moveTo(-0.035, -0.03);
+    paddleShape.lineTo(0.035, -0.03);
+    paddleShape.quadraticCurveTo(0.045, 0.03, 0.0, 0.04);
+    paddleShape.quadraticCurveTo(-0.045, 0.03, -0.035, -0.03);
+    const paddleGeo = new THREE.ExtrudeGeometry(paddleShape, { depth: 0.006, bevelEnabled: false, curveSegments: 4 }).rotateY(-Math.PI / 2);
     // Arm pieces are 1 m long along +y from their base, scaled to length each frame.
-    const upperGeo = new THREE.CylinderGeometry(0.042, 0.048, 1, 7).translate(0, 0.5, 0);
-    const foreGeo = new THREE.CylinderGeometry(0.033, 0.042, 1, 7).translate(0, 0.5, 0);
-    const cuffGeo = new THREE.CylinderGeometry(0.037, 0.037, 0.05, 7);
+    const upperGeo = new THREE.CylinderGeometry(0.042, 0.048, 1, 12).translate(0, 0.5, 0);
+    const foreGeo = new THREE.CylinderGeometry(0.034, 0.043, 1, 12).translate(0, 0.5, 0);
+    const cuffGeo = gloves.cuff;
     this.disposables.push(suit, glove, accent, paddleMat, palmGeo, fingerGeo, thumbGeo, knuckleGeo, paddleGeo, upperGeo, foreGeo, cuffGeo);
     for (const side of [-1, 1]) {
       // Glove round the grip: palm on the driver's side and outside, fingers round the front.
@@ -953,13 +964,16 @@ export class SteeringWheel {
       const fist = new THREE.Mesh(palmGeo, glove);
       const back = new THREE.Mesh(knuckleGeo, accent);
       back.position.set(-0.04, 0, 0);
-      free.add(fist, back);
-      free.scale.setScalar(0.8);
+      const curl = new THREE.Mesh(fingerGeo, glove);
+      curl.position.set(0.02, 0, 0);
+      curl.scale.setScalar(0.62);
+      free.add(fist, back, curl);
+      free.scale.setScalar(0.85);
       free.visible = false;
       this.arms.add(free);
       const upper = new THREE.Mesh(upperGeo, suit);
       const fore = new THREE.Mesh(foreGeo, suit);
-      const cuff = new THREE.Mesh(cuffGeo, accent);
+      const cuff = new THREE.Mesh(cuffGeo, glove);
       this.arms.add(upper, fore, cuff);
       this.hands.push({ grip, free, fingers, thumb, thumbRest, paddle, upper, fore, cuff, flick: 0, press: 0 });
     }
@@ -976,6 +990,11 @@ export class SteeringWheel {
     this.clock += dt;
     if (info.celebrate) this.win = info.celebrate === 'win';
     this.lift += ((info.celebrate ? 1 : 0) - this.lift) * Math.min(1, dt * 6);
+    if (this.lever) {
+      // The hand gets there quickly and yanks it; lets it go as fast.
+      this.pull += ((info.handbrake ? 1 : 0) - this.pull) * Math.min(1, dt * 16);
+      this.lever.rotation.z = 0.42 * this.pull;
+    }
 
     const [left, right] = this.hands;
     const gear = info.gear || gearFor(info.speedKmh);
@@ -1014,10 +1033,12 @@ export class SteeringWheel {
       const joints = armJoints(this.angle + this.kick, i === 0 ? -1 : 1, this.cockpit);
       const { shoulder } = joints;
       let { elbow, wrist } = joints;
-      // The right hand leaves the wheel at the finish.
-      const off = i === 1 ? this.lift : 0;
+      // The right hand leaves the wheel at the finish, or to pull the handbrake.
+      const pulling = i === 1 && this.lever ? this.pull : 0;
+      const off = i === 1 ? Math.max(this.lift, pulling) : 0;
       if (off > 0.01) {
-        wrist = wrist.clone().lerp(new THREE.Vector3(...raisedHand(this.clock, this.win, this.cockpit)), off);
+        const to = pulling > this.lift ? this.leverGrip() : new THREE.Vector3(...raisedHand(this.clock, this.win, this.cockpit));
+        wrist = wrist.clone().lerp(to, off);
         elbow = elbowFor(shoulder, wrist, UPPER_ARM, FOREARM, new THREE.Vector3(ELBOW_POLE.x, ELBOW_POLE.y, ELBOW_POLE.z));
       }
       hand.grip.visible = off < 0.05;

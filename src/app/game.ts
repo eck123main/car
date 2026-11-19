@@ -1254,6 +1254,7 @@ export class GameScreen {
           message: this.wheelMessage(world, me, session),
           flag,
           celebrate: me === own && performance.now() < this.waveUntil ? (this.finishPos === 1 ? 'win' : 'wave') : null,
+          handbrake: !!CAR_CLASSES[me.carClass].handbrake && me.input.drs,
         },
       },
       others,

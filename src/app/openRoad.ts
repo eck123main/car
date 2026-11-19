@@ -44,6 +44,8 @@ function write(key: string, value: string): void {
 export class OpenRoadScreen {
   readonly drive: OpenRoadDrive;
   private readonly controls: LocalControls;
+  /** The drift car's handbrake is pulled (the right hand goes to the lever). */
+  private handbrakeOn = false;
   private readonly pilot: RoadPilot;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly ambient = new Ambient();
@@ -306,6 +308,7 @@ export class OpenRoadScreen {
       this.prevY = car.y;
       this.prevHeading = car.heading;
       this.drive.step(DT, this.applyPilot(this.paused ? { ...IDLE_INPUT } : input));
+      this.handbrakeOn = !this.paused && !!CAR_CLASSES[this.carClass].handbrake && input.drs;
       input = { ...input, reset: false };
       if (this.drive.rescued) {
         // A jump, not a move: nothing to blend from.
@@ -353,7 +356,7 @@ export class OpenRoadScreen {
         front: car.surfaceFront,
         rear: car.surfaceRear,
         livery: skinLivery(this.skin ?? undefined) ?? liveryFor(car.color),
-        wheel: { speedKmh, gear: car.gear, revs: car.revs, drsOpen: drive.drsOpen, drsAvailable: car.speed > 40 && !drive.drsOpen, ers: drive.ers, ersActive: drive.ersActive, limiter: false, throttle: car.throttle, tyre: 'M', wear: 0 },
+        wheel: { speedKmh, gear: car.gear, revs: car.revs, drsOpen: drive.drsOpen, drsAvailable: car.speed > 40 && !drive.drsOpen, ers: drive.ers, ersActive: drive.ersActive, limiter: false, throttle: car.throttle, tyre: 'M', wear: 0, handbrake: this.handbrakeOn },
       },
       dt,
     );

@@ -4,6 +4,7 @@ import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHE
 import { accentOf, type Livery } from '../render/livery';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { CARBON, dentAt, DISC_DARK, DISC_HOT, discGlow, mirrorUv, SHOWS_FROM, SteeringWheel, strut, tbox, TYRE, WORN_TYRE, type Car3d, type Cockpit, type V3 } from './carModel';
+import { carbonWeave, switchPanel } from './cockpitKit';
 import { GLASS_REFLECT, PAINT_REFLECT, raceNumber, reflective, spokeGeometry, tyreGeometry, withFresnel } from './gt3Model';
 import { sidewallTexture, type Sky } from './gt3Skin';
 import { QuadBuilder } from './trackMesh';
@@ -429,8 +430,7 @@ function cockpitGeometry(l: Livery): THREE.BufferGeometry {
   strut(q, [0.05, 0.7, D], [0.5, 0.56, D], 0.06, '#2a2b30');
   // Switch panel left of the wheel, lit switches.
   tbox(q, 0.3, 0.42, 0.26, 0.26, 0.3, 0.5, 0.3, 0.54, CARBON, -0.16);
-  const lit = ['#e8262b', '#27b34a', '#ffcf1f', '#2f6dff', '#f2f2f2', '#ff7a1a'];
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) tbox(q, 0.285, 0.3, 0.04, 0.04, 0.33 + i * 0.055, 0.36 + i * 0.055, 0.33 + i * 0.055, 0.36 + i * 0.055, lit[(i + j * 2) % lit.length], -0.24 + j * 0.075);
+  // (Its switches are a textured plate on the panel's face, see `addSteeringWheel`.)
   // Seat, lying back as in a prototype, and the head surround.
   q.box(
     [[-0.95, 0.12, D - 0.25], [-0.3, 0.12, D - 0.25], [-0.3, 0.12, D + 0.25], [-0.95, 0.12, D + 0.25]],
@@ -532,7 +532,7 @@ export class LmhModel implements Car3d {
       return m;
     };
     const lambert = this.lambert;
-    this.bodyMat = lambert({ vertexColors: true });
+    this.bodyMat = carbonWeave(lambert({ vertexColors: true }));
     this.tyreMat = lambert({ color: TYRE });
     this.bandMat = lambert({ color: '#ffffff', map: sidewallTexture(), transparent: true, alphaTest: 0.25, depthWrite: false });
     this.discMat = lambert({ color: DISC_DARK });
@@ -802,6 +802,12 @@ export class LmhModel implements Car3d {
     const cockpit = cockpitGeometry(this.livery);
     this.owned.push(cockpit);
     this.group.add(new THREE.Mesh(cockpit, this.bodyMat));
+    // The switch panel on the face of the box left of the wheel, facing the driver.
+    const panel = switchPanel('side', 0.25, 0.165);
+    panel.position.set(0.297, 0.415, -0.16);
+    this.owned.push(panel.geometry);
+    this.mats.push(panel.material as THREE.Material);
+    this.group.add(panel);
     this.wheel = new SteeringWheel(this.livery, LMH_COCKPIT);
     this.miniWheel.visible = false;
     this.group.add(this.wheel.group, this.wheel.arms, this.wheel.dash);
