@@ -3,9 +3,9 @@ import type { Livery } from '../render/livery';
 import { debrisOpacity, type Debris } from '../sim/debris';
 import { COMPOUNDS } from '../sim/tyres';
 import { frontWingGeometry, rearWingGeometry } from './carModel';
-import { gt3RearWingGeometry, gt3SplitterGeometry } from './gt3Model';
+import { driftLipGeometry, driftWingGeometry, gt3RearWingGeometry, gt3SplitterGeometry } from './gt3Model';
 import { LMH_SPLITTER_X, LMH_WING, lmhRearWingGeometry, lmhSplitterGeometry } from './lmhModel';
-import { drawnAs, type CarClassId } from '../sim/carClass';
+import type { CarClassId } from '../sim/carClass';
 
 const CARBON = '#1c1d20';
 const TYRE = '#161616';
@@ -17,6 +17,10 @@ const REAR_WING_Y = 0.66;
 const GT3_SPLITTER_X = 2.15;
 const GT3_WING_X = -2.4;
 const GT3_WING_Y = 0.9;
+/** The drift car's front lip and its tall wing on uprights. */
+const DRIFT_LIP_X = 2.2;
+const DRIFT_WING_X = -2.3;
+const DRIFT_WING_Y = 1.2;
 const WHEEL_RADIUS = 0.35;
 
 interface Piece {
@@ -67,7 +71,7 @@ export class Debris3d {
   }
 
   private make(p: Debris, livery: Livery, cls: CarClassId): Piece {
-    const body = drawnAs(cls);
+    const body = cls;
     const object = new THREE.Group();
     if (p.kind === 'frontWing' || p.kind === 'rearWing') {
       const key = `${body}|${p.kind}|${livery.wings}|${livery.endplates}`;
@@ -75,6 +79,8 @@ export class Debris3d {
       if (!geo) {
         if (body === 'lmh') {
           geo = p.kind === 'frontWing' ? lmhSplitterGeometry().translate(-LMH_SPLITTER_X, 0, 0) : lmhRearWingGeometry(livery).translate(-LMH_WING[0], -LMH_WING[1], 0);
+        } else if (body === 'drift') {
+          geo = p.kind === 'frontWing' ? driftLipGeometry().translate(-DRIFT_LIP_X, 0, 0) : driftWingGeometry(livery).translate(-DRIFT_WING_X, -DRIFT_WING_Y, 0);
         } else if (body === 'gt3') {
           geo = p.kind === 'frontWing' ? gt3SplitterGeometry().translate(-GT3_SPLITTER_X, 0, 0) : gt3RearWingGeometry(livery).translate(-GT3_WING_X, -GT3_WING_Y, 0);
         } else {

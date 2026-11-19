@@ -6,7 +6,7 @@ import { bodyTopAt, customBodyCockpit, customBodyKey, customBodyShape, loadCusto
 import { brakeHeat, CarModel, EYE, mirrorUv, SafetyCarModel, type Car3d, type WheelInfo } from './carModel';
 import { GT3_EYE, Gt3Model } from './gt3Model';
 import { LMH_EYE, LmhModel } from './lmhModel';
-import { drawnAs, type CarClassId } from '../sim/carClass';
+import type { CarClassId } from '../sim/carClass';
 import { Items3d, type ItemsFrame } from './items3d';
 import { Debris3d } from './debris3d';
 import type { Debris } from '../sim/debris';
@@ -92,7 +92,7 @@ export const LMH_CAM_NAMES: Record<Cam3d, string> = {
 
 /** Camera names for a kind of car. */
 export function camNames(cls: CarClassId = 'f1'): Record<Cam3d, string> {
-  const body = drawnAs(cls);
+  const body = camSet(cls);
   return body === 'gt3' ? GT3_CAM_NAMES : body === 'lmh' ? LMH_CAM_NAMES : CAM3D_NAMES;
 }
 
@@ -124,6 +124,14 @@ export const GT3_CAMS: Record<Cam3d, CamDef> = {
   far: CAMS.far,
 };
 const GT3_LOOK_BACK: CamDef = { eye: [0.2, 1.7, 0], look: [-30, 0.4, 0], fov: 62 };
+/** The drift car: the GT3's seat and cameras, the wing cam up on its taller wing, a lower bumper cam. */
+const DRIFT_CAMS: Record<Cam3d, CamDef> = {
+  ...GT3_CAMS,
+  wing: { eye: [2.38, 0.32, -0.36], look: [30, 0.22, -0.36], fov: 70 },
+  tail: { eye: [-2.3, 1.72, 0], look: [30, 0.3, 0], fov: 64 },
+};
+/** Which cameras a class's built-in body has (the drift car is built on the GT3). */
+const camSet = (cls: CarClassId) => (cls === 'drift' || cls === 'gt3' ? 'gt3' : cls);
 
 /**
  * A Hypercar's cameras: from the seat (low, right of the middle, the fenders standing up either
@@ -145,7 +153,7 @@ const LMH_LOOK_BACK: CamDef = { eye: [0.1, 1.45, 0], look: [-30, 0.4, 0], fov: 6
 export function lookBackFor(cls: CarClassId = 'f1'): CamDef {
   const shape = customBodyShape(cls);
   if (shape) return fittedCams(cls, shape).back;
-  const body = drawnAs(cls);
+  const body = camSet(cls);
   return body === 'gt3' ? GT3_LOOK_BACK : body === 'lmh' ? LMH_LOOK_BACK : LOOK_BACK;
 }
 
@@ -153,7 +161,8 @@ export function lookBackFor(cls: CarClassId = 'f1'): CamDef {
 export function camsFor(cls: CarClassId = 'f1'): Record<Cam3d, CamDef> {
   const shape = customBodyShape(cls);
   if (shape) return fittedCams(cls, shape).cams;
-  const body = drawnAs(cls);
+  if (cls === 'drift') return DRIFT_CAMS;
+  const body = camSet(cls);
   return body === 'gt3' ? GT3_CAMS : body === 'lmh' ? LMH_CAMS : CAMS;
 }
 
@@ -539,8 +548,8 @@ export class View3D {
       }
       if (!entry) {
         const opts = { ghost: car.ghost, opacity: car.ghostOpacity, sky: this.sky3d };
-        const shape = drawnAs(car.body);
-        const built: Car3d = shape === 'gt3' ? new Gt3Model(car.livery, opts) : shape === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
+        const shape = car.body;
+        const built: Car3d = shape === 'gt3' || shape === 'drift' ? new Gt3Model(car.livery, { ...opts, drift: shape === 'drift' }) : shape === 'lmh' ? new LmhModel(car.livery, opts) : new CarModel(car.livery, opts);
         const model = withCustomBody(built, car.body, car.livery, !!car.ghost, car.id, car === own, car.model);
         if (onboard) {
           model.addSteeringWheel();

@@ -73,7 +73,7 @@ export const GT3_COCKPIT: Cockpit = {
 };
 
 /** The parts that aren't painted shell: floor, skirts, diffuser, wheel wells, pillars, mirrors, roof scoop, lights. */
-function bodyGeometry(l: Livery): THREE.BufferGeometry {
+function bodyGeometry(l: Livery, drift = false): THREE.BufferGeometry {
   const q = new QuadBuilder();
   const accent = accentOf(l);
   const dark = '#0b0b0d';
@@ -115,14 +115,15 @@ function bodyGeometry(l: Livery): THREE.BufferGeometry {
     q.quad([-0.92, shoulderHeight(-0.92) + 0.005, side * shoulderZ(-0.92)], [ROOF_REAR, GLASS_TOP + 0.01, side * ROOF_HALF], [-1.8, REAR_GLASS_Y, side * 0.6], [-1.85, backY, side * backZ], l.pods ?? l.body);
     strut(q, [-0.92, 0.89, side * shoulderZ(-0.92)], [ROOF_REAR, GLASS_TOP, side * ROOF_HALF], 0.05, '#111114');
   }
-  // Tail: rain light, exhausts.
+  // Tail: rain light, exhausts (the drift car's leave from the side).
   tbox(q, -2.345, -2.325, 0.2, 0.2, 0.52, 0.6, 0.52, 0.6, '#ff2a2a');
-  for (const side of [-1, 1]) {
+  for (const side of drift ? [] : [-1, 1]) {
     disc(q, [-2.38, 0.32, side * 0.35], 0.07, 'x', '#6d6f75');
     disc(q, [-2.385, 0.32, side * 0.35], 0.052, 'x', '#050505');
     strut(q, [-2.38, 0.32, side * 0.35], [-2.3, 0.32, side * 0.35], 0.12, '#3b3c40');
   }
-  addVents(q);
+  if (drift) addDriftParts(q, l);
+  else addVents(q);
   addFittings(q);
   // Roof scoop.
   tbox(q, -0.42, -0.14, 0.3, 0.26, 1.31, 1.35, 1.31, 1.42, l.body);
@@ -229,6 +230,74 @@ function addFittings(q: QuadBuilder): void {
   strut(q, [-0.78, 1.32, -0.3], [-0.84, 1.46, -0.3], 0.008, '#111114');
 }
 
+/** The drift car's front and rear arches (its wheels sit further out, under the overfenders). */
+const DRIFT_ARCHES = [
+  { x: FRONT_AXLE, out: 1.07 },
+  { x: REAR_AXLE, out: 1.12 },
+];
+/** The drift car's wheels: its fenders let them sit further out than the GT3's. */
+const DRIFT_TRACK = [0.87, 0.9];
+/** Its deep-dish wheels are gold. */
+const DRIFT_RIM = '#c9a23a';
+
+/**
+ * What makes the drift car: bolt-on carbon overfenders riveted over every arch, the intercooler
+ * in the open grille, a big heat extractor in the bonnet, side-exit exhausts ahead of the right
+ * rear wheel, louvres over the rear window.
+ */
+function addDriftParts(q: QuadBuilder, l: Livery): void {
+  const accent = accentOf(l);
+  const steel = '#c4c7cc';
+  for (const { x: c, out } of DRIFT_ARCHES) {
+    for (const side of [-1, 1]) {
+      const r0 = 0.47;
+      const r1 = 0.6;
+      const n = 12;
+      const p = (r: number, a: number, z: number): V3 => [c + r * Math.cos(a), 0.3 + r * Math.sin(a), side * z];
+      // From a little below the axle at each end, so the fender meets the sill.
+      const a0 = -0.25;
+      const a1 = Math.PI + 0.25;
+      for (let k = 0; k < n; k++) {
+        const u = a0 + ((a1 - a0) * k) / n;
+        const v = a0 + ((a1 - a0) * (k + 1)) / n;
+        const zin = (a: number, r: number) => halfWidth(c + r * Math.cos(a)) - 0.05;
+        // The outside face, the curved top, and the dark lip under the arch.
+        q.quad(p(r0, u, out), p(r0, v, out), p(r1, v, out - 0.03), p(r1, u, out - 0.03), CARBON);
+        q.quad(p(r1, u, out - 0.03), p(r1, v, out - 0.03), p(r1, v, zin(v, r1)), p(r1, u, zin(u, r1)), CARBON);
+        q.quad(p(r0, u, zin(u, r0)), p(r0, v, zin(v, r0)), p(r0, v, out), p(r0, u, out), '#08080a');
+        // The accent edge round the arch.
+        q.quad(p(r0, u, out + 0.002), p(r0, v, out + 0.002), p(r0 + 0.025, v, out + 0.002), p(r0 + 0.025, u, out + 0.002), accent);
+      }
+      // Rivets round the outside.
+      for (let k = 0; k < 9; k++) {
+        const a = a0 + 0.15 + ((a1 - a0 - 0.3) * k) / 8;
+        const at = p(0.545, a, out - 0.012);
+        disc(q, [at[0], at[1], at[2] + side * 0.004], 0.014, 'z', steel);
+      }
+    }
+  }
+  // Intercooler: a silver core with fins in the open grille.
+  tbox(q, 2.29, 2.345, 1.1, 1.1, 0.17, 0.38, 0.17, 0.38, '#9da2aa');
+  for (let y = 0.19; y < 0.37; y += 0.035) tbox(q, 2.345, 2.35, 1.08, 1.08, y, y + 0.012, y, y + 0.012, '#5d6168');
+  // Heat extractor: slats standing open in the middle of the bonnet.
+  for (let k = 0; k < 6; k++) slat(q, 1.04 + k * 0.12, 0.07, -0.44, 0.44, 0.024);
+  // Side-exit exhausts on the right, just ahead of the rear wheel: two pipes, out and down a little.
+  for (const x of [-0.5, -0.64]) {
+    const z = halfWidth(x);
+    strut(q, [x, 0.25, z - 0.25], [x, 0.23, z + 0.07], 0.055, '#6d6f75');
+    disc(q, [x, 0.23, z + 0.071], 0.045, 'z', '#050505');
+  }
+  // Louvres over the rear window.
+  // Each slat lies just over the glass, its back edge lifted a little, like slats over a window.
+  const glassY = (x: number) => GLASS_TOP + ((REAR_GLASS_Y - GLASS_TOP) * (x - ROOF_REAR)) / (-1.8 - ROOF_REAR);
+  for (let k = 0; k < 7; k++) {
+    const x = ROOF_REAR - 0.06 - k * 0.1;
+    q.quad([x, glassY(x) + 0.012, -0.6], [x, glassY(x) + 0.012, 0.6], [x - 0.08, glassY(x - 0.08) + 0.04, 0.6], [x - 0.08, glassY(x - 0.08) + 0.04, -0.6], CARBON);
+  }
+  // A small roof spoiler: the louvre frame's top bar.
+  tbox(q, -1.06, -0.98, 1.24, 1.24, 1.3, 1.33, 1.3, 1.36, CARBON);
+}
+
 /** Where the rear window meets the deck. */
 const REAR_GLASS_Y = topHeight(-1.8, 0.6 / shoulderZ(-1.8)) + 0.01;
 
@@ -274,6 +343,47 @@ export function gt3RearWingGeometry(l: Livery): THREE.BufferGeometry {
   tbox(q, -2.46, -2.33, 1.92, 1.92, 1.345, 1.365, 1.305, 1.325, l.wings);
   tbox(q, -2.47, -2.455, 1.92, 1.92, 1.355, 1.4, 1.355, 1.4, accent);
   return q.build();
+}
+
+/** The drift car's front lip: deep and flat, an accent edge, small end plates (it comes off like a splitter). */
+export function driftLipGeometry(accent = '#e10600'): THREE.BufferGeometry {
+  const q = new QuadBuilder();
+  tbox(q, 1.95, 2.47, 1.96, 1.9, 0.06, 0.1, 0.06, 0.1, CARBON);
+  tbox(q, 2.445, 2.475, 1.9, 1.9, 0.098, 0.11, 0.098, 0.11, accent);
+  for (const side of [-1, 1]) tbox(q, 2.1, 2.46, 0.02, 0.02, 0.1, 0.2, 0.1, 0.13, CARBON, side * 0.94);
+  return q.build();
+}
+
+/** The drift car's wing: tall straight uprights off the boot lid, one wide plane, big square endplates. */
+export function driftWingGeometry(l: Livery): THREE.BufferGeometry {
+  const q = new QuadBuilder();
+  const accent = accentOf(l);
+  for (const side of [-1, 1]) {
+    const z = side * 0.4;
+    tbox(q, -2.12, -1.96, 0.03, 0.03, 0.9, 1.0, 0.9, 1.0, CARBON, z);
+    tbox(q, -2.2, -2.04, 0.025, 0.025, 0.95, 1.46, 0.95, 1.4, CARBON, z);
+    tbox(q, -2.74, -1.98, 0.03, 0.03, 1.18, 1.62, 1.22, 1.58, l.endplates, side * 1.01);
+    tbox(q, -2.74, -2.71, 0.035, 0.035, 1.185, 1.615, 1.185, 1.615, accent, side * 1.01);
+  }
+  // Main plane, the trailing edge higher, and a gurney flap along it.
+  tbox(q, -2.64, -2.06, 2.0, 2.0, 1.46, 1.51, 1.38, 1.43, l.wings);
+  tbox(q, -2.66, -2.635, 2.0, 2.0, 1.48, 1.56, 1.48, 1.56, accent);
+  return q.build();
+}
+
+/** Deep-dish six-spoke wheels: a fat outer lip, thick spokes, a hex nut. */
+export function driftSpokeGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [new THREE.TorusGeometry(0.24, 0.035, 4, 18)];
+  const dish = new THREE.CylinderGeometry(0.235, 0.235, 0.05, 18, 1, true).rotateX(Math.PI / 2).translate(0, 0, -0.03);
+  parts.push(dish);
+  for (let i = 0; i < 6; i++) {
+    const g = new THREE.BoxGeometry(0.06, 0.2, 0.03);
+    g.translate(0, 0.11, -0.04);
+    g.rotateZ((i * Math.PI) / 3);
+    parts.push(g);
+  }
+  parts.push(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 6).rotateX(Math.PI / 2).translate(0, 0, -0.03));
+  return mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)));
 }
 
 /**
@@ -463,6 +573,8 @@ const shared = {
   wheelFront: null as THREE.BufferGeometry | null,
   wheelRear: null as THREE.BufferGeometry | null,
   spokes: null as THREE.BufferGeometry | null,
+  driftSpokes: null as THREE.BufferGeometry | null,
+  driftRear: null as THREE.BufferGeometry | null,
   nut: null as THREE.BufferGeometry | null,
   band: null as THREE.BufferGeometry | null,
   disc: null as THREE.BufferGeometry | null,
@@ -550,11 +662,15 @@ export class Gt3Model implements Car3d {
   private painted: string | null = null;
   private glow = -1;
   private wornStep = 0;
+  /** How far the front wheels turn at full steer (the drift car has a huge lock). */
+  private readonly lock: number;
 
   constructor(
     private readonly livery: Livery,
-    opts: { ghost?: string; opacity?: number; sky?: Sky } = {},
+    opts: { ghost?: string; opacity?: number; sky?: Sky; drift?: boolean } = {},
   ) {
+    const drift = !!opts.drift;
+    this.lock = drift ? 0.6 : 0.38;
     const ghost = opts.ghost;
     this.ghost = !!ghost;
     const opacity = opts.opacity ?? 0.35;
@@ -568,18 +684,18 @@ export class Gt3Model implements Car3d {
     this.tyreMat = lambert({ color: TYRE });
     this.bandMat = lambert({ color: '#ffffff', map: sidewallTexture(), transparent: true, alphaTest: 0.25, depthWrite: false });
     this.discMat = lambert({ color: DISC_DARK });
-    const rimMat = lambert({ color: '#141518' });
+    const rimMat = lambert({ color: drift ? DRIFT_RIM : '#141518' });
     const caliperMat = lambert({ color: accentOf(livery) });
     const nutMat = lambert({ color: livery.wings });
 
-    this.bodyGeo = bodyGeometry(livery);
+    this.bodyGeo = bodyGeometry(livery, drift);
     const bodyMesh = new THREE.Mesh(this.bodyGeo, this.bodyMat);
     this.group.add(bodyMesh);
     // The painted shell: glossy paint with the livery texture.
     this.shellGeo = shellGeometry();
     if (ghost) this.shellMat = lambert({});
     else {
-      this.shellMap = liveryTexture(livery, raceNumber(livery));
+      this.shellMap = liveryTexture(livery, raceNumber(livery), drift);
       this.shellMat = new THREE.MeshPhongMaterial({ map: this.shellMap, shininess: 90, specular: '#555555', side: THREE.DoubleSide, ...reflective(opts.sky, PAINT_REFLECT) });
       withFresnel(this.shellMat);
       this.mats.push(this.shellMat);
@@ -641,8 +757,8 @@ export class Gt3Model implements Car3d {
     this.exterior.push(this.miniWheel);
 
     // Splitter and rear wing hang from mounts, so damage can droop and twist them.
-    const splitterGeo = gt3SplitterGeometry(accentOf(livery));
-    const wingGeo = gt3RearWingGeometry(livery);
+    const splitterGeo = drift ? driftLipGeometry(accentOf(livery)) : gt3SplitterGeometry(accentOf(livery));
+    const wingGeo = drift ? driftWingGeometry(livery) : gt3RearWingGeometry(livery);
     this.owned.push(splitterGeo, wingGeo);
     this.splitter = new THREE.Mesh(splitterGeo, this.bodyMat);
     this.rearWing = new THREE.Mesh(wingGeo, this.bodyMat);
@@ -660,6 +776,8 @@ export class Gt3Model implements Car3d {
     shared.wheelRear ??= tyreGeometry(0.345, 0.33);
     shared.band ??= new THREE.RingGeometry(0.262, 0.336, 40);
     shared.spokes ??= spokeGeometry();
+    shared.driftSpokes ??= driftSpokeGeometry();
+    shared.driftRear ??= tyreGeometry(0.345, 0.37);
     shared.nut ??= new THREE.CylinderGeometry(0.045, 0.045, 0.03, 6).rotateX(Math.PI / 2);
     shared.disc ??= new THREE.CircleGeometry(0.19, 14);
     shared.caliper ??= new THREE.BoxGeometry(0.1, 0.17, 0.05).rotateZ(-0.7).translate(0.1, 0.09, 0);
@@ -675,7 +793,7 @@ export class Gt3Model implements Car3d {
       };
       face(new THREE.Mesh(shared.disc!, this.discMat), 0.002);
       face(new THREE.Mesh(shared.caliper!, caliperMat), -0.02);
-      face(new THREE.Mesh(shared.spokes!, rimMat), 0.008);
+      face(new THREE.Mesh(drift ? shared.driftSpokes! : shared.spokes!, rimMat), 0.008);
       face(new THREE.Mesh(shared.band!, this.bandMat), 0.003);
       // The centre-lock nut in the car's wing colour.
       const nut = new THREE.Mesh(shared.nut!, nutMat);
@@ -684,9 +802,12 @@ export class Gt3Model implements Car3d {
       this.wheels.push(g);
       return g;
     };
-    this.frontWheels.push(addWheel(FRONT_AXLE, -TRACK, shared.wheelFront, 0.3), addWheel(FRONT_AXLE, TRACK, shared.wheelFront, 0.3));
-    addWheel(REAR_AXLE, -TRACK - 0.01, shared.wheelRear, 0.33);
-    addWheel(REAR_AXLE, TRACK + 0.01, shared.wheelRear, 0.33);
+    const [front, rear] = drift ? DRIFT_TRACK : [TRACK, TRACK + 0.01];
+    const rearTyre = drift ? shared.driftRear : shared.wheelRear;
+    const rearWidth = drift ? 0.37 : 0.33;
+    this.frontWheels.push(addWheel(FRONT_AXLE, -front, shared.wheelFront, 0.3), addWheel(FRONT_AXLE, front, shared.wheelFront, 0.3));
+    addWheel(REAR_AXLE, -rear, rearTyre, rearWidth);
+    addWheel(REAR_AXLE, rear, rearTyre, rearWidth);
 
     if (!ghost) {
       shared.shadow ??= new THREE.Mesh(
@@ -703,7 +824,7 @@ export class Gt3Model implements Car3d {
   update(x: number, y: number, heading: number, steer: number, _drsOpen: boolean, compound: Compound): void {
     this.group.position.set(x, 0, y);
     this.group.rotation.y = -heading;
-    this.frontWheels.forEach((w, i) => (w.rotation.y = -steer * 0.38 + this.toe[i]));
+    this.frontWheels.forEach((w, i) => (w.rotation.y = -steer * this.lock + this.toe[i]));
     this.head.rotation.set(-steer * 0.1, -steer * 0.35, 0);
     this.miniWheel.rotation.x = steer * 1.2;
     if (compound !== this.compound) {

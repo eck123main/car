@@ -263,11 +263,11 @@ const ux = (x: number) => ((x - TAIL_X) / (NOSE_X - TAIL_X)) * TEX_W;
 const textures = new Map<string, THREE.CanvasTexture>();
 
 /** The livery texture for the shell (one per livery and number, shared between cars). */
-export function liveryTexture(l: Livery, num: number): THREE.CanvasTexture {
-  const key = `${JSON.stringify(l)}|${num}`;
+export function liveryTexture(l: Livery, num: number, drift = false): THREE.CanvasTexture {
+  const key = `${JSON.stringify(l)}|${num}|${drift}`;
   let t = textures.get(key);
   if (t) return t;
-  t = new THREE.CanvasTexture(paintLivery(l, num));
+  t = new THREE.CanvasTexture(paintLivery(l, num, drift));
   t.colorSpace = THREE.SRGBColorSpace;
   t.flipY = false;
   t.anisotropy = 4;
@@ -368,7 +368,12 @@ const CARBON_PAINT = '#16171b';
 const LIGHT = '#f4f7ff';
 
 /** Paint the unwrap (see the top of this file). */
-export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
+/**
+ * Paint the shell's livery. `drift`: the drift car's graphics instead of the GT3's (a slash raked
+ * over the bonnet and down the front wings, the rear quarters torn off in the second colour, a big
+ * heat extractor in the bonnet, number roundels, an open grille for the intercooler).
+ */
+export function paintLivery(l: Livery, num: number, drift = false): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = TEX_W;
   c.height = TEX_H;
@@ -407,8 +412,9 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
   g.fillStyle = l.body;
   g.fillRect(0, 0, TEX_W, SKIN_H);
 
+  if (drift) paintDriftGraphics(l, { sides, top, poly, band });
   // Front of the car in its own colour, split on a rake with an accent line along the split.
-  if (front.toLowerCase() !== l.body.toLowerCase()) {
+  if (!drift && front.toLowerCase() !== l.body.toLowerCase()) {
     for (const at of sides) {
       poly([at(0.504, 1.2), at(3, 1.2), at(3, -0.2), at(1.316, -0.2)], front);
       band(at(0.504, 1.2), at(1.316, -0.2), 5, accent);
@@ -418,7 +424,7 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
     band(top(0.95, 0), top(0.62, 1.2), 5, accent);
   }
   // Rear quarters in the second colour, raked forwards like the front split.
-  if (l.pods && l.pods.toLowerCase() !== l.body.toLowerCase()) {
+  if (!drift && l.pods && l.pods.toLowerCase() !== l.body.toLowerCase()) {
     for (const at of sides) {
       poly([at(-0.61, 1.2), at(-3, 1.2), at(-3, -0.2), at(0.16, -0.2)], l.pods);
       band(at(-0.61, 1.2), at(0.16, -0.2), 5, accent);
@@ -426,7 +432,7 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
     poly([top(-0.6, -1.2), top(-3, -1.2), top(-3, 1.2), top(-0.6, 1.2), top(-1.0, 0)], l.pods);
   }
   // A spear down each side, from low at the nose to high over the rear wheel.
-  if (l.flash) {
+  if (!drift && l.flash) {
     for (const at of sides) {
       poly([at(2.1, 0.36), at(1.7, 0.5), at(-1.55, 0.8), at(-2.25, 0.86), at(-1.95, 0.74), at(-1.4, 0.7)], l.flash);
       poly([at(1.55, 0.26), at(1.3, 0.33), at(-0.55, 0.53), at(-0.95, 0.55), at(-0.6, 0.47)], l.flash);
@@ -447,15 +453,19 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
     }
   }
 
-  // Fender louvres and the bonnet vent: carbon, with slats.
-  for (const s of [-1, 1]) {
+  // Fender louvres and the bonnet vent: carbon, with slats (the drift car: one big heat extractor).
+  if (drift) {
+    poly([top(0.98, -0.46), top(1.72, -0.5), top(1.72, 0.5), top(0.98, 0.46)], CARBON_PAINT);
+    for (let k = 0; k < 6; k++) band(top(1.04 + k * 0.12, -0.44), top(1.04 + k * 0.12, 0.44), 7, '#050506');
+  }
+  for (const s of drift ? [] : [-1, 1]) {
     for (let k = 0; k < 6; k++) {
       const x = 1.1 + k * 0.11;
       poly([top(x, s * 0.7), top(x + 0.05, s * 0.7), top(x + 0.03, s * 0.94), top(x - 0.02, s * 0.94)], DARK, 0.9);
     }
   }
-  poly([top(0.92, -0.32), top(1.55, -0.42), top(1.55, 0.42), top(0.92, 0.32)], CARBON_PAINT);
-  for (let k = 0; k < 5; k++) band(top(1.0 + k * 0.11, -0.33 - k * 0.015), top(1.0 + k * 0.11, 0.33 + k * 0.015), 6, '#050506');
+  if (!drift) poly([top(0.92, -0.32), top(1.55, -0.42), top(1.55, 0.42), top(0.92, 0.32)], CARBON_PAINT);
+  for (let k = 0; k < (drift ? 0 : 5); k++) band(top(1.0 + k * 0.11, -0.33 - k * 0.015), top(1.0 + k * 0.11, 0.33 + k * 0.015), 6, '#050506');
   // Louvres on the rear deck over the engine.
   for (let k = 0; k < 5; k++) band(top(-2.22 + k * 0.07, -0.42), top(-2.22 + k * 0.07, 0.42), 5, DARK);
 
@@ -466,15 +476,15 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
     }
   }
 
-  // Side vents behind the front wheels.
-  for (const at of sides) {
+  // Side vents behind the front wheels (the drift car's overfenders cover that spot).
+  for (const at of drift ? [] : sides) {
     for (let k = 0; k < 3; k++) {
       const x = 0.74 + k * 0.08;
       poly([at(x, 0.3), at(x + 0.045, 0.3), at(x + 0.1, 0.72), at(x + 0.055, 0.72)], DARK, 0.92);
     }
   }
   // Openings behind the rear wheels.
-  for (const at of sides) poly([at(-1.82, 0.28), at(-2.18, 0.32), at(-2.18, 0.78), at(-1.82, 0.74)], DARK, 0.92);
+  for (const at of drift ? [] : sides) poly([at(-1.82, 0.28), at(-2.18, 0.32), at(-2.18, 0.78), at(-1.82, 0.74)], DARK, 0.92);
   // Carbon along the bottom of the sides, an accent pinstripe on top of it.
   for (const at of sides) {
     poly([at(-3, -0.1), at(3, -0.1), at(3, 0.13), at(-3, 0.13)], CARBON_PAINT);
@@ -522,19 +532,46 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
     g.fillText(String(num), 0, size * 0.06, hw * 1.4);
     g.restore();
   };
-  // Left side: the car's front is to the viewer's left, so the plate is turned half round.
-  hexPlate(...left(-0.17, 0.57), 68, 32, Math.PI, 50);
-  hexPlate(...right(-0.17, 0.57), 68, 32, 0, 50);
-  hexPlate(...top(-0.74, 0), 50, 44, Math.PI / 2, 52);
-  hexPlate(...top(1.8, 0), 34, 22, -Math.PI / 2, 30);
+  /** The drift car's number: in a white roundel with an accent ring. */
+  const roundel = (cx: number, cy: number, r: number, angle: number, size: number) => {
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(angle);
+    g.fillStyle = '#f4f4f4';
+    g.beginPath();
+    g.ellipse(0, 0, r, r * 0.92, 0, 0, Math.PI * 2);
+    g.fill();
+    g.lineWidth = 6;
+    g.strokeStyle = accent;
+    g.stroke();
+    g.fillStyle = '#0b0b0d';
+    g.font = `italic 900 ${size}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(String(num), 0, size * 0.06, r * 1.6);
+    g.restore();
+  };
+  if (drift) {
+    roundel(...left(-0.17, 0.57), 40, Math.PI, 46);
+    roundel(...right(-0.17, 0.57), 40, 0, 46);
+    roundel(...top(-0.6, 0), 46, Math.PI / 2, 50);
+  } else {
+    // Left side: the car's front is to the viewer's left, so the plate is turned half round.
+    hexPlate(...left(-0.17, 0.57), 68, 32, Math.PI, 50);
+    hexPlate(...right(-0.17, 0.57), 68, 32, 0, 50);
+    hexPlate(...top(-0.74, 0), 50, 44, Math.PI / 2, 52);
+    hexPlate(...top(1.8, 0), 34, 22, -Math.PI / 2, 30);
+  }
 
   // The front face: bumper in the nose colour, big dark intakes, headlights, an accent lip.
   g.fillStyle = l.nose;
   g.fillRect(0, SKIN_H, 512, TEX_H - SKIN_H);
   if (l.stripe) for (const s of [-1, 1]) poly([nose(s * 0.08, 1), nose(s * 0.2, 1), nose(s * 0.2, 0.37), nose(s * 0.08, 0.37)], l.stripe);
-  poly([nose(-0.38, 0.37), nose(0.38, 0.37), nose(0.3, 0.19), nose(-0.3, 0.19)], DARK);
+  // The drift car: one wide open grille, the intercooler sits in it.
+  if (drift) poly([nose(-0.62, 0.4), nose(0.62, 0.4), nose(0.58, 0.16), nose(-0.58, 0.16)], DARK);
+  else poly([nose(-0.38, 0.37), nose(0.38, 0.37), nose(0.3, 0.19), nose(-0.3, 0.19)], DARK);
   for (const s of [-1, 1]) {
-    poly([nose(s * 0.46, 0.33), nose(s * 0.7, 0.36), nose(s * 0.72, 0.2), nose(s * 0.46, 0.2)], DARK);
+    if (!drift) poly([nose(s * 0.46, 0.33), nose(s * 0.7, 0.36), nose(s * 0.72, 0.2), nose(s * 0.46, 0.2)], DARK);
     poly([nose(s * 0.42, 0.57), nose(s * 0.76, 0.6), nose(s * 0.76, 0.46), nose(s * 0.44, 0.45)], DARK);
     band(nose(s * 0.47, 0.5), nose(s * 0.72, 0.53), 4, LIGHT);
     band(nose(s * 0.55, 0.26), nose(s * 0.66, 0.26), 4, LIGHT);
@@ -558,7 +595,7 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
   g.font = 'italic 900 22px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillText('GT3', ...tail(0, 0.44));
+  g.fillText(drift ? 'DRIFT' : 'GT3', ...tail(0, 0.44));
   poly([tail(-1.2, 0.66), tail(1.2, 0.66), tail(1.2, 0.645), tail(-1.2, 0.645)], accent);
 
   // A metallic sheen.
@@ -572,4 +609,47 @@ export function paintLivery(l: Livery, num: number): HTMLCanvasElement {
     g.fillRect(0, 0, TEX_W, SKIN_H);
   }
   return c;
+}
+
+interface Painter {
+  sides: ((x: number, f: number) => P)[];
+  top: (x: number, s: number) => P;
+  poly: (pts: P[], color: string, alpha?: number) => void;
+  band: (a: P, b: P, w: number, color: string) => void;
+}
+
+/**
+ * The drift car's graphics: a wide slash raked across the bonnet that runs on down the front wings,
+ * and the rear quarters and deck torn off in a zigzag in the second colour, accent lines on the edges.
+ */
+function paintDriftGraphics(l: Livery, { sides, top, poly, band }: Painter): void {
+  const accent = accentOf(l);
+  const differs = (c: string | undefined) => !!c && c.toLowerCase() !== l.body.toLowerCase();
+  const slash = differs(l.front) ? l.front! : accent;
+  // Across the top: further back on the right (s +1) than on the left.
+  const across = (x: number, s: number): P => top(x - 0.35 * s, s);
+  poly([across(1.0, -1.2), across(1.55, -1.2), across(1.55, 1.2), across(1.0, 1.2)], slash);
+  band(across(1.0, -1.2), across(1.0, 1.2), 6, accent);
+  band(across(1.55, -1.2), across(1.55, 1.2), 6, accent);
+  // Down the sides from where it meets the shoulder, raked forwards.
+  sides.forEach((at, i) => {
+    const s = i === 0 ? -1 : 1;
+    const x0 = 1.0 - 0.35 * s;
+    const x1 = 1.55 - 0.35 * s;
+    poly([at(x0, 1.2), at(x1, 1.2), at(x1 + 0.45, -0.2), at(x0 + 0.45, -0.2)], slash);
+    band(at(x0, 1.2), at(x0 + 0.45, -0.2), 6, accent);
+    band(at(x1, 1.2), at(x1 + 0.45, -0.2), 6, accent);
+  });
+  if (!differs(l.pods)) return;
+  const tail = l.pods!;
+  // The torn edge: a zigzag, on the sides and over the deck.
+  const tooth = (k: number) => -0.72 - (k % 2 ? 0.34 : 0.04 * (k % 3));
+  for (const at of sides) {
+    const pts: P[] = [at(-3, 1.2), at(-3, -0.2)];
+    for (let k = 0; k <= 6; k++) pts.push(at(tooth(k) - 0.2 + (k / 6) * 0.2, -0.2 + (k / 6) * 1.4));
+    poly(pts, tail);
+  }
+  const pts: P[] = [top(-3, 1.2), top(-3, -1.2)];
+  for (let k = 0; k <= 8; k++) pts.push(top(tooth(k) - 0.3, -1.2 + (k / 8) * 2.4));
+  poly(pts, tail);
 }

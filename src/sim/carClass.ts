@@ -60,15 +60,6 @@ export const CAR_CLASSES: Record<CarClassId, CarClass> = {
 
 export const CAR_CLASS_ORDER: CarClassId[] = ['f1', 'gt3', 'lmh', 'drift'];
 
-/**
- * The body a class is drawn with, where it has none of its own yet: the drift car is a widebody
- * coupe like the GT3, so it borrows the GT3's 2D and 3D car, cameras and debris (but never the
- * GT3's garage cars: those are chosen by the class itself).
- */
-export function drawnAs<T extends CarClassId | undefined>(cls: T): T | 'gt3' {
-  return cls === 'drift' ? 'gt3' : cls;
-}
-
 export function isCarClassId(v: unknown): v is CarClassId {
   return typeof v === 'string' && v in CAR_CLASSES;
 }

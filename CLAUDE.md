@@ -205,9 +205,15 @@ alone: DRS free in every zone, ERS, no other cars.
   power past that angle, and lets the front ask 3x more while the handbrake is pulled. TC: high = grip (bots, laps),
   low slides on the power, off = full drift; its cuts go deeper than the GT3's (600 kW). Held flat at full lock it
   swings between drift and grip every ~1.7 s (a driver feathers it). Hard bots are clean on all 60 tracks, ~9% slower
-  than the GT3 (`planGrip` 0.75). Tests: `src/physics/driftCar.test.ts`. **Drawn as the GT3** for now
-  (`drawnAs` in `carClass.ts`: 2D, 3D model, cameras, debris; but never the GT3's garage cars); no ideal line
-  searched (the F1 line at its speeds).
+  than the GT3 (`planGrip` 0.75). Tests: `src/physics/driftCar.test.ts`. **Its own look**, built on the GT3's
+  shell and cockpit: 2D `src/render/drawDrift.ts`; 3D `Gt3Model` with `{ drift: true }` (riveted carbon overfenders
+  on every arch, wheels further out, gold deep-dish six-spokes and fatter rears, the intercooler in an open grille, a
+  heat extractor in the bonnet, side-exit exhausts ahead of the right rear wheel, louvres over the rear window, a deep
+  flat lip `driftLipGeometry` and a tall wing on straight uprights with big square endplates `driftWingGeometry`, also
+  the debris; front wheels turn 0.6 rad at full steer). Livery `paintLivery(..., drift)`: a slash raked over the bonnet
+  and down the front wings in the front colour, the rear quarters torn off in a zigzag in the pods colour, number
+  roundels, DRIFT on the tail. GT3 cameras, with the wing cam over its taller wing (`DRIFT_CAMS`). No garage cars;
+  no ideal line searched (the F1 line at its speeds).
 - **Loaded car bodies** (`src/render3d/customBody.ts`, how-to in `public/models/README.md`): drop
   `public/models/gt3.glb` / `lmh.glb` (e.g. from Sketchfab) to replace the built-in GT3 / Hypercar body
   in 3D, looks only. Its wheels are hidden (by name) and ours kept; it is turned to face forward (names

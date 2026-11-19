@@ -2,9 +2,10 @@ import { LOST_FRONT_WING, LOST_REAR_WING, LOST_WHEEL_FL, LOST_WHEEL_FR, LOST_WHE
 import type { CarParams } from '../physics/carParams';
 import { COMPOUNDS, type Compound } from '../sim/tyres';
 import { liveryFor, type Livery } from './livery';
-import { drawnAs, type CarClassId } from '../sim/carClass';
+import type { CarClassId } from '../sim/carClass';
 import { drawGt3Body } from './drawGt3';
 import { drawLmhBody } from './drawLmh';
+import { drawDriftBody } from './drawDrift';
 import { carSprite, SPRITE_FRAME } from './carSprites';
 
 export interface CarLook {
@@ -86,7 +87,7 @@ export function drawCar(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
-  const shape = drawnAs(look.body);
+  const shape = look.body;
   if ((shape === 'gt3' || shape === 'lmh') && look.model) {
     const sprite = carSprite(look.model, liv.body);
     if (sprite) {
@@ -95,8 +96,8 @@ export function drawCar(
       return;
     }
   }
-  if (shape === 'gt3' || shape === 'lmh') {
-    const draw = shape === 'gt3' ? drawGt3Body : drawLmhBody;
+  if (shape === 'gt3' || shape === 'lmh' || shape === 'drift') {
+    const draw = shape === 'gt3' ? drawGt3Body : shape === 'lmh' ? drawLmhBody : drawDriftBody;
     draw(ctx, p, steer, liv, lost, dmg, toe, (d) => drawBodyDamage(ctx, d), !!look.rainLight && Math.floor((look.time ?? 0) * 4) % 2 === 0);
     ctx.restore();
     return;
